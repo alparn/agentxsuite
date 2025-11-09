@@ -5,12 +5,15 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
-import { Plus, Play, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, Play, CheckCircle2, XCircle, Edit } from "lucide-react";
+import { ToolDialog } from "./ToolDialog";
 
 export function ToolsView() {
   const t = useTranslations();
   const orgId = useAppStore((state) => state.currentOrgId);
   const [selectedTool, setSelectedTool] = useState<any>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingTool, setEditingTool] = useState<any>(null);
 
   const { data: tools, isLoading } = useQuery({
     queryKey: ["tools", orgId],
@@ -31,7 +34,13 @@ export function ToolsView() {
           </h1>
           <p className="text-slate-400">Manage and test your tools</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all">
+        <button
+          onClick={() => {
+            setEditingTool(null);
+            setIsDialogOpen(true);
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all"
+        >
           <Plus className="w-5 h-5" />
           {t("tools.defineTool")}
         </button>
@@ -98,13 +107,26 @@ export function ToolsView() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <button
-                          onClick={() => setSelectedTool(tool)}
-                          className="p-2 text-slate-400 hover:text-purple-400 hover:bg-purple-500/10 rounded transition-colors"
-                          title={t("tools.testRun")}
-                        >
-                          <Play className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingTool(tool);
+                              setIsDialogOpen(true);
+                            }}
+                            className="p-2 text-slate-400 hover:text-purple-400 hover:bg-purple-500/10 rounded transition-colors"
+                            title={t("common.edit")}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setSelectedTool(tool)}
+                            className="p-2 text-slate-400 hover:text-green-400 hover:bg-green-500/10 rounded transition-colors"
+                            title={t("tools.testRun")}
+                          >
+                            <Play className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -117,35 +139,39 @@ export function ToolsView() {
 
       {selectedTool && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg w-full max-w-2xl p-6 space-y-4">
-            <h2 className="text-xl font-semibold text-white">{selectedTool.name}</h2>
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg w-full max-w-2xl p-6 space-y-4">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {selectedTool.name}
+            </h2>
             <div className="space-y-4">
               <div>
-                <h3 className="text-sm font-medium text-slate-400 mb-2">
-                  {t("tools.input")} Schema
+                <h3 className="text-sm font-medium text-slate-400 dark:text-slate-500 mb-2">
+                  Schema JSON
                 </h3>
-                <pre className="bg-slate-800 p-4 rounded-lg text-sm text-slate-300 overflow-x-auto">
-                  {JSON.stringify(selectedTool.input_schema || {}, null, 2)}
-                </pre>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-slate-400 mb-2">
-                  {t("tools.output")} Schema
-                </h3>
-                <pre className="bg-slate-800 p-4 rounded-lg text-sm text-slate-300 overflow-x-auto">
-                  {JSON.stringify(selectedTool.output_schema || {}, null, 2)}
+                <pre className="bg-slate-100 dark:bg-slate-800 p-4 rounded-lg text-sm text-slate-900 dark:text-slate-300 overflow-x-auto font-mono">
+                  {JSON.stringify(selectedTool.schema_json || {}, null, 2)}
                 </pre>
               </div>
               <button
                 onClick={() => setSelectedTool(null)}
-                className="w-full px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700"
+                className="w-full px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
               >
-                Close
+                {t("common.cancel")}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <ToolDialog
+        isOpen={isDialogOpen}
+        onClose={() => {
+          setIsDialogOpen(false);
+          setEditingTool(null);
+        }}
+        tool={editingTool}
+        orgId={orgId}
+      />
     </div>
   );
 }

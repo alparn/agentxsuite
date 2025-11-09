@@ -4,4 +4,5 @@ pydantic>=2.0.0
 cryptography>=42.0.0
 python-decouple>=3.8
 django-cors-headers>=4.3.0
+jsonschema>=4.20.0
 

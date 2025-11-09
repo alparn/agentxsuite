@@ -16,8 +16,16 @@ class Policy(TimeStamped):
         on_delete=models.CASCADE,
         related_name="policies",
     )
+    environment = models.ForeignKey(
+        "tenants.Environment",
+        on_delete=models.CASCADE,
+        related_name="policies",
+        null=True,
+        blank=True,
+    )
     name = models.CharField(max_length=255)
     rules_json = models.JSONField(default=dict)
+    enabled = models.BooleanField(default=True)
 
     class Meta:
         db_table = "policies_policy"

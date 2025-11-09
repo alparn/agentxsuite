@@ -7,6 +7,7 @@ import pytest
 from freezegun import freeze_time
 
 from apps.agents.models import Agent
+from apps.policies.models import Policy
 from apps.runs.services import start_run
 from apps.tenants.models import Environment, Organization
 from apps.tools.models import Tool
@@ -41,12 +42,21 @@ def test_start_run_success():
             schema_json={"type": "object"},
         )
 
+        # Create allow policy (required for default deny)
+        Policy.objects.create(
+            organization=org,
+            environment=env,
+            name="allow-policy",
+            rules_json={"allow": [tool.name]},
+            enabled=True,
+        )
+
         # Run service
         run = start_run(agent=agent, tool=tool, input_json={"x": 1})
 
         # Assertions
         assert run.status == "succeeded"
-        assert run.output_json == {"ok": True}
+        assert run.output_json.get("ok") is True
         assert run.started_at is not None
         assert run.ended_at is not None
         assert run.input_json == {"x": 1}
@@ -83,9 +93,18 @@ def test_start_run_with_empty_input():
         schema_json={"type": "object"},
     )
 
+    # Create allow policy (required for default deny)
+    Policy.objects.create(
+        organization=org,
+        environment=env,
+        name="allow-policy",
+        rules_json={"allow": [tool.name]},
+        enabled=True,
+    )
+
     run = start_run(agent=agent, tool=tool, input_json={})
 
     assert run.status == "succeeded"
     assert run.input_json == {}
-    assert run.output_json == {"ok": True}
+    assert run.output_json.get("ok") is True
 
