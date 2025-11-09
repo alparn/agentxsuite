@@ -2,36 +2,38 @@
 
 import { useTranslations } from "next-intl";
 import { Globe, Moon, Sun } from "lucide-react";
-import { useAuthStore } from "@/lib/store";
-import { useState, useEffect } from "react";
+import { useAuthStore, useThemeStore } from "@/lib/store";
+import { useEffect } from "react";
 
 export function Header() {
   const t = useTranslations();
   const user = useAuthStore((state) => state.user);
-  const [darkMode, setDarkMode] = useState(false);
+  const { theme, toggleTheme } = useThemeStore();
 
   useEffect(() => {
-    const isDark = document.documentElement.classList.contains("dark");
-    setDarkMode(isDark);
+    useThemeStore.persist.rehydrate();
   }, []);
 
-  const toggleDarkMode = () => {
-    document.documentElement.classList.toggle("dark");
-    setDarkMode(!darkMode);
-  };
+  useEffect(() => {
+    if (theme) {
+      document.documentElement.classList.remove("light", "dark");
+      document.documentElement.classList.add(theme);
+    }
+  }, [theme]);
 
   return (
-    <header className="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6">
+    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-6 transition-colors">
       <div className="flex items-center gap-4">
         {/* Environment Switcher could go here */}
       </div>
 
       <div className="flex items-center gap-4">
         <button
-          onClick={toggleDarkMode}
-          className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+          onClick={toggleTheme}
+          className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 dark:hover:bg-slate-800 transition-colors"
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
         >
-          {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
         </button>
 
         <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-slate-800">

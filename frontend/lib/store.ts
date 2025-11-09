@@ -23,15 +23,9 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       setAuth: (user, token) => {
         set({ user, token });
-        if (typeof window !== "undefined") {
-          localStorage.setItem("auth_token", token);
-        }
       },
       clearAuth: () => {
         set({ user: null, token: null });
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("auth_token");
-        }
       },
       isAuthenticated: () => {
         return get().token !== null && get().user !== null;
@@ -39,7 +33,8 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "auth-storage",
-      storage: createJSONStorage(() => (typeof window !== "undefined" ? localStorage : undefined as any)),
+      storage: createJSONStorage(() => localStorage),
+      skipHydration: true,
     }
   )
 );
@@ -61,7 +56,38 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "app-storage",
-      storage: createJSONStorage(() => (typeof window !== "undefined" ? localStorage : undefined as any)),
+      storage: createJSONStorage(() => localStorage),
+      skipHydration: true,
+    }
+  )
+);
+
+interface ThemeState {
+  theme: "light" | "dark";
+  setTheme: (theme: "light" | "dark") => void;
+  toggleTheme: () => void;
+}
+
+export const useThemeStore = create<ThemeState>()(
+  persist(
+    (set, get) => ({
+      theme: "dark",
+      setTheme: (theme) => {
+        set({ theme });
+        if (typeof window !== "undefined") {
+          document.documentElement.classList.remove("light", "dark");
+          document.documentElement.classList.add(theme);
+        }
+      },
+      toggleTheme: () => {
+        const newTheme = get().theme === "dark" ? "light" : "dark";
+        get().setTheme(newTheme);
+      },
+    }),
+    {
+      name: "theme-storage",
+      storage: createJSONStorage(() => localStorage),
+      skipHydration: true,
     }
   )
 );
