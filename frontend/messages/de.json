@@ -26,7 +26,8 @@
     "loading": "Lädt...",
     "error": "Fehler",
     "success": "Erfolg",
-    "noData": "Keine Daten verfügbar"
+    "noData": "Keine Daten verfügbar",
+    "select": "Auswählen"
   },
   "nav": {
     "overview": "Übersicht",
