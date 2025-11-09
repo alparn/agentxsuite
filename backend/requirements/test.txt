@@ -1,0 +1,9 @@
+-r base.txt
+pytest>=8.0.0
+pytest-django>=4.8.0
+pytest-cov>=5.0.0
+freezegun>=1.5.0
+factory-boy>=3.3.0
+model-bakery>=1.20.0
+faker>=24.0.0
+

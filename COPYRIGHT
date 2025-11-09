@@ -1,0 +1,74 @@
+# MCP Control Platform — License
+
+**Copyright (C) 2025  Ali Parnan**
+
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**.
+
+You are free to use, study, modify, and distribute this software under the following terms:
+
+- ✅ **On-Premise use:** You may install and use the software within your organization for free.
+
+- 🧩 **Source code:** Any modification or derivative work must also be made available under AGPL-3.0.
+
+- ☁️ **Hosting:** If you provide this software (modified or unmodified) as a hosted or network service to third parties,  
+  you must make the complete, corresponding source code publicly available under the same license.
+
+- 🚫 **No proprietary resale:** You may not offer the software as a closed-source commercial SaaS product without  
+  releasing your modifications under AGPL-3.0 or obtaining a separate commercial license from the author.
+
+---
+
+## License Header for Source Files
+
+```python
+# MCP Control Platform
+# Copyright (C) 2025  Ali Parnan
+#
+# This file is part of MCP Control Platform.
+#
+# MCP Control Platform is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# MCP Control Platform is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with MCP Control Platform.  If not, see <https://www.gnu.org/licenses/>.
+```
+
+---
+
+## Full License Text
+
+The full, unchanged AGPL-3.0 text is available in the `LICENSE` file in this repository.
+
+For reference, see the official text here:  
+👉 https://www.gnu.org/licenses/agpl-3.0.txt
+
+---
+
+## Notice
+
+This project uses the GNU Affero General Public License v3.0 (AGPL-3.0).  
+A copy of the full license is available at https://www.gnu.org/licenses/agpl-3.0.txt
+
+---
+
+## Summary (non-binding)
+
+You can use and deploy the MCP Control Platform freely on-premises.
+
+If you modify it or offer it as a service, you must share your modified source code.
+
+The software remains free and open, but SaaS providers cannot keep changes proprietary.
+
+For a proprietary or commercial SaaS license, contact Ali Parnan.
+
+---
+
+© 2025 Ali Parnan – All rights reserved under AGPL-3.0.
+

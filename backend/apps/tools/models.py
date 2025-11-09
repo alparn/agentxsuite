@@ -1,0 +1,38 @@
+"""
+Tool registry models.
+"""
+from __future__ import annotations
+
+from django.db import models
+from django.utils import timezone
+
+
+class Tool(models.Model):
+    """Tool registry model."""
+
+    id = models.BigAutoField(primary_key=True)
+    organization = models.ForeignKey(
+        "tenants.Organization",
+        on_delete=models.CASCADE,
+        related_name="tools",
+    )
+    environment = models.ForeignKey(
+        "tenants.Environment",
+        on_delete=models.CASCADE,
+        related_name="tools",
+    )
+    name = models.CharField(max_length=255)
+    version = models.CharField(max_length=50, default="1.0.0")
+    schema_json = models.JSONField(default=dict)
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "tools_tool"
+        ordering = ["-created_at"]
+        unique_together = [["organization", "environment", "name", "version"]]
+
+    def __str__(self) -> str:
+        return f"{self.organization.name}/{self.environment.name}/{self.name}"
+
