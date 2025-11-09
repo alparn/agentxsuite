@@ -13,7 +13,7 @@ import {
   Globe,
   FileText,
   Settings,
-  LogOut,
+  LogOut as LogOutIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -83,7 +83,7 @@ export function Sidebar() {
           onClick={handleLogout}
           className="flex items-center gap-3 px-4 py-3 w-full rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
         >
-          <LogOut className="w-5 h-5 flex-shrink-0" />
+          <LogOutIcon className="w-5 h-5 flex-shrink-0" />
           <span className="font-medium">{tCommon("logout")}</span>
         </button>
       </div>
