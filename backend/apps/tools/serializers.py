@@ -14,9 +14,9 @@ class ToolSerializer(serializers.ModelSerializer):
     """Serializer for Tool."""
 
     organization = OrganizationSerializer(read_only=True)
-    organization_id = serializers.IntegerField(write_only=True)
+    organization_id = serializers.UUIDField(write_only=True)
     environment = EnvironmentSerializer(read_only=True)
-    environment_id = serializers.IntegerField(write_only=True)
+    environment_id = serializers.UUIDField(write_only=True)
     schema_json = serializers.JSONField(validators=[validate_schema_json])
 
     class Meta:

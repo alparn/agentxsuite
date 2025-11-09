@@ -4,15 +4,14 @@ Tenant models: Organization and Environment.
 from __future__ import annotations
 
 from django.db import models
-from django.utils import timezone
+
+from libs.common.models import TimeStamped
 
 
-class Organization(models.Model):
+class Organization(TimeStamped):
     """Organization model."""
 
-    id = models.BigAutoField(primary_key=True)
     name = models.CharField(max_length=255, unique=True)
-    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         db_table = "tenants_organization"
@@ -22,7 +21,7 @@ class Organization(models.Model):
         return self.name
 
 
-class Environment(models.Model):
+class Environment(TimeStamped):
     """Environment model."""
 
     TYPE_CHOICES = [
@@ -31,7 +30,6 @@ class Environment(models.Model):
         ("prod", "Production"),
     ]
 
-    id = models.BigAutoField(primary_key=True)
     organization = models.ForeignKey(
         "tenants.Organization",
         on_delete=models.CASCADE,
@@ -39,7 +37,6 @@ class Environment(models.Model):
     )
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=10, choices=TYPE_CHOICES, default="dev")
-    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         db_table = "tenants_environment"

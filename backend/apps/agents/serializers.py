@@ -14,11 +14,11 @@ class AgentSerializer(serializers.ModelSerializer):
     """Serializer for Agent."""
 
     organization = OrganizationSerializer(read_only=True)
-    organization_id = serializers.IntegerField(write_only=True)
+    organization_id = serializers.UUIDField(write_only=True)
     environment = EnvironmentSerializer(read_only=True)
-    environment_id = serializers.IntegerField(write_only=True)
+    environment_id = serializers.UUIDField(write_only=True)
     connection = ConnectionSerializer(read_only=True)
-    connection_id = serializers.IntegerField(write_only=True)
+    connection_id = serializers.UUIDField(write_only=True)
 
     class Meta:
         model = Agent

@@ -13,7 +13,7 @@ class PolicySerializer(serializers.ModelSerializer):
     """Serializer for Policy."""
 
     organization = OrganizationSerializer(read_only=True)
-    organization_id = serializers.IntegerField(write_only=True)
+    organization_id = serializers.UUIDField(write_only=True)
     rules_json = serializers.JSONField()
 
     class Meta:

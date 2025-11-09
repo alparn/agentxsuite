@@ -5,11 +5,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from decouple import config
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-1-r@2ht9@6knvvi%2dv#vcs+%jf@c18kb6(id3)98ia-$4dnl_"
+SECRET_KEY = config(
+    "SECRET_KEY",
+    default="django-insecure-1-r@2ht9@6knvvi%2dv#vcs+%jf@c18kb6(id3)98ia-$4dnl_",
+)
 
 # Application definition
 INSTALLED_APPS = [
@@ -19,9 +24,11 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
     "rest_framework",
     "rest_framework.authtoken",
     # Local apps
+    "libs.common",
     "apps.accounts",
     "apps.tenants",
     "apps.connections",
@@ -34,6 +41,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -103,9 +111,33 @@ REST_FRAMEWORK = {
 }
 
 # SecretStore Configuration
-SECRETSTORE_BACKEND = "libs.secretstore.fernet.FernetSecretStore"
-SECRETSTORE_FERNET_KEY = None  # Will be generated if None
+SECRETSTORE_BACKEND = config(
+    "SECRETSTORE_BACKEND",
+    default="libs.secretstore.fernet.FernetSecretStore",
+)
+SECRETSTORE_FERNET_KEY = config("SECRETSTORE_FERNET_KEY", default=None)  # Will be generated if None
 
 # Custom User Model
 AUTH_USER_MODEL = "accounts.User"
+
+# CORS Configuration
+CORS_ALLOWED_ORIGINS = config(
+    "CORS_ALLOWED_ORIGINS",
+    default="http://localhost:3000,http://127.0.0.1:3000",
+    cast=lambda v: [s.strip() for s in v.split(",")],
+)
+
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "accept-encoding",
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+]
 

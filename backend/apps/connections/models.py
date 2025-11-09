@@ -4,10 +4,11 @@ Connection models for MCP server connections.
 from __future__ import annotations
 
 from django.db import models
-from django.utils import timezone
+
+from libs.common.models import TimeStamped
 
 
-class Connection(models.Model):
+class Connection(TimeStamped):
     """MCP server connection model."""
 
     AUTH_METHOD_CHOICES = [
@@ -22,7 +23,6 @@ class Connection(models.Model):
         ("fail", "Failed"),
     ]
 
-    id = models.BigAutoField(primary_key=True)
     organization = models.ForeignKey(
         "tenants.Organization",
         on_delete=models.CASCADE,
@@ -47,8 +47,6 @@ class Connection(models.Model):
         default="unknown",
     )
     last_seen_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(default=timezone.now)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "connections_connection"

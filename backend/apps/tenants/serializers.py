@@ -13,20 +13,20 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Organization
-        fields = ["id", "name", "created_at"]
-        read_only_fields = ["id", "created_at"]
+        fields = ["id", "name", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class EnvironmentSerializer(serializers.ModelSerializer):
     """Serializer for Environment."""
 
     organization = OrganizationSerializer(read_only=True)
-    organization_id = serializers.IntegerField(write_only=True)
+    organization_id = serializers.UUIDField(write_only=True)
 
     class Meta:
         model = Environment
-        fields = ["id", "organization", "organization_id", "name", "type", "created_at"]
-        read_only_fields = ["id", "created_at"]
+        fields = ["id", "organization", "organization_id", "name", "type", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
     def validate_type(self, value: str) -> str:
         """Validate environment type."""

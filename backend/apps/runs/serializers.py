@@ -34,6 +34,7 @@ class RunSerializer(serializers.ModelSerializer):
             "output_json",
             "error_text",
             "created_at",
+            "updated_at",
         ]
         read_only_fields = [
             "id",
@@ -43,6 +44,7 @@ class RunSerializer(serializers.ModelSerializer):
             "output_json",
             "error_text",
             "created_at",
+            "updated_at",
         ]
 
     def validate_status(self, value: str) -> str:

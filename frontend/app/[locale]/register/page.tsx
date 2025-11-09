@@ -62,8 +62,8 @@ export default function RegisterPage() {
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl shadow-2xl p-8 space-y-6">
           {/* Logo/Header */}
           <div className="text-center space-y-4">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl shadow-lg">
-              <Sparkles className="w-8 h-8 text-white" />
+            <div className="inline-flex items-center justify-center w-16 h-16">
+              <img src="/logo.svg" alt="AgentxSuite Logo" className="w-16 h-16" />
             </div>
             <div>
               <h1 className="text-3xl font-bold text-white mb-2">

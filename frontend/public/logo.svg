@@ -1,0 +1,11 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Main "A" shape -->
+  <path d="M256 80L160 380H200L220 320H292L312 380H352L256 80Z M240 280L256 220L272 280H240Z" fill="#0E7490"/>
+  
+  <!-- Orbital ring -->
+  <ellipse cx="256" cy="256" rx="180" ry="60" stroke="#14B8A6" stroke-width="12" fill="none" transform="rotate(-30 256 256)"/>
+  
+  <!-- Small circle at the end of orbit -->
+  <circle cx="370" cy="180" r="16" fill="#14B8A6"/>
+</svg>
+

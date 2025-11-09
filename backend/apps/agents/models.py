@@ -4,13 +4,13 @@ Agent models.
 from __future__ import annotations
 
 from django.db import models
-from django.utils import timezone
+
+from libs.common.models import TimeStamped
 
 
-class Agent(models.Model):
+class Agent(TimeStamped):
     """Agent model."""
 
-    id = models.BigAutoField(primary_key=True)
     organization = models.ForeignKey(
         "tenants.Organization",
         on_delete=models.CASCADE,
@@ -29,8 +29,6 @@ class Agent(models.Model):
     name = models.CharField(max_length=255)
     version = models.CharField(max_length=50, default="1.0.0")
     enabled = models.BooleanField(default=True)
-    created_at = models.DateTimeField(default=timezone.now)
-    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "agents_agent"

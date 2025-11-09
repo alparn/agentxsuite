@@ -4,10 +4,11 @@ Run models for tool execution.
 from __future__ import annotations
 
 from django.db import models
-from django.utils import timezone
+
+from libs.common.models import TimeStamped
 
 
-class Run(models.Model):
+class Run(TimeStamped):
     """Run model for tool execution."""
 
     STATUS_CHOICES = [
@@ -17,7 +18,6 @@ class Run(models.Model):
         ("failed", "Failed"),
     ]
 
-    id = models.BigAutoField(primary_key=True)
     organization = models.ForeignKey(
         "tenants.Organization",
         on_delete=models.CASCADE,
@@ -48,7 +48,6 @@ class Run(models.Model):
     input_json = models.JSONField(default=dict)
     output_json = models.JSONField(default=dict, null=True, blank=True)
     error_text = models.TextField(blank=True)
-    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         db_table = "runs_run"
