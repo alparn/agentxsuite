@@ -1,6 +1,8 @@
 # AgentxSuite
 
-A Django 5 + DRF platform for centrally managing MCP (Model Context Protocol) agents.
+AgentxSuite is an open-source platform that allows software companies to manage, connect, and monitor AI agents via the Model Context Protocol (MCP) — without building their own MCP server.
+
+![AgentxSuite Dashboard](docs/dashboard.png)
 
 ## Stack
 

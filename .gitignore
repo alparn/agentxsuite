@@ -68,6 +68,7 @@ coverage.xml
 # IDEs
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
@@ -132,4 +133,7 @@ Thumbs.db
 *.sqlite
 *.db
 *.sqlite3
+
+# Local test application (nicht ins Git)
+local_test/
 
