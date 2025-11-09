@@ -1,6 +1,6 @@
 # AgentxSuite
 
-AgentxSuite is an open-source platform that allows software companies to manage, connect, and monitor AI agents via the Model Context Protocol (MCP) — without building their own MCP server.
+AgentxSuite is an open-source platform to connect, manage, and monitor AI Agents and Tools across multiple MCP servers — in one unified interface.
 
 ![AgentxSuite Dashboard](docs/agentxsuite.png)
 
