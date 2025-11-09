@@ -1,4 +1,4 @@
-# MCP Control Platform — License
+# AgentxSuite — License
 
 **Copyright (C) 2025  Ali Parnan**
 
@@ -21,23 +21,23 @@ You are free to use, study, modify, and distribute this software under the follo
 ## License Header for Source Files
 
 ```python
-# MCP Control Platform
+# AgentxSuite
 # Copyright (C) 2025  Ali Parnan
 #
-# This file is part of MCP Control Platform.
+# This file is part of AgentxSuite.
 #
-# MCP Control Platform is free software: you can redistribute it and/or modify
+# AgentxSuite is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published
 # by the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# MCP Control Platform is distributed in the hope that it will be useful,
+# AgentxSuite is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with MCP Control Platform.  If not, see <https://www.gnu.org/licenses/>.
+# along with AgentxSuite.  If not, see <https://www.gnu.org/licenses/>.
 ```
 
 ---
@@ -60,7 +60,7 @@ A copy of the full license is available at https://www.gnu.org/licenses/agpl-3.0
 
 ## Summary (non-binding)
 
-You can use and deploy the MCP Control Platform freely on-premises.
+You can use and deploy AgentxSuite freely on-premises.
 
 If you modify it or offer it as a service, you must share your modified source code.
 

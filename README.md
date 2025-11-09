@@ -1,4 +1,4 @@
-# MCP Agents Platform
+# AgentxSuite
 
 A Django 5 + DRF platform for centrally managing MCP (Model Context Protocol) agents.
 
@@ -113,8 +113,8 @@ Authorization: Token <your-token-here>
 
 - `GET /api/v1/orgs/:org_id/connections/` - List connections
 - `POST /api/v1/orgs/:org_id/connections/` - Create connection
-- `POST /api/v1/connections/:id/test/` - Test connection (stub)
-- `POST /api/v1/connections/:id/sync/` - Sync tools from connection (stub)
+- `POST /api/v1/connections/:id/test/` - Test connection
+- `POST /api/v1/connections/:id/sync/` - Sync tools from connection
 
 ### Agents
 
@@ -125,7 +125,7 @@ Authorization: Token <your-token-here>
 
 - `GET /api/v1/orgs/:org_id/tools/` - List tools
 - `POST /api/v1/orgs/:org_id/tools/` - Create tool
-- `POST /api/v1/tools/:id/run/` - Run tool (orchestrator stub)
+- `POST /api/v1/tools/:id/run/` - Execute tool
 
 ### Runs
 
