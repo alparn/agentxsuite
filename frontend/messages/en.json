@@ -1,0 +1,121 @@
+{
+  "common": {
+    "welcome": "Welcome",
+    "login": "Login",
+    "register": "Register",
+    "logout": "Logout",
+    "email": "Email",
+    "password": "Password",
+    "passwordConfirm": "Confirm Password",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "submit": "Submit",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "actions": "Actions",
+    "status": "Status",
+    "name": "Name",
+    "description": "Description",
+    "createdAt": "Created At",
+    "updatedAt": "Updated At",
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "noData": "No data available"
+  },
+  "nav": {
+    "overview": "Overview",
+    "agents": "Agents",
+    "connections": "Connections",
+    "tools": "Tools",
+    "runs": "Runs",
+    "policies": "Policies",
+    "environments": "Environments",
+    "audit": "Audit & Logs",
+    "settings": "Settings"
+  },
+  "auth": {
+    "loginTitle": "Welcome back",
+    "loginSubtitle": "Sign in to your account",
+    "registerTitle": "Create account",
+    "registerSubtitle": "Get started with AgentxSuite",
+    "forgotPassword": "Forgot password?",
+    "alreadyHaveAccount": "Already have an account?",
+    "dontHaveAccount": "Don't have an account?",
+    "signIn": "Sign in",
+    "signUp": "Sign up"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "activeAgents": "Active Agents",
+    "activeConnections": "Active Connections",
+    "toolsSynced": "Tools Synced",
+    "runsLast24h": "Runs (Last 24h)",
+    "runsOverTime": "Runs Over Time",
+    "agentHealth": "Agent Health",
+    "lastRuns": "Last Runs"
+  },
+  "connections": {
+    "title": "Connections",
+    "newConnection": "New Connection",
+    "endpoint": "Endpoint",
+    "authMethod": "Auth Method",
+    "lastSync": "Last Sync",
+    "testConnection": "Test Connection",
+    "syncTools": "Sync Tools",
+    "toolsImported": "Tools imported"
+  },
+  "agents": {
+    "title": "Agents",
+    "newAgent": "Create Agent",
+    "version": "Version",
+    "environment": "Environment",
+    "connection": "Connection",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "pingAgent": "Ping Agent",
+    "enable": "Enable",
+    "disable": "Disable"
+  },
+  "tools": {
+    "title": "Tools",
+    "defineTool": "Define Tool",
+    "version": "Version",
+    "origin": "Origin",
+    "testRun": "Test Run",
+    "input": "Input",
+    "output": "Output"
+  },
+  "runs": {
+    "title": "Runs",
+    "runId": "Run ID",
+    "tool": "Tool",
+    "agent": "Agent",
+    "started": "Started",
+    "duration": "Duration",
+    "logs": "Logs",
+    "trace": "Trace",
+    "downloadArtifact": "Download Artifact"
+  },
+  "policies": {
+    "title": "Policies",
+    "newPolicy": "New Policy",
+    "rulesCount": "Rules Count",
+    "attachToAgent": "Attach to Agent"
+  },
+  "audit": {
+    "title": "Audit & Logs",
+    "time": "Time",
+    "actor": "Actor",
+    "action": "Action",
+    "object": "Object",
+    "details": "Details",
+    "export": "Export"
+  }
+}
+

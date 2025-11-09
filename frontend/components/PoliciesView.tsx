@@ -1,0 +1,124 @@
+"use client";
+
+import { useState } from "react";
+import { useTranslations } from "next-intl";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { useAppStore } from "@/lib/store";
+import { Plus, Shield } from "lucide-react";
+
+export function PoliciesView() {
+  const t = useTranslations();
+  const orgId = useAppStore((state) => state.currentOrgId);
+  const [selectedPolicy, setSelectedPolicy] = useState<any>(null);
+
+  const { data: policies, isLoading } = useQuery({
+    queryKey: ["policies", orgId],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const response = await api.get(`/orgs/${orgId}/policies/`);
+      return response.data;
+    },
+    enabled: !!orgId,
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">
+            {t("policies.title")}
+          </h1>
+          <p className="text-slate-400">Manage access control policies</p>
+        </div>
+        <button className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all">
+          <Plus className="w-5 h-5" />
+          {t("policies.newPolicy")}
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center py-12 text-slate-400">{t("common.loading")}</div>
+      ) : (
+        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-800">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                    {t("common.name")}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                    {t("common.description")}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                    {t("policies.rulesCount")}
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                    {t("common.actions")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {policies?.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-12 text-center text-slate-400">
+                      {t("common.noData")}
+                    </td>
+                  </tr>
+                ) : (
+                  policies?.map((policy: any) => (
+                    <tr
+                      key={policy.id}
+                      className="hover:bg-slate-800/50 cursor-pointer"
+                      onClick={() => setSelectedPolicy(policy)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-medium flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-purple-400" />
+                        {policy.name}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-300">
+                        {policy.description || "-"}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                        {policy.rules?.length || 0}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <button className="text-purple-400 hover:text-purple-300 text-sm">
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {selectedPolicy && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg w-full max-w-2xl p-6 space-y-4">
+            <h2 className="text-xl font-semibold text-white">
+              {selectedPolicy.name}
+            </h2>
+            <div>
+              <h3 className="text-sm font-medium text-slate-400 mb-2">Rules</h3>
+              <pre className="bg-slate-800 p-4 rounded-lg text-sm text-slate-300 overflow-x-auto">
+                {JSON.stringify(selectedPolicy.rules || [], null, 2)}
+              </pre>
+            </div>
+            <button
+              onClick={() => setSelectedPolicy(null)}
+              className="w-full px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

@@ -1,0 +1,121 @@
+{
+  "common": {
+    "welcome": "Willkommen",
+    "login": "Anmelden",
+    "register": "Registrieren",
+    "logout": "Abmelden",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "passwordConfirm": "Passwort bestätigen",
+    "firstName": "Vorname",
+    "lastName": "Nachname",
+    "submit": "Absenden",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "create": "Erstellen",
+    "search": "Suchen",
+    "filter": "Filter",
+    "actions": "Aktionen",
+    "status": "Status",
+    "name": "Name",
+    "description": "Beschreibung",
+    "createdAt": "Erstellt am",
+    "updatedAt": "Aktualisiert am",
+    "loading": "Lädt...",
+    "error": "Fehler",
+    "success": "Erfolg",
+    "noData": "Keine Daten verfügbar"
+  },
+  "nav": {
+    "overview": "Übersicht",
+    "agents": "Agents",
+    "connections": "Verbindungen",
+    "tools": "Tools",
+    "runs": "Ausführungen",
+    "policies": "Richtlinien",
+    "environments": "Umgebungen",
+    "audit": "Audit & Logs",
+    "settings": "Einstellungen"
+  },
+  "auth": {
+    "loginTitle": "Willkommen zurück",
+    "loginSubtitle": "Melden Sie sich in Ihrem Konto an",
+    "registerTitle": "Konto erstellen",
+    "registerSubtitle": "Starten Sie mit AgentxSuite",
+    "forgotPassword": "Passwort vergessen?",
+    "alreadyHaveAccount": "Haben Sie bereits ein Konto?",
+    "dontHaveAccount": "Haben Sie noch kein Konto?",
+    "signIn": "Anmelden",
+    "signUp": "Registrieren"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "activeAgents": "Aktive Agents",
+    "activeConnections": "Aktive Verbindungen",
+    "toolsSynced": "Synchronisierte Tools",
+    "runsLast24h": "Ausführungen (Letzte 24h)",
+    "runsOverTime": "Ausführungen über Zeit",
+    "agentHealth": "Agent-Status",
+    "lastRuns": "Letzte Ausführungen"
+  },
+  "connections": {
+    "title": "Verbindungen",
+    "newConnection": "Neue Verbindung",
+    "endpoint": "Endpunkt",
+    "authMethod": "Authentifizierungsmethode",
+    "lastSync": "Letzte Synchronisierung",
+    "testConnection": "Verbindung testen",
+    "syncTools": "Tools synchronisieren",
+    "toolsImported": "Tools importiert"
+  },
+  "agents": {
+    "title": "Agents",
+    "newAgent": "Agent erstellen",
+    "version": "Version",
+    "environment": "Umgebung",
+    "connection": "Verbindung",
+    "enabled": "Aktiviert",
+    "disabled": "Deaktiviert",
+    "pingAgent": "Agent anpingen",
+    "enable": "Aktivieren",
+    "disable": "Deaktivieren"
+  },
+  "tools": {
+    "title": "Tools",
+    "defineTool": "Tool definieren",
+    "version": "Version",
+    "origin": "Herkunft",
+    "testRun": "Testlauf",
+    "input": "Eingabe",
+    "output": "Ausgabe"
+  },
+  "runs": {
+    "title": "Ausführungen",
+    "runId": "Ausführungs-ID",
+    "tool": "Tool",
+    "agent": "Agent",
+    "started": "Gestartet",
+    "duration": "Dauer",
+    "logs": "Logs",
+    "trace": "Trace",
+    "downloadArtifact": "Artefakt herunterladen"
+  },
+  "policies": {
+    "title": "Richtlinien",
+    "newPolicy": "Neue Richtlinie",
+    "rulesCount": "Anzahl Regeln",
+    "attachToAgent": "An Agent anhängen"
+  },
+  "audit": {
+    "title": "Audit & Logs",
+    "time": "Zeit",
+    "actor": "Akteur",
+    "action": "Aktion",
+    "object": "Objekt",
+    "details": "Details",
+    "export": "Exportieren"
+  }
+}
+
