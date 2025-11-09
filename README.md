@@ -1,4 +1,4 @@
-# MCP Agents Platform MVP
+# MCP Agents Platform
 
 A Django 5 + DRF platform for centrally managing MCP (Model Context Protocol) agents.
 
@@ -181,19 +181,19 @@ make migrate   # Create and apply migrations
 make run       # Run development server
 ```
 
-## MVP Features
+## Features
 
-- ✅ CRUD for Environment, Connection, Agent, Tool, Run
-- ✅ Connection test/sync stubs
-- ✅ Tool run orchestrator stub
-- ✅ Policy check stub
-- ✅ SecretStore abstraction (Fernet implementation)
-- ✅ Unit tests for core functionality
-- ✅ Strict typing and docstrings
-- ✅ Clean architecture with services layer
-- ✅ Email-based authentication (no username)
+- CRUD operations for Organizations, Environments, Connections, Agents, Tools, and Runs
+- Connection testing and synchronization
+- Tool execution orchestration
+- Policy-based access control
+- SecretStore abstraction with Fernet encryption
+- Comprehensive unit test coverage
+- Strict type checking and documentation
+- Clean architecture with service layer separation
+- Email-based authentication
 
-## Next Steps (Not in MVP)
+## Roadmap
 
 - FastAPI Gateway with WebSockets
 - Real MCP connection testing
