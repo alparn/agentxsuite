@@ -16,15 +16,24 @@ export function AgentsView() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<any>(null);
 
-  const { data: agents, isLoading } = useQuery({
+  const { data: agentsData, isLoading } = useQuery({
     queryKey: ["agents", orgId],
     queryFn: async () => {
       if (!orgId) return [];
       const response = await api.get(`/orgs/${orgId}/agents/`);
-      return response.data;
+      // Handle paginated response (DRF returns {results: [...], count, next, previous})
+      // or direct array response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.data?.results && Array.isArray(response.data.results)) {
+        return response.data.results;
+      }
+      return [];
     },
     enabled: !!orgId,
   });
+
+  const agents = Array.isArray(agentsData) ? agentsData : [];
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {

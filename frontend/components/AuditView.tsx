@@ -10,15 +10,24 @@ export function AuditView() {
   const t = useTranslations();
   const orgId = useAppStore((state) => state.currentOrgId);
 
-  const { data: auditLogs, isLoading } = useQuery({
+  const { data: auditLogsData, isLoading } = useQuery({
     queryKey: ["audit", orgId],
     queryFn: async () => {
       if (!orgId) return [];
-      // TODO: Replace with actual audit endpoint
+      const response = await api.get(`/orgs/${orgId}/audit/`);
+      // Handle paginated response (DRF returns {results: [...], count, next, previous})
+      // or direct array response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.data?.results && Array.isArray(response.data.results)) {
+        return response.data.results;
+      }
       return [];
     },
     enabled: !!orgId,
   });
+
+  const auditLogs = Array.isArray(auditLogsData) ? auditLogsData : [];
 
   return (
     <div className="space-y-6">

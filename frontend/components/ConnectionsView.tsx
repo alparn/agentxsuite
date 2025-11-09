@@ -15,15 +15,24 @@ export function ConnectionsView() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState<any>(null);
 
-  const { data: connections, isLoading } = useQuery({
+  const { data: connectionsData, isLoading } = useQuery({
     queryKey: ["connections", orgId],
     queryFn: async () => {
       if (!orgId) return [];
       const response = await api.get(`/orgs/${orgId}/connections/`);
-      return response.data;
+      // Handle paginated response (DRF returns {results: [...], count, next, previous})
+      // or direct array response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.data?.results && Array.isArray(response.data.results)) {
+        return response.data.results;
+      }
+      return [];
     },
     enabled: !!orgId,
   });
+
+  const connections = Array.isArray(connectionsData) ? connectionsData : [];
 
   const testMutation = useMutation({
     mutationFn: async (id: string) => {

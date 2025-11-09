@@ -31,15 +31,19 @@ export function ToolDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Fetch environments for the organization
-  const { data: environments } = useQuery({
+  const { data: environmentsData, isLoading: isLoadingEnvs, error: envError } = useQuery({
     queryKey: ["environments", orgId],
     queryFn: async () => {
       if (!orgId) return [];
       const response = await api.get(`/orgs/${orgId}/environments/`);
-      return response.data;
+      // Ensure we always return an array
+      return Array.isArray(response.data) ? response.data : [];
     },
-    enabled: !!orgId && isOpen,
+    enabled: !!orgId, // Allow pre-fetching even when dialog is closed
+    staleTime: 30000, // Cache for 30 seconds
   });
+
+  const environments = Array.isArray(environmentsData) ? environmentsData : [];
 
   useEffect(() => {
     if (tool) {
@@ -83,10 +87,8 @@ export function ToolDialog({
       if (tool) {
         return api.put(`/orgs/${orgId}/tools/${tool.id}/`, payload);
       } else {
-        return api.post(`/orgs/${orgId}/tools/`, {
-          ...payload,
-          organization_id: orgId,
-        });
+        // organization_id is automatically set by backend from URL
+        return api.post(`/orgs/${orgId}/tools/`, payload);
       }
     },
     onSuccess: () => {
@@ -255,11 +257,19 @@ export function ToolDialog({
               }`}
             >
               <option value="">{t("common.select")}...</option>
-              {environments?.map((env: any) => (
-                <option key={env.id} value={env.id}>
-                  {env.name} ({env.type})
-                </option>
-              ))}
+              {isLoadingEnvs ? (
+                <option value="" disabled>{t("common.loading")}...</option>
+              ) : envError ? (
+                <option value="" disabled>Error loading environments</option>
+              ) : environments.length === 0 ? (
+                <option value="" disabled>No environments available</option>
+              ) : (
+                environments.map((env: any) => (
+                  <option key={env.id} value={env.id}>
+                    {env.name} ({env.type})
+                  </option>
+                ))
+              )}
             </select>
             {errors.environment_id && (
               <p className="mt-1 text-sm text-red-400">{errors.environment_id}</p>

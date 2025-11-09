@@ -76,10 +76,8 @@ export function AgentDialog({
       if (agent) {
         return api.put(`/orgs/${orgId}/agents/${agent.id}/`, data);
       } else {
-        return api.post(`/orgs/${orgId}/agents/`, {
-          ...data,
-          organization_id: orgId,
-        });
+        // organization_id is automatically set by backend from URL
+        return api.post(`/orgs/${orgId}/agents/`, data);
       }
     },
     onSuccess: () => {

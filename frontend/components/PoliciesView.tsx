@@ -12,15 +12,24 @@ export function PoliciesView() {
   const orgId = useAppStore((state) => state.currentOrgId);
   const [selectedPolicy, setSelectedPolicy] = useState<any>(null);
 
-  const { data: policies, isLoading } = useQuery({
+  const { data: policiesData, isLoading } = useQuery({
     queryKey: ["policies", orgId],
     queryFn: async () => {
       if (!orgId) return [];
       const response = await api.get(`/orgs/${orgId}/policies/`);
-      return response.data;
+      // Handle paginated response (DRF returns {results: [...], count, next, previous})
+      // or direct array response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.data?.results && Array.isArray(response.data.results)) {
+        return response.data.results;
+      }
+      return [];
     },
     enabled: !!orgId,
   });
+
+  const policies = Array.isArray(policiesData) ? policiesData : [];
 
   return (
     <div className="space-y-6">
@@ -81,7 +90,7 @@ export function PoliciesView() {
                         {policy.description || "-"}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
-                        {policy.rules?.length || 0}
+                        {policy.rules?.length || (policy.rules_json ? Object.keys(policy.rules_json).length : 0)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <button className="text-purple-400 hover:text-purple-300 text-sm">
@@ -106,7 +115,7 @@ export function PoliciesView() {
             <div>
               <h3 className="text-sm font-medium text-slate-400 mb-2">Rules</h3>
               <pre className="bg-slate-800 p-4 rounded-lg text-sm text-slate-300 overflow-x-auto">
-                {JSON.stringify(selectedPolicy.rules || [], null, 2)}
+                {JSON.stringify(selectedPolicy.rules_json || selectedPolicy.rules || {}, null, 2)}
               </pre>
             </div>
             <button

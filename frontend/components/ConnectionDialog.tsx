@@ -82,10 +82,8 @@ export function ConnectionDialog({
       if (connection) {
         return api.put(`/orgs/${orgId}/connections/${connection.id}/`, payload);
       } else {
-        return api.post(`/orgs/${orgId}/connections/`, {
-          ...payload,
-          organization_id: orgId,
-        });
+        // organization_id is automatically set by backend from URL
+        return api.post(`/orgs/${orgId}/connections/`, payload);
       }
     },
     onSuccess: () => {

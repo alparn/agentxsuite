@@ -18,7 +18,7 @@ export function RunsView() {
     tool: "",
   });
 
-  const { data: runs, isLoading } = useQuery({
+  const { data: runsData, isLoading } = useQuery({
     queryKey: ["runs", orgId, filters],
     queryFn: async () => {
       if (!orgId) return [];
@@ -29,10 +29,19 @@ export function RunsView() {
       const response = await api.get(
         `/orgs/${orgId}/runs/?${params.toString()}`
       );
-      return response.data;
+      // Handle paginated response (DRF returns {results: [...], count, next, previous})
+      // or direct array response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.data?.results && Array.isArray(response.data.results)) {
+        return response.data.results;
+      }
+      return [];
     },
     enabled: !!orgId,
   });
+
+  const runs = Array.isArray(runsData) ? runsData : [];
 
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { color: string; icon: any }> = {

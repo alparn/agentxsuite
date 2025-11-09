@@ -15,15 +15,24 @@ export function ToolsView() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTool, setEditingTool] = useState<any>(null);
 
-  const { data: tools, isLoading } = useQuery({
+  const { data: toolsData, isLoading, error: toolsError } = useQuery({
     queryKey: ["tools", orgId],
     queryFn: async () => {
       if (!orgId) return [];
       const response = await api.get(`/orgs/${orgId}/tools/`);
-      return response.data;
+      // Handle paginated response (DRF returns {results: [...], count, next, previous})
+      // or direct array response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.data?.results && Array.isArray(response.data.results)) {
+        return response.data.results;
+      }
+      return [];
     },
     enabled: !!orgId,
   });
+
+  const tools = Array.isArray(toolsData) ? toolsData : [];
 
   return (
     <div className="space-y-6">
@@ -46,6 +55,11 @@ export function ToolsView() {
         </button>
       </div>
 
+      {toolsError && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg mb-4">
+          <p className="text-sm text-red-400">Error loading tools: {toolsError.message}</p>
+        </div>
+      )}
       {isLoading ? (
         <div className="text-center py-12 text-slate-400">{t("common.loading")}</div>
       ) : (

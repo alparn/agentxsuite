@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
@@ -30,7 +31,27 @@ const COLORS = ["#10b981", "#f59e0b", "#ef4444"];
 
 export function Dashboard() {
   const t = useTranslations();
-  const orgId = useAppStore((state) => state.currentOrgId);
+  const { currentOrgId: orgId, setCurrentOrg } = useAppStore();
+
+  // Fetch organizations for current user and auto-select first one if none selected
+  const { data: orgsResponse } = useQuery({
+    queryKey: ["my-organizations"],
+    queryFn: async () => {
+      const response = await api.get("/auth/me/orgs/");
+      // Handle both old format (array) and new format (object with organizations)
+      return Array.isArray(response.data) 
+        ? response.data 
+        : response.data?.organizations || [];
+    },
+  });
+
+  const organizations = Array.isArray(orgsResponse) ? orgsResponse : (orgsResponse?.organizations || []);
+
+  useEffect(() => {
+    if (!orgId && organizations && organizations.length > 0) {
+      setCurrentOrg(organizations[0].id);
+    }
+  }, [organizations, orgId, setCurrentOrg]);
 
   // Mock data for now - replace with actual API calls
   const { data: stats } = useQuery({
