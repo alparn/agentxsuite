@@ -1,19 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
-import { Plus, TestTube, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, TestTube, RefreshCw, CheckCircle2, XCircle, Edit, Trash2, X, AlertCircle, AlertTriangle } from "lucide-react";
 import { ConnectionDialog } from "./ConnectionDialog";
+
+interface Toast {
+  id: string;
+  message: string;
+  type: "success" | "error" | "warning";
+}
 
 export function ConnectionsView() {
   const t = useTranslations();
-  const orgId = useAppStore((state) => state.currentOrgId);
+  const { currentOrgId: orgId, setCurrentOrg } = useAppStore();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState<any>(null);
+  const [editingConnection, setEditingConnection] = useState<any>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<any>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // Fetch organizations and auto-select first one if none selected
+  const { data: orgsResponse } = useQuery({
+    queryKey: ["my-organizations"],
+    queryFn: async () => {
+      const response = await api.get("/auth/me/orgs/");
+      // Handle both old format (array) and new format (object with organizations)
+      return Array.isArray(response.data) 
+        ? response.data 
+        : response.data?.organizations || [];
+    },
+  });
+
+  const organizations = Array.isArray(orgsResponse) ? orgsResponse : (orgsResponse?.organizations || []);
+
+  useEffect(() => {
+    if (!orgId && organizations && organizations.length > 0) {
+      setCurrentOrg(organizations[0].id);
+    }
+  }, [organizations, orgId, setCurrentOrg]);
 
   const { data: connectionsData, isLoading } = useQuery({
     queryKey: ["connections", orgId],
@@ -52,24 +81,83 @@ export function ConnectionsView() {
     },
   });
 
+  const addToast = (message: string, type: "success" | "error" | "warning") => {
+    const id = Math.random().toString(36).substring(7);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    }, 5000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return api.delete(`/orgs/${orgId}/connections/${id}/`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["connections"] });
+      queryClient.invalidateQueries({ queryKey: ["tools"] });
+      setDeleteConfirm(null);
+      addToast(t("connections.deleteSuccess"), "success");
+    },
+    onError: (error: any) => {
+      const errorMessage = error.response?.data?.detail || error.response?.data?.error || error.message || t("connections.deleteError");
+      addToast(errorMessage, "error");
+    },
+  });
+
   const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { color: string; icon: any }> = {
-      active: { color: "bg-green-500/20 text-green-400", icon: CheckCircle2 },
-      inactive: { color: "bg-red-500/20 text-red-400", icon: XCircle },
-      testing: { color: "bg-yellow-500/20 text-yellow-400", icon: RefreshCw },
+    const statusMap: Record<string, { color: string; icon: any; label: string }> = {
+      ok: { color: "bg-green-500/20 text-green-400", icon: CheckCircle2, label: "OK" },
+      fail: { color: "bg-red-500/20 text-red-400", icon: XCircle, label: "Failed" },
+      unknown: { color: "bg-yellow-500/20 text-yellow-400", icon: RefreshCw, label: "Unknown" },
+      // Fallback für alte Statuswerte
+      active: { color: "bg-green-500/20 text-green-400", icon: CheckCircle2, label: "Active" },
+      inactive: { color: "bg-red-500/20 text-red-400", icon: XCircle, label: "Inactive" },
+      testing: { color: "bg-yellow-500/20 text-yellow-400", icon: RefreshCw, label: "Testing" },
     };
-    const statusInfo = statusMap[status] || statusMap.inactive;
+    const statusInfo = statusMap[status] || statusMap.unknown;
     const Icon = statusInfo.icon;
     return (
       <span className={`px-2 py-1 text-xs rounded-full flex items-center gap-1 ${statusInfo.color}`}>
         <Icon className="w-3 h-3" />
-        {status}
+        {statusInfo.label}
       </span>
     );
   };
 
   return (
     <div className="space-y-6">
+      {/* Toast Notifications */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg border min-w-[300px] max-w-[500px] animate-in slide-in-from-right ${
+              toast.type === "success"
+                ? "bg-green-500/10 border-green-500/20 text-green-300"
+                : toast.type === "error"
+                ? "bg-red-500/10 border-red-500/20 text-red-300"
+                : "bg-yellow-500/10 border-yellow-500/20 text-yellow-300"
+            }`}
+          >
+            {toast.type === "success" && <CheckCircle2 className="w-5 h-5 flex-shrink-0" />}
+            {toast.type === "error" && <AlertCircle className="w-5 h-5 flex-shrink-0" />}
+            {toast.type === "warning" && <AlertTriangle className="w-5 h-5 flex-shrink-0" />}
+            <p className="flex-1 text-sm font-medium">{toast.message}</p>
+            <button
+              onClick={() => removeToast(toast.id)}
+              className="text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+      </div>
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">
@@ -79,7 +167,7 @@ export function ConnectionsView() {
         </div>
         <button
           onClick={() => {
-            setSelectedConnection(null);
+            setEditingConnection(null);
             setIsDialogOpen(true);
           }}
           className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all"
@@ -147,7 +235,21 @@ export function ConnectionsView() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => testMutation.mutate(conn.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingConnection(conn);
+                              setIsDialogOpen(true);
+                            }}
+                            className="p-2 text-slate-400 hover:text-purple-400 hover:bg-purple-500/10 rounded transition-colors"
+                            title={t("common.edit")}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              testMutation.mutate(conn.id);
+                            }}
                             disabled={testMutation.isPending}
                             className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
                             title={t("connections.testConnection")}
@@ -155,12 +257,25 @@ export function ConnectionsView() {
                             <TestTube className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => syncMutation.mutate(conn.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              syncMutation.mutate(conn.id);
+                            }}
                             disabled={syncMutation.isPending}
                             className="p-2 text-slate-400 hover:text-green-400 hover:bg-green-500/10 rounded transition-colors"
                             title={t("connections.syncTools")}
                           >
                             <RefreshCw className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirm(conn);
+                            }}
+                            className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                            title={t("common.delete")}
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -175,10 +290,53 @@ export function ConnectionsView() {
 
       <ConnectionDialog
         isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
-        connection={selectedConnection}
+        onClose={() => {
+          setIsDialogOpen(false);
+          setEditingConnection(null);
+        }}
+        connection={editingConnection}
         orgId={orgId}
       />
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 max-w-md w-full">
+            <h2 className="text-xl font-semibold text-white mb-4">
+              {t("connections.confirmDelete")}
+            </h2>
+            <p className="text-slate-300 mb-6">
+              {t("connections.deleteConfirmMessage", { name: deleteConfirm.name })}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleteMutation.isPending}
+                className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition-colors disabled:opacity-50"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate(deleteConfirm.id)}
+                disabled={deleteMutation.isPending}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {deleteMutation.isPending ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    {t("common.loading")}
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    {t("common.delete")}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

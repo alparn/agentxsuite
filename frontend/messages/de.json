@@ -27,7 +27,9 @@
     "error": "Fehler",
     "success": "Erfolg",
     "noData": "Keine Daten verfügbar",
-    "select": "Auswählen"
+    "select": "Auswählen",
+    "optional": "Optional",
+    "add": "Hinzufügen"
   },
   "nav": {
     "overview": "Übersicht",
@@ -69,7 +71,11 @@
     "lastSync": "Letzte Synchronisierung",
     "testConnection": "Verbindung testen",
     "syncTools": "Tools synchronisieren",
-    "toolsImported": "Tools importiert"
+    "toolsImported": "Tools importiert",
+    "confirmDelete": "Verbindung löschen?",
+    "deleteConfirmMessage": "Möchten Sie die Verbindung '{name}' wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "deleteSuccess": "Verbindung erfolgreich gelöscht",
+    "deleteError": "Fehler beim Löschen der Verbindung"
   },
   "agents": {
     "title": "Agents",
@@ -77,9 +83,24 @@
     "version": "Version",
     "environment": "Umgebung",
     "connection": "Verbindung",
+    "mode": "Modus",
+    "modeRunner": "Runner",
+    "modeCaller": "Caller",
+    "modeRunnerDescription": "Runner-Modus: Agent führt Tools über eine Connection aus",
+    "modeCallerDescription": "Caller-Modus: Agent empfängt eingehende Anfragen",
+    "connectionOptional": "Optional: Connection für ausgehende Tool-Ausführungen",
+    "inboundAuthMethod": "Eingehende Authentifizierung",
+    "inboundSecretRef": "Secret-Referenz",
+    "inboundSecretRefPlaceholder": "secret-ref-name",
+    "inboundSecretRefHint": "Referenz zu einem gespeicherten Secret für die Authentifizierung",
+    "authBearer": "Bearer Token",
+    "authMtls": "mTLS",
+    "authNone": "Keine",
     "enabled": "Aktiviert",
     "disabled": "Deaktiviert",
     "pingAgent": "Agent anpingen",
+    "pingSuccess": "Agent erfolgreich gepingt",
+    "pingError": "Fehler beim Ping des Agents",
     "enable": "Aktivieren",
     "disable": "Deaktivieren"
   },
@@ -88,6 +109,7 @@
     "defineTool": "Tool definieren",
     "version": "Version",
     "origin": "Herkunft",
+    "connection": "Verbindung",
     "testRun": "Testlauf",
     "input": "Eingabe",
     "output": "Ausgabe"
@@ -107,7 +129,11 @@
     "title": "Richtlinien",
     "newPolicy": "Neue Richtlinie",
     "rulesCount": "Anzahl Regeln",
-    "attachToAgent": "An Agent anhängen"
+    "attachToAgent": "An Agent anhängen",
+    "allow": "Erlauben",
+    "deny": "Verweigern",
+    "toolNames": "Tool-Namen",
+    "enterToolName": "Tool-Namen eingeben"
   },
   "audit": {
     "title": "Audit & Logs",
@@ -117,6 +143,11 @@
     "object": "Objekt",
     "details": "Details",
     "export": "Exportieren"
+  },
+  "environments": {
+    "newEnvironment": "Neue Umgebung",
+    "type": "Typ",
+    "confirmDelete": "Möchten Sie die Umgebung \"{name}\" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
   }
 }
 

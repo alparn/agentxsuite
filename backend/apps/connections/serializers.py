@@ -14,7 +14,6 @@ class ConnectionSerializer(serializers.ModelSerializer):
     """Serializer for Connection."""
 
     organization = OrganizationSerializer(read_only=True)
-    organization_id = serializers.UUIDField(write_only=True)
     environment = EnvironmentSerializer(read_only=True)
     environment_id = serializers.UUIDField(write_only=True)
     # Never expose secret_ref in responses
@@ -25,7 +24,6 @@ class ConnectionSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "organization",
-            "organization_id",
             "environment",
             "environment_id",
             "name",

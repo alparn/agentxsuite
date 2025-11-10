@@ -10,6 +10,7 @@ from apps.tenants.views import EnvironmentViewSet, OrganizationViewSet
 
 router = DefaultRouter()
 router.register(r"orgs", OrganizationViewSet, basename="organization")
+router.register(r"environments", EnvironmentViewSet, basename="environment")
 
 urlpatterns = [
     path("", include(router.urls)),

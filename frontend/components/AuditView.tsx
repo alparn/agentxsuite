@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -8,21 +9,55 @@ import { Download, FileText } from "lucide-react";
 
 export function AuditView() {
   const t = useTranslations();
-  const orgId = useAppStore((state) => state.currentOrgId);
+  const { currentOrgId: orgId, setCurrentOrg } = useAppStore();
 
-  const { data: auditLogsData, isLoading } = useQuery({
+  // Fetch organizations and auto-select first one if none selected
+  const { data: orgsResponse } = useQuery({
+    queryKey: ["my-organizations"],
+    queryFn: async () => {
+      const response = await api.get("/auth/me/orgs/");
+      // Handle both old format (array) and new format (object with organizations)
+      return Array.isArray(response.data) 
+        ? response.data 
+        : response.data?.organizations || [];
+    },
+  });
+
+  const organizations = Array.isArray(orgsResponse) ? orgsResponse : (orgsResponse?.organizations || []);
+
+  useEffect(() => {
+    if (!orgId && organizations && organizations.length > 0) {
+      setCurrentOrg(organizations[0].id);
+    }
+  }, [organizations, orgId, setCurrentOrg]);
+
+  const { data: auditLogsData, isLoading, error: auditError } = useQuery({
     queryKey: ["audit", orgId],
     queryFn: async () => {
-      if (!orgId) return [];
-      const response = await api.get(`/orgs/${orgId}/audit/`);
-      // Handle paginated response (DRF returns {results: [...], count, next, previous})
-      // or direct array response
-      if (Array.isArray(response.data)) {
-        return response.data;
-      } else if (response.data?.results && Array.isArray(response.data.results)) {
-        return response.data.results;
+      if (!orgId) {
+        console.log("AuditView: orgId is null, skipping fetch");
+        return [];
       }
-      return [];
+      try {
+        console.log("AuditView: Fetching audit logs for orgId:", orgId);
+        const response = await api.get(`/orgs/${orgId}/audit/`);
+        console.log("AuditView: API response:", response.data);
+        // Handle paginated response (DRF returns {results: [...], count, next, previous})
+        // or direct array response
+        if (Array.isArray(response.data)) {
+          console.log("AuditView: Response is array, length:", response.data.length);
+          return response.data;
+        } else if (response.data?.results && Array.isArray(response.data.results)) {
+          console.log("AuditView: Response is paginated, results length:", response.data.results.length);
+          return response.data.results;
+        }
+        console.log("AuditView: Response format not recognized, returning empty array");
+        return [];
+      } catch (error: any) {
+        console.error("AuditView: Error fetching audit logs:", error);
+        console.error("AuditView: Error response:", error.response?.data);
+        throw error;
+      }
     },
     enabled: !!orgId,
   });
@@ -44,6 +79,13 @@ export function AuditView() {
         </button>
       </div>
 
+      {auditError && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg mb-4">
+          <p className="text-sm text-red-400">
+            Error loading audit logs: {auditError instanceof Error ? auditError.message : String(auditError)}
+          </p>
+        </div>
+      )}
       {isLoading ? (
         <div className="text-center py-12 text-slate-400">{t("common.loading")}</div>
       ) : (

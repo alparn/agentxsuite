@@ -37,6 +37,8 @@ INSTALLED_APPS = [
     "apps.runs",
     "apps.policies",
     "apps.audit",
+    "apps.secretstore",
+    "apps.mcp_ext",
 ]
 
 MIDDLEWARE = [

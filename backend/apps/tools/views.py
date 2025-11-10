@@ -3,6 +3,8 @@ Views for tools app.
 """
 from __future__ import annotations
 
+import logging
+
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -16,6 +18,8 @@ from apps.runs.serializers import RunSerializer
 from apps.tools.models import Tool
 from apps.tools.schemas import ToolRunInputSchema
 from apps.tools.serializers import ToolSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class ToolViewSet(ModelViewSet):
@@ -33,44 +37,155 @@ class ToolViewSet(ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        """Set organization from URL parameter."""
+        """Set organization from URL parameter and create/find local connection if needed."""
+        from apps.connections.models import Connection
+        from django.utils import timezone
+
+        org_id = self.kwargs.get("org_id")
+        if not org_id:
+            return
+
+        validated_data = serializer.validated_data
+        environment_id = validated_data.get("environment_id")
+
+        # If no connection_id provided, create or find a local MCP Fabric connection
+        if "connection_id" not in validated_data or not validated_data.get("connection_id"):
+            if environment_id:
+                # Find or create a local connection for MCP Fabric
+                connection, _ = Connection.objects.get_or_create(
+                    organization_id=org_id,
+                    environment_id=environment_id,
+                    name="mcp-fabric-local",
+                    defaults={
+                        "endpoint": "http://localhost:8090",  # MCP Fabric endpoint
+                        "auth_method": "none",
+                        "status": "ok",
+                    },
+                )
+                serializer.validated_data["connection_id"] = connection.id
+
+        # Save with organization and set sync_status to synced for manually created tools
+        tool = serializer.save(organization_id=org_id)
+        
+        # If tool was created without connection_id (manually created), mark as synced
+        if not self.request.data.get("connection_id"):
+            tool.sync_status = "synced"
+            tool.synced_at = timezone.now()
+            tool.save(update_fields=["sync_status", "synced_at"])
+
+    def perform_update(self, serializer):
+        """Ensure organization cannot be changed via update."""
         org_id = self.kwargs.get("org_id")
         if org_id:
             serializer.save(organization_id=org_id)
 
     @action(detail=True, methods=["post"])
-    def run(self, request, pk=None):  # noqa: ARG002
-        """Run a tool (orchestrator stub)."""
-        tool = self.get_object()
+    def run(self, request, pk=None, org_id=None):  # noqa: ARG002
+        """
+        Run a tool via Tool Registry.
+        
+        Note: Tools that are meant for MCP Fabric (connection points to MCP Fabric)
+        should be executed via MCP Fabric API, not via this endpoint.
+        """
+        try:
+            tool = self.get_object()
+            
+            # Check if tool's connection points to our own MCP Fabric service
+            # If so, redirect user to use MCP Fabric API instead
+            if tool.connection:
+                connection_endpoint = tool.connection.endpoint.rstrip("/")
+                mcp_fabric_endpoints = [
+                    "http://localhost:8090",
+                    "http://127.0.0.1:8090",
+                ]
+                
+                # Check if this is our own MCP Fabric service
+                is_mcp_fabric_tool = any(
+                    connection_endpoint.startswith(endpoint) 
+                    for endpoint in mcp_fabric_endpoints
+                )
+                
+                if is_mcp_fabric_tool:
+                    # Tool is meant for MCP Fabric, not Tool Registry
+                    return Response(
+                        {
+                            "error": "This tool must be executed via MCP Fabric API",
+                            "mcp_fabric_endpoint": f"/mcp/{tool.organization.id}/{tool.environment.id}/.well-known/mcp/run",
+                            "tool_name": tool.name,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
-        # Parse input
-        input_schema = ToolRunInputSchema(**request.data)
-        input_json = input_schema.input_json or {}
+            # Parse input - handle both formats
+            input_json = {}
+            try:
+                # Try Pydantic schema first
+                if isinstance(request.data, dict):
+                    input_schema = ToolRunInputSchema(**request.data)
+                    input_json = input_schema.input_json or {}
+                else:
+                    return Response(
+                        {"error": "Request data must be a dictionary"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            except Exception as e:
+                # If Pydantic validation fails, try to extract input_json directly
+                if isinstance(request.data, dict):
+                    if "input_json" in request.data:
+                        input_json = request.data.get("input_json", {})
+                    else:
+                        # Use request.data as input_json (for backward compatibility)
+                        input_json = request.data
+                else:
+                    return Response(
+                        {"error": f"Invalid input format: {str(e)}"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            
+            # Validate that input_json is a dict
+            if not isinstance(input_json, dict):
+                return Response(
+                    {"error": "input_json must be a dictionary"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        # Get agent (stub: use first agent for tool's org/env)
-        agent = Agent.objects.filter(
-            organization=tool.organization,
-            environment=tool.environment,
-        ).first()
+            # Get agent (stub: use first agent for tool's org/env)
+            agent = Agent.objects.filter(
+                organization=tool.organization,
+                environment=tool.environment,
+                enabled=True,
+            ).first()
 
-        if not agent:
-            return Response(
-                {"error": "No agent found for this tool's organization/environment"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            if not agent:
+                return Response(
+                    {"error": "No enabled agent found for this tool's organization/environment"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
-        # Check policy (stub: use first policy for org)
-        policy = Policy.objects.filter(organization=tool.organization).first()
-        if policy:
-            allowed, reason = is_allowed(policy.rules_json, tool.name)
+            # Check policy using the correct signature: is_allowed(agent, tool, payload)
+            allowed, reason = is_allowed(agent, tool, input_json)
             if not allowed:
                 return Response(
                     {"error": reason},
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-        # Start run
-        run = start_run(agent=agent, tool=tool, input_json=input_json)
-        serializer = RunSerializer(run)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+            # Start run
+            run = start_run(agent=agent, tool=tool, input_json=input_json)
+            serializer = RunSerializer(run)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except ValueError as e:
+            # Handle validation errors from start_run
+            logger.warning(f"Validation error running tool {pk}: {e}")
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            # Catch any unexpected errors and return JSON response
+            logger.exception(f"Error running tool {pk}: {e}")
+            return Response(
+                {"error": f"Failed to run tool: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 

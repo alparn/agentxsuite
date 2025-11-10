@@ -38,8 +38,10 @@ def test_start_run_success():
         tool = Tool.objects.create(
             organization=org,
             environment=env,
+            connection=conn,
             name="test-tool",
             schema_json={"type": "object"},
+            sync_status="synced",
         )
 
         # Create allow policy (required for default deny)
@@ -89,8 +91,10 @@ def test_start_run_with_empty_input():
     tool = Tool.objects.create(
         organization=org,
         environment=env,
+        connection=conn,
         name="test-tool",
         schema_json={"type": "object"},
+        sync_status="synced",
     )
 
     # Create allow policy (required for default deny)

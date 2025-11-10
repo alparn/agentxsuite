@@ -23,7 +23,7 @@ class OrganizationViewSet(ModelViewSet):
         """List or create environments for an organization."""
         org = self.get_object()
         if request.method == "POST":
-            serializer = EnvironmentSerializer(data={**request.data, "organization_id": org.id})
+            serializer = EnvironmentSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             serializer.save(organization=org)
             return Response(serializer.data, status=status.HTTP_201_CREATED)

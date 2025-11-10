@@ -1,16 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
-import { Plus, Shield } from "lucide-react";
+import { Plus, Shield, Edit } from "lucide-react";
+import { PolicyDialog } from "./PolicyDialog";
 
 export function PoliciesView() {
   const t = useTranslations();
-  const orgId = useAppStore((state) => state.currentOrgId);
+  const { currentOrgId: orgId, setCurrentOrg } = useAppStore();
   const [selectedPolicy, setSelectedPolicy] = useState<any>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingPolicy, setEditingPolicy] = useState<any>(null);
+
+  // Fetch organizations and auto-select first one if none selected
+  const { data: orgsResponse } = useQuery({
+    queryKey: ["my-organizations"],
+    queryFn: async () => {
+      const response = await api.get("/auth/me/orgs/");
+      // Handle both old format (array) and new format (object with organizations)
+      return Array.isArray(response.data) 
+        ? response.data 
+        : response.data?.organizations || [];
+    },
+  });
+
+  const organizations = Array.isArray(orgsResponse) ? orgsResponse : (orgsResponse?.organizations || []);
+
+  useEffect(() => {
+    if (!orgId && organizations && organizations.length > 0) {
+      setCurrentOrg(organizations[0].id);
+    }
+  }, [organizations, orgId, setCurrentOrg]);
 
   const { data: policiesData, isLoading } = useQuery({
     queryKey: ["policies", orgId],
@@ -40,7 +63,13 @@ export function PoliciesView() {
           </h1>
           <p className="text-slate-400">Manage access control policies</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all">
+        <button
+          onClick={() => {
+            setEditingPolicy(null);
+            setIsDialogOpen(true);
+          }}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all"
+        >
           <Plus className="w-5 h-5" />
           {t("policies.newPolicy")}
         </button>
@@ -93,9 +122,28 @@ export function PoliciesView() {
                         {policy.rules?.length || (policy.rules_json ? Object.keys(policy.rules_json).length : 0)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <button className="text-purple-400 hover:text-purple-300 text-sm">
-                          View
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingPolicy(policy);
+                              setIsDialogOpen(true);
+                            }}
+                            className="p-2 text-slate-400 hover:text-purple-400 hover:bg-purple-500/10 rounded transition-colors"
+                            title={t("common.edit")}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPolicy(policy);
+                            }}
+                            className="text-purple-400 hover:text-purple-300 text-sm"
+                          >
+                            View
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -127,6 +175,16 @@ export function PoliciesView() {
           </div>
         </div>
       )}
+
+      <PolicyDialog
+        isOpen={isDialogOpen}
+        onClose={() => {
+          setIsDialogOpen(false);
+          setEditingPolicy(null);
+        }}
+        policy={editingPolicy}
+        orgId={orgId}
+      />
     </div>
   );
 }

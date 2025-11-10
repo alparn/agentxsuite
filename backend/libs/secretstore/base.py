@@ -25,15 +25,22 @@ class SecretStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_secret(self, ref: str) -> str:
+    def get_secret(self, ref: str, check_permissions: bool = True) -> str:
         """
         Retrieve a secret by reference.
 
+        Security: Only Superuser or Agent-Service should retrieve secret values.
+        Set check_permissions=False only for internal service calls (e.g., runs.services).
+
         Args:
             ref: Secret reference returned by put_secret
+            check_permissions: If True, check if caller is authorized (default: True)
 
         Returns:
             Secret value as string
+
+        Raises:
+            PermissionError: If caller is not authorized to retrieve secrets
         """
         raise NotImplementedError
 

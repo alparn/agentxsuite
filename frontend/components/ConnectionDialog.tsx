@@ -11,6 +11,7 @@ interface ConnectionDialogProps {
   onClose: () => void;
   connection?: any;
   orgId: string | null;
+  onSuccess?: () => void;
 }
 
 export function ConnectionDialog({
@@ -18,6 +19,7 @@ export function ConnectionDialog({
   onClose,
   connection,
   orgId,
+  onSuccess,
 }: ConnectionDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -25,7 +27,8 @@ export function ConnectionDialog({
     name: "",
     endpoint: "",
     auth_method: "none" as "none" | "bearer" | "basic",
-    secret_ref: "",
+    secret_value: "", // User enters the actual secret value
+    secret_ref: "", // Used for updates or if user provides ref directly
     environment_id: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -36,33 +39,62 @@ export function ConnectionDialog({
     queryFn: async () => {
       if (!orgId) return [];
       const response = await api.get(`/orgs/${orgId}/environments/`);
-      return response.data;
+      // Handle paginated response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      return response.data?.results || [];
     },
     enabled: !!orgId && isOpen,
   });
 
   useEffect(() => {
     if (connection) {
+      // Handle both environment_id (string) and environment (object)
+      const environmentId = connection.environment_id || connection.environment?.id || "";
       setFormData({
         name: connection.name || "",
         endpoint: connection.endpoint || "",
         auth_method: connection.auth_method || "none",
-        secret_ref: "",
-        environment_id: connection.environment_id || "",
+        secret_value: "", // Never pre-fill secret value for security reasons
+        secret_ref: "", // Never pre-fill secret_ref for security reasons
+        environment_id: environmentId,
       });
     } else {
       setFormData({
         name: "",
         endpoint: "",
         auth_method: "none",
+        secret_value: "",
         secret_ref: "",
         environment_id: "",
       });
     }
-  }, [connection]);
+    setErrors({});
+  }, [connection, isOpen]);
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
+      let secretRef = data.secret_ref;
+
+      // If secret_value is provided, store it first and get secret_ref
+      if (data.auth_method !== "none" && data.secret_value && data.secret_value.trim()) {
+        if (!orgId || !data.environment_id) {
+          throw new Error("Organization and environment are required to store secrets");
+        }
+
+        // Store secret and get reference
+        const secretResponse = await api.post(
+          `/orgs/${orgId}/connections/store-secret/`,
+          {
+            environment_id: data.environment_id,
+            key: `connection_${data.name || "auth"}_token`,
+            value: data.secret_value.trim(),
+          }
+        );
+        secretRef = secretResponse.data.secret_ref;
+      }
+
       // Prepare payload according to backend serializer
       const payload: any = {
         name: data.name,
@@ -71,24 +103,42 @@ export function ConnectionDialog({
         environment_id: data.environment_id,
       };
 
-      // Only include secret_ref if auth_method is not "none"
-      if (data.auth_method !== "none" && data.secret_ref) {
-        payload.secret_ref = data.secret_ref;
-      } else if (data.auth_method !== "none" && !data.secret_ref) {
-        // This will be validated by backend, but we can show error here too
-        throw new Error("Secret reference is required for bearer or basic auth");
+      // Include secret_ref if auth_method requires it
+      if (data.auth_method !== "none") {
+        if (!secretRef) {
+          throw new Error("Secret value or reference is required for bearer or basic auth");
+        }
+        payload.secret_ref = secretRef;
       }
 
-      if (connection) {
-        return api.put(`/orgs/${orgId}/connections/${connection.id}/`, payload);
+      // Only treat as update if connection has an id
+      if (connection?.id) {
+        // For updates, only send secret_ref if a new secret_value was provided
+        // If neither secret_value nor secret_ref is provided, don't send secret_ref (keeps existing)
+        const updatePayload: any = {
+          name: payload.name,
+          endpoint: payload.endpoint,
+          auth_method: payload.auth_method,
+          environment_id: payload.environment_id,
+        };
+        // Only include secret_ref if user provided a new secret value
+        if (secretRef) {
+          updatePayload.secret_ref = secretRef;
+        }
+        return api.put(`/orgs/${orgId}/connections/${connection.id}/`, updatePayload);
       } else {
         // organization_id is automatically set by backend from URL
         return api.post(`/orgs/${orgId}/connections/`, payload);
       }
     },
     onSuccess: () => {
+      // Invalidate all connection queries (with and without orgId)
       queryClient.invalidateQueries({ queryKey: ["connections"] });
+      if (orgId) {
+        queryClient.invalidateQueries({ queryKey: ["connections", orgId] });
+      }
       setErrors({});
+      onSuccess?.();
       onClose();
     },
     onError: (error: any) => {
@@ -129,10 +179,14 @@ export function ConnectionDialog({
       setErrors({ environment_id: t("agents.environment") + " is required" });
       return;
     }
-    if (formData.auth_method !== "none" && !formData.secret_ref.trim()) {
-      setErrors({ secret_ref: "Secret reference is required for " + formData.auth_method + " auth" });
+    // For new connections, secret_value is required if auth_method is not "none"
+    if (!connection && formData.auth_method !== "none" && !formData.secret_value.trim()) {
+      setErrors({ secret_value: "Secret value is required for " + formData.auth_method + " auth" });
       return;
     }
+    // For updates: secret_ref validation is handled by backend
+    // User can leave it empty to keep existing secret_ref, or provide new one to update it
+    // Backend will validate that secret_ref exists (either existing or new) when auth_method requires it
 
     mutation.mutate(formData);
   };
@@ -140,10 +194,10 @@ export function ConnectionDialog({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg w-full max-w-md shadow-xl">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg w-full max-w-md shadow-xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-slate-200 dark:border-slate-800 sticky top-0 bg-white dark:bg-slate-900 z-10">
+          <h2 className="text-lg sm:text-xl font-semibold text-slate-900 dark:text-white">
             {connection ? t("common.edit") : t("connections.newConnection")}
           </h2>
           <button
@@ -154,7 +208,7 @@ export function ConnectionDialog({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
           {errors.general && (
             <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
               <p className="text-sm text-red-400">{errors.general}</p>
@@ -248,6 +302,7 @@ export function ConnectionDialog({
                 setFormData({
                   ...formData,
                   auth_method: e.target.value as "none" | "bearer" | "basic",
+                  secret_value: "", // Clear secret_value when changing auth method
                   secret_ref: "", // Clear secret_ref when changing auth method
                 });
                 if (errors.auth_method)
@@ -265,45 +320,47 @@ export function ConnectionDialog({
             formData.auth_method === "basic") && (
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Secret Reference *
+                Secret Value {!connection && "*"}
               </label>
               <input
-                type="text"
-                value={formData.secret_ref}
+                type="password"
+                value={formData.secret_value}
                 onChange={(e) => {
-                  setFormData({ ...formData, secret_ref: e.target.value });
-                  if (errors.secret_ref)
-                    setErrors({ ...errors, secret_ref: "" });
+                  setFormData({ ...formData, secret_value: e.target.value });
+                  if (errors.secret_value)
+                    setErrors({ ...errors, secret_value: "" });
                 }}
-                required
+                required={!connection}
                 className={`w-full px-4 py-2 bg-white dark:bg-slate-800 border rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 ${
-                  errors.secret_ref
+                  errors.secret_value
                     ? "border-red-500"
                     : "border-slate-300 dark:border-slate-700"
                 }`}
-                placeholder="secret:key"
+                placeholder={connection ? "Enter new secret value to update" : "Enter secret token or password"}
               />
-              {errors.secret_ref && (
-                <p className="mt-1 text-sm text-red-400">{errors.secret_ref}</p>
+              {errors.secret_value && (
+                <p className="mt-1 text-sm text-red-400">{errors.secret_value}</p>
               )}
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Reference to secret stored in secret store (e.g., "secret:key")
+                {connection
+                  ? "Leave empty to keep existing secret, or enter new value to update"
+                  : "The secret will be securely stored and encrypted. Enter the actual token or password value."}
               </p>
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              className="px-4 py-2 text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-sm sm:text-base"
             >
               {t("common.cancel")}
             </button>
             <button
               type="submit"
               disabled={mutation.isPending}
-              className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
             >
               {mutation.isPending
                 ? t("common.loading")

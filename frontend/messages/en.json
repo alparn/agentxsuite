@@ -27,7 +27,9 @@
     "error": "Error",
     "success": "Success",
     "noData": "No data available",
-    "select": "Select"
+    "select": "Select",
+    "optional": "Optional",
+    "add": "Add"
   },
   "nav": {
     "overview": "Overview",
@@ -69,7 +71,11 @@
     "lastSync": "Last Sync",
     "testConnection": "Test Connection",
     "syncTools": "Sync Tools",
-    "toolsImported": "Tools imported"
+    "toolsImported": "Tools imported",
+    "confirmDelete": "Delete Connection?",
+    "deleteConfirmMessage": "Are you sure you want to delete connection '{name}'? This action cannot be undone.",
+    "deleteSuccess": "Connection deleted successfully",
+    "deleteError": "Error deleting connection"
   },
   "agents": {
     "title": "Agents",
@@ -77,9 +83,24 @@
     "version": "Version",
     "environment": "Environment",
     "connection": "Connection",
+    "mode": "Mode",
+    "modeRunner": "Runner",
+    "modeCaller": "Caller",
+    "modeRunnerDescription": "Runner mode: Agent executes tools via a connection",
+    "modeCallerDescription": "Caller mode: Agent receives incoming requests",
+    "connectionOptional": "Optional: Connection for outbound tool execution",
+    "inboundAuthMethod": "Inbound Auth Method",
+    "inboundSecretRef": "Inbound Secret Ref",
+    "inboundSecretRefPlaceholder": "secret-ref-name",
+    "inboundSecretRefHint": "Reference to a stored secret for authentication",
+    "authBearer": "Bearer Token",
+    "authMtls": "mTLS",
+    "authNone": "None",
     "enabled": "Enabled",
     "disabled": "Disabled",
     "pingAgent": "Ping Agent",
+    "pingSuccess": "Agent pinged successfully",
+    "pingError": "Error pinging agent",
     "enable": "Enable",
     "disable": "Disable"
   },
@@ -88,6 +109,7 @@
     "defineTool": "Define Tool",
     "version": "Version",
     "origin": "Origin",
+    "connection": "Connection",
     "testRun": "Test Run",
     "input": "Input",
     "output": "Output"
@@ -107,7 +129,11 @@
     "title": "Policies",
     "newPolicy": "New Policy",
     "rulesCount": "Rules Count",
-    "attachToAgent": "Attach to Agent"
+    "attachToAgent": "Attach to Agent",
+    "allow": "Allow",
+    "deny": "Deny",
+    "toolNames": "Tool Names",
+    "enterToolName": "Enter tool name"
   },
   "audit": {
     "title": "Audit & Logs",
@@ -117,6 +143,11 @@
     "object": "Object",
     "details": "Details",
     "export": "Export"
+  },
+  "environments": {
+    "newEnvironment": "New Environment",
+    "type": "Type",
+    "confirmDelete": "Are you sure you want to delete the environment \"{name}\"? This action cannot be undone."
   }
 }
 

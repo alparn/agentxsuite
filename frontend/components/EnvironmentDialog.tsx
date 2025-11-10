@@ -11,6 +11,7 @@ interface EnvironmentDialogProps {
   onClose: () => void;
   environment?: any;
   orgId: string | null;
+  onSuccess?: () => void;
 }
 
 export function EnvironmentDialog({
@@ -18,6 +19,7 @@ export function EnvironmentDialog({
   onClose,
   environment,
   orgId,
+  onSuccess,
 }: EnvironmentDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -57,8 +59,13 @@ export function EnvironmentDialog({
       }
     },
     onSuccess: () => {
+      // Invalidate all environment queries (with and without orgId)
       queryClient.invalidateQueries({ queryKey: ["environments"] });
+      if (orgId) {
+        queryClient.invalidateQueries({ queryKey: ["environments", orgId] });
+      }
       setErrors({});
+      onSuccess?.();
       onClose();
     },
     onError: (error: any) => {

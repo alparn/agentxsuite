@@ -36,8 +36,11 @@ export function ToolDialog({
     queryFn: async () => {
       if (!orgId) return [];
       const response = await api.get(`/orgs/${orgId}/environments/`);
-      // Ensure we always return an array
-      return Array.isArray(response.data) ? response.data : [];
+      // Handle paginated response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      return response.data?.results || [];
     },
     enabled: !!orgId, // Allow pre-fetching even when dialog is closed
     staleTime: 30000, // Cache for 30 seconds

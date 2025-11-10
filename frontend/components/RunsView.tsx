@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -10,13 +10,33 @@ import { formatDuration } from "@/lib/utils";
 
 export function RunsView() {
   const t = useTranslations();
-  const orgId = useAppStore((state) => state.currentOrgId);
+  const { currentOrgId: orgId, setCurrentOrg } = useAppStore();
   const [selectedRun, setSelectedRun] = useState<any>(null);
   const [filters, setFilters] = useState({
     status: "",
     agent: "",
     tool: "",
   });
+
+  // Fetch organizations and auto-select first one if none selected
+  const { data: orgsResponse } = useQuery({
+    queryKey: ["my-organizations"],
+    queryFn: async () => {
+      const response = await api.get("/auth/me/orgs/");
+      // Handle both old format (array) and new format (object with organizations)
+      return Array.isArray(response.data) 
+        ? response.data 
+        : response.data?.organizations || [];
+    },
+  });
+
+  const organizations = Array.isArray(orgsResponse) ? orgsResponse : (orgsResponse?.organizations || []);
+
+  useEffect(() => {
+    if (!orgId && organizations && organizations.length > 0) {
+      setCurrentOrg(organizations[0].id);
+    }
+  }, [organizations, orgId, setCurrentOrg]);
 
   const { data: runsData, isLoading } = useQuery({
     queryKey: ["runs", orgId, filters],

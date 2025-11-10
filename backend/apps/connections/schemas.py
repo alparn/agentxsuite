@@ -17,5 +17,7 @@ class ConnectionSyncResponse(BaseModel):
     """Response schema for connection sync."""
 
     tools_created: int
-    tool_ids: list[int]
+    tools_updated: int
+    tool_ids: list[str]  # Changed to list[str] for UUIDs
+    message: str | None = None
 

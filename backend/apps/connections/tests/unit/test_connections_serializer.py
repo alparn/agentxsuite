@@ -23,13 +23,13 @@ def test_connection_requires_secret_ref_for_bearer(org_env):
     org, env = org_env
     serializer = ConnectionSerializer(
         data={
-            "organization_id": org.id,
             "environment_id": env.id,
             "name": "mcp",
             "endpoint": "https://example.com/mcp",
             "auth_method": "bearer",
         },
     )
+    # organization_id is set automatically by view, but for serializer tests we validate without it
     assert not serializer.is_valid()
     assert "secret_ref" in serializer.errors
 
@@ -40,13 +40,13 @@ def test_connection_requires_secret_ref_for_basic(org_env):
     org, env = org_env
     serializer = ConnectionSerializer(
         data={
-            "organization_id": org.id,
             "environment_id": env.id,
             "name": "mcp",
             "endpoint": "https://example.com/mcp",
             "auth_method": "basic",
         },
     )
+    # organization_id is set automatically by view, but for serializer tests we validate without it
     assert not serializer.is_valid()
     assert "secret_ref" in serializer.errors
 
@@ -57,13 +57,15 @@ def test_connection_allows_none_auth_without_secret_ref(org_env):
     org, env = org_env
     serializer = ConnectionSerializer(
         data={
-            "organization_id": org.id,
             "environment_id": env.id,
             "name": "mcp",
             "endpoint": "https://example.com/mcp",
             "auth_method": "none",
         },
     )
+    # organization_id is set automatically by view, so we set it when saving
+    serializer.is_valid(raise_exception=True)
+    serializer.save(organization=org)
     # Should be valid (secret_ref not required for none)
     assert serializer.is_valid(), serializer.errors
 
@@ -74,13 +76,13 @@ def test_connection_validates_auth_method_choices(org_env):
     org, env = org_env
     serializer = ConnectionSerializer(
         data={
-            "organization_id": org.id,
             "environment_id": env.id,
             "name": "mcp",
             "endpoint": "https://example.com/mcp",
             "auth_method": "invalid",
         },
     )
+    # organization_id is set automatically by view, but for serializer tests we validate without it
     assert not serializer.is_valid()
     assert "auth_method" in serializer.errors
 

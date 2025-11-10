@@ -1,0 +1,175 @@
+# Docker Compose Version 3.8 (version field ist optional in neueren Versionen)
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: agentxsuite-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agentxsuite}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agentxsuite-network
+
+  # Redis für Cache/Rate Limiting
+  redis:
+    image: redis:7-alpine
+    container_name: agentxsuite-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - agentxsuite-network
+
+  # Backend (Django)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agentxsuite-backend
+    environment:
+      # Django Settings
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-change-in-production}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+      
+      # Database
+      DATABASE_ENGINE: django.db.backends.postgresql
+      DATABASE_NAME: ${POSTGRES_DB:-agentxsuite}
+      DATABASE_USER: ${POSTGRES_USER:-postgres}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      
+      # Redis/Cache
+      REDIS_URL: redis://redis:6379/0
+      
+      # SecretStore
+      SECRETSTORE_BACKEND: ${SECRETSTORE_BACKEND:-libs.secretstore.fernet.FernetSecretStore}
+      SECRETSTORE_FERNET_KEY: ${SECRETSTORE_FERNET_KEY:-}
+      
+      # CORS
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://frontend:3000}
+    volumes:
+      - ./backend:/app
+      - backend_static:/app/static
+      - backend_media:/app/media
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "
+        python manage.py migrate &&
+        python manage.py collectstatic --noinput &&
+        python manage.py runserver 0.0.0.0:8000
+      "
+    networks:
+      - agentxsuite-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+        NEXT_PUBLIC_MCP_FABRIC_URL: ${NEXT_PUBLIC_MCP_FABRIC_URL:-http://localhost:8090}
+        NODE_ENV: ${NODE_ENV:-production}
+    container_name: agentxsuite-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+      NEXT_PUBLIC_MCP_FABRIC_URL: ${NEXT_PUBLIC_MCP_FABRIC_URL:-http://localhost:8090}
+      NODE_ENV: ${NODE_ENV:-production}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      - backend
+    networks:
+      - agentxsuite-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MCP Fabric Service (falls benötigt)
+  mcp-fabric:
+    build:
+      context: ./backend
+      dockerfile: mcp_fabric/Dockerfile
+    container_name: agentxsuite-mcp-fabric
+    environment:
+      # Django Settings (für Django Setup in MCP Fabric)
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+      SECRET_KEY: ${SECRET_KEY:-django-insecure-change-in-production}
+      DEBUG: ${DEBUG:-True}
+      
+      # Database (für Django ORM Zugriff)
+      DATABASE_ENGINE: django.db.backends.postgresql
+      DATABASE_NAME: ${POSTGRES_DB:-agentxsuite}
+      DATABASE_USER: ${POSTGRES_USER:-postgres}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_HOST: db
+      DATABASE_PORT: 5432
+      
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      
+      # MCP Fabric
+      MCP_FABRIC_HOST: 0.0.0.0
+      MCP_FABRIC_PORT: 8090
+    volumes:
+      - ./backend:/app
+    ports:
+      - "${MCP_FABRIC_PORT:-8090}:8090"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - agentxsuite-network
+    profiles:
+      - mcp-fabric
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_static:
+  backend_media:
+
+networks:
+  agentxsuite-network:
+    driver: bridge
+

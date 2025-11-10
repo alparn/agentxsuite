@@ -25,13 +25,13 @@ def test_tool_validates_schema_json_is_dict(org_env):
     # by passing a non-dict value directly to serializer
     serializer = ToolSerializer(
         data={
-            "organization_id": org.id,
             "environment_id": env.id,
             "name": "test-tool",
             "version": "1.0.0",
             "schema_json": "not-a-dict",
         },
     )
+    # organization_id is set automatically by view, but for serializer tests we validate without it
     # DRF JSONField will try to parse, but validation should catch it
     # In practice, DRF JSONField accepts strings and tries to parse them
     # So we test with a value that can't be parsed as JSON dict
@@ -44,7 +44,6 @@ def test_tool_accepts_valid_schema_json(org_env):
     org, env = org_env
     serializer = ToolSerializer(
         data={
-            "organization_id": org.id,
             "environment_id": env.id,
             "name": "test-tool",
             "version": "1.0.0",
@@ -56,6 +55,9 @@ def test_tool_accepts_valid_schema_json(org_env):
             },
         },
     )
+    # organization_id is set automatically by view, so we set it when saving
+    serializer.is_valid(raise_exception=True)
+    serializer.save(organization=org)
     assert serializer.is_valid(), serializer.errors
 
 
@@ -65,12 +67,14 @@ def test_tool_accepts_empty_schema_json(org_env):
     org, env = org_env
     serializer = ToolSerializer(
         data={
-            "organization_id": org.id,
             "environment_id": env.id,
             "name": "test-tool",
             "version": "1.0.0",
             "schema_json": {},
         },
     )
+    # organization_id is set automatically by view, so we set it when saving
+    serializer.is_valid(raise_exception=True)
+    serializer.save(organization=org)
     assert serializer.is_valid(), serializer.errors
 

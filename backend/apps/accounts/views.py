@@ -117,3 +117,43 @@ def me(request) -> Response:
     serializer = UserSerializer(request.user)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def my_organizations(request) -> Response:
+    """
+    Get organizations for the current user.
+
+    GET /api/v1/auth/me/orgs/
+    Requires: Authorization: Token <token>
+    
+    Returns list of organizations the user has access to.
+    Filters by OrganizationMembership to only return organizations the user belongs to.
+    """
+    try:
+        from apps.tenants.models import Organization, OrganizationMembership
+        from apps.tenants.serializers import OrganizationSerializer
+        
+        # Get organizations where user has active membership
+        memberships = OrganizationMembership.objects.filter(
+            user=request.user,
+            is_active=True,
+        ).select_related("organization")
+        
+        organization_ids = [m.organization_id for m in memberships]
+        organizations = Organization.objects.filter(id__in=organization_ids).order_by("name")
+        
+        serializer = OrganizationSerializer(organizations, many=True)
+        return Response(
+            {
+                "organizations": serializer.data,
+                "count": len(serializer.data),
+            },
+            status=status.HTTP_200_OK,
+        )
+    except Exception as e:
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
