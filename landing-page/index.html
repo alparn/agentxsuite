@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    
+    <!-- SEO Meta Tags -->
+    <title>AgentxSuite - The Control Layer Between AI Agents and Production Systems</title>
+    <meta name="description" content="A unified control plane for managing, monitoring, and securing MCP agents across enterprise environments.">
+    <meta name="keywords" content="MCP, agents, orchestration, AI, automation, enterprise, policy management">
+    <link rel="canonical" href="${SITE_URL}/">
+    
+    <!-- Alternate Language Links -->
+    <link rel="alternate" hreflang="en" href="${SITE_URL}/">
+    <link rel="alternate" hreflang="de" href="${SITE_URL}/de/">
+    <link rel="alternate" hreflang="x-default" href="${SITE_URL}/">
+    
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="AgentxSuite - The Control Layer Between AI Agents and Production Systems">
+    <meta property="og:description" content="A unified control plane for managing, monitoring, and securing MCP agents across enterprise environments.">
+    <meta property="og:url" content="${SITE_URL}/">
+    <meta property="og:image" content="${SITE_URL}/assets/img/og-image.png">
+    <meta property="og:locale" content="en_US">
+    <meta property="og:locale:alternate" content="de_DE">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="AgentxSuite - The Control Layer Between AI Agents and Production Systems">
+    <meta name="twitter:description" content="A unified control plane for managing, monitoring, and securing MCP agents across enterprise environments.">
+    <meta name="twitter:image" content="${SITE_URL}/assets/img/og-image.png">
+    
+    <!-- Favicon & PWA -->
+    <link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#1a1a2e">
+    
+    <!-- Preload Critical Assets -->
+    <link rel="preload" href="assets/css/base.css" as="style">
+    <link rel="preload" href="assets/css/theme-dark.css" as="style">
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="assets/css/base.css">
+    <link rel="stylesheet" href="assets/css/theme-dark.css">
+    <link rel="stylesheet" href="assets/css/utilities.css">
+    
+    <!-- Schema.org JSON-LD -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "AgentxSuite",
+      "url": "${SITE_URL}/",
+      "description": "Enterprise MCP Agent Orchestration Platform",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "${SITE_URL}/blog/?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      },
+      "inLanguage": ["en", "de"]
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "AgentxSuite",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Cross-platform",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "4.8",
+        "ratingCount": "127"
+      }
+    }
+    </script>
+</head>
+<body data-lang="en">
+    <!-- Header -->
+    <header class="header" role="banner">
+        <div class="container">
+            <div class="header__inner">
+                <div class="header__logo">
+                    <a href="/" class="logo" aria-label="AgentxSuite Home">
+                        <svg class="logo__icon" width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect width="32" height="32" rx="6" fill="url(#logo-gradient)"/>
+                            <path d="M16 8L24 20H8L16 8Z" fill="white" opacity="0.9"/>
+                            <path d="M16 24L8 12H24L16 24Z" fill="white" opacity="0.6"/>
+                            <defs>
+                                <linearGradient id="logo-gradient" x1="0" y1="0" x2="32" y2="32">
+                                    <stop offset="0%" stop-color="#6366f1"/>
+                                    <stop offset="100%" stop-color="#8b5cf6"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <span class="logo__text">AgentxSuite</span>
+                    </a>
+                </div>
+                
+                <button class="header__mobile-toggle" aria-label="Toggle navigation" aria-expanded="false">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+                
+                <nav class="nav" role="navigation" aria-label="Main navigation">
+                    <ul class="nav__list">
+                        <li class="nav__item"><a href="#features" class="nav__link" data-i18n="nav.features">Features</a></li>
+                        <li class="nav__item"><a href="#how-it-works" class="nav__link" data-i18n="nav.howItWorks">How it works</a></li>
+                        <li class="nav__item"><a href="blog/index.html" class="nav__link" data-i18n="nav.blog">Blog</a></li>
+                        <li class="nav__item">
+                            <a href="https://github.com/alparn/agentxsuite" class="nav__link nav__link--github" target="_blank" rel="noopener noreferrer">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                                </svg>
+                                <span data-i18n="nav.github">GitHub</span>
+                            </a>
+                        </li>
+                        <li class="nav__item"><a href="#contact" class="nav__link" data-i18n="nav.contact">Contact</a></li>
+                    </ul>
+                </nav>
+                
+                <div class="header__actions">
+                    <button class="theme-toggle" aria-label="Toggle theme" title="Toggle theme">
+                        <svg class="theme-toggle__icon theme-toggle__icon--light" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="5"/>
+                            <line x1="12" y1="1" x2="12" y2="3"/>
+                            <line x1="12" y1="21" x2="12" y2="23"/>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                            <line x1="1" y1="12" x2="3" y2="12"/>
+                            <line x1="21" y1="12" x2="23" y2="12"/>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                        </svg>
+                        <svg class="theme-toggle__icon theme-toggle__icon--dark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                        </svg>
+                    </button>
+                    
+                    <div class="lang-switcher">
+                        <button class="lang-switcher__toggle" aria-label="Switch language">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <line x1="2" y1="12" x2="22" y2="12"/>
+                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                            </svg>
+                            <span class="lang-switcher__current">EN</span>
+                        </button>
+                        <ul class="lang-switcher__menu">
+                            <li><a href="index.html" class="lang-switcher__link" data-lang="en">English</a></li>
+                            <li><a href="de/index.html" class="lang-switcher__link" data-lang="de">Deutsch</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero" role="main">
+        <div class="container">
+            <div class="hero__content">
+                <h1 class="hero__title" data-i18n="hero.title">
+                    The Control Layer Between AI Agents and Production Systems
+                </h1>
+                <p class="hero__subtitle" data-i18n="hero.subtitle">
+                    A unified control plane for managing, monitoring, and securing MCP agents across enterprise environments.
+                </p>
+                <div class="hero__actions">
+                    <a href="https://github.com/alparn/agentxsuite" class="btn btn--primary" target="_blank" rel="noopener noreferrer">
+                        <span data-i18n="hero.getStarted">Get Started</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                            <polyline points="12 5 19 12 12 19"/>
+                        </svg>
+                    </a>
+                    <a href="https://github.com/alparn/agentxsuite" class="btn btn--secondary" target="_blank" rel="noopener noreferrer">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                        </svg>
+                        <span data-i18n="hero.viewGithub">View on GitHub</span>
+                    </a>
+                </div>
+                <div class="hero__diagram">
+                    <img src="assets/img/orchestration-diagram.svg" alt="AgentxSuite Orchestration Diagram" loading="eager">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Key Stats -->
+    <section class="stats">
+        <div class="container">
+            <div class="stats__grid">
+                <div class="stats__item">
+                    <div class="stats__value" data-count="30">0</div>
+                    <div class="stats__label" data-i18n="stats.apiEndpoints">API Endpoints</div>
+                </div>
+                <div class="stats__item">
+                    <div class="stats__value" data-count="50">0</div>
+                    <div class="stats__label" data-i18n="stats.securityPolicies">Security Policies</div>
+                </div>
+                <div class="stats__item">
+                    <div class="stats__value" data-count="10">0</div>
+                    <div class="stats__label" data-i18n="stats.organizations">Multi-Tenant Orgs</div>
+                </div>
+                <div class="stats__item">
+                    <div class="stats__value" data-count="5">0</div>
+                    <div class="stats__label" data-i18n="stats.protocols">Supported Protocols</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="container">
+            <h2 class="section__title" data-i18n="features.title">Powerful Features for Enterprise Teams</h2>
+            <p class="section__subtitle" data-i18n="features.subtitle">Everything you need to orchestrate AI agents securely and efficiently</p>
+            
+            <div class="features__grid">
+                <article class="feature-card">
+                    <div class="feature-card__icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M12 1v6m0 6v6m5.2-13.2l-4.2 4.2m0 6l4.2 4.2M23 12h-6m-6 0H5m13.2 5.2l-4.2-4.2m0-6l4.2-4.2"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-card__title" data-i18n="features.agents.title">Multi-Agent Orchestration</h3>
+                    <p class="feature-card__description" data-i18n="features.agents.description">
+                        Coordinate multiple AI agents seamlessly with intelligent routing, load balancing, and real-time monitoring capabilities.
+                    </p>
+                </article>
+
+                <article class="feature-card">
+                    <div class="feature-card__icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-card__title" data-i18n="features.security.title">Enterprise Security</h3>
+                    <p class="feature-card__description" data-i18n="features.security.description">
+                        Advanced policy engine with fine-grained access controls, secret management, rate limiting, and comprehensive audit trails.
+                    </p>
+                </article>
+
+                <article class="feature-card">
+                    <div class="feature-card__icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="1" x2="12" y2="23"/>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-card__title" data-i18n="features.mcp.title">Native MCP Integration</h3>
+                    <p class="feature-card__description" data-i18n="features.mcp.description">
+                        First-class support for Model Context Protocol with automatic tool discovery, schema validation, and connection management.
+                    </p>
+                </article>
+
+                <article class="feature-card">
+                    <div class="feature-card__icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-card__title" data-i18n="features.monitoring.title">Real-Time Monitoring</h3>
+                    <p class="feature-card__description" data-i18n="features.monitoring.description">
+                        Track agent performance, tool execution metrics, and system health with detailed dashboards and alerting.
+                    </p>
+                </article>
+
+                <article class="feature-card">
+                    <div class="feature-card__icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                            <line x1="12" y1="22.08" x2="12" y2="12"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-card__title" data-i18n="features.tools.title">Extensible Tool Library</h3>
+                    <p class="feature-card__description" data-i18n="features.tools.description">
+                        Rich ecosystem of pre-built tools with JSON Schema validation and easy custom tool integration.
+                    </p>
+                </article>
+
+                <article class="feature-card">
+                    <div class="feature-card__icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="18" cy="5" r="3"/>
+                            <circle cx="6" cy="12" r="3"/>
+                            <circle cx="18" cy="19" r="3"/>
+                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                        </svg>
+                    </div>
+                    <h3 class="feature-card__title" data-i18n="features.multitenancy.title">Multi-Tenancy Ready</h3>
+                    <p class="feature-card__description" data-i18n="features.multitenancy.description">
+                        Built-in organization and environment isolation with flexible RBAC for complex enterprise hierarchies.
+                    </p>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section class="how-it-works" id="how-it-works">
+        <div class="container">
+            <h2 class="section__title" data-i18n="howItWorks.title">How It Works</h2>
+            <p class="section__subtitle" data-i18n="howItWorks.subtitle">Get started in three simple steps</p>
+            
+            <div class="steps">
+                <div class="step">
+                    <div class="step__number">1</div>
+                    <div class="step__content">
+                        <h3 class="step__title" data-i18n="howItWorks.step1.title">Configure Connections</h3>
+                        <p class="step__description" data-i18n="howItWorks.step1.description">
+                            Set up MCP server connections with secure credential management. Define your environments and organize resources by teams.
+                        </p>
+                    </div>
+                    <div class="step__visual">
+                        <svg width="200" height="150" viewBox="0 0 200 150">
+                            <rect x="20" y="40" width="60" height="70" rx="4" fill="var(--color-surface-elevated)" stroke="var(--color-primary)" stroke-width="2"/>
+                            <rect x="120" y="40" width="60" height="70" rx="4" fill="var(--color-surface-elevated)" stroke="var(--color-primary)" stroke-width="2"/>
+                            <line x1="80" y1="75" x2="120" y2="75" stroke="var(--color-primary)" stroke-width="2"/>
+                            <circle cx="100" cy="75" r="8" fill="var(--color-primary)"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step__number">2</div>
+                    <div class="step__content">
+                        <h3 class="step__title" data-i18n="howItWorks.step2.title">Define Policies</h3>
+                        <p class="step__description" data-i18n="howItWorks.step2.description">
+                            Create fine-grained security policies that control which agents can access which tools in specific environments.
+                        </p>
+                    </div>
+                    <div class="step__visual">
+                        <svg width="200" height="150" viewBox="0 0 200 150">
+                            <rect x="50" y="30" width="100" height="90" rx="4" fill="var(--color-surface-elevated)" stroke="var(--color-accent)" stroke-width="2"/>
+                            <line x1="70" y1="50" x2="130" y2="50" stroke="var(--color-accent)" stroke-width="2"/>
+                            <line x1="70" y1="70" x2="130" y2="70" stroke="var(--color-accent)" stroke-width="2"/>
+                            <line x1="70" y1="90" x2="130" y2="90" stroke="var(--color-accent)" stroke-width="2"/>
+                            <circle cx="150" cy="50" r="6" fill="var(--color-success)"/>
+                            <circle cx="150" cy="70" r="6" fill="var(--color-error)"/>
+                            <circle cx="150" cy="90" r="6" fill="var(--color-success)"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step__number">3</div>
+                    <div class="step__content">
+                        <h3 class="step__title" data-i18n="howItWorks.step3.title">Execute & Monitor</h3>
+                        <p class="step__description" data-i18n="howItWorks.step3.description">
+                            Run your agents with automatic policy enforcement, rate limiting, and comprehensive audit logging of all operations.
+                        </p>
+                    </div>
+                    <div class="step__visual">
+                        <svg width="200" height="150" viewBox="0 0 200 150">
+                            <rect x="30" y="40" width="140" height="80" rx="4" fill="var(--color-surface-elevated)" stroke="var(--color-success)" stroke-width="2"/>
+                            <polyline points="50,100 70,80 90,90 110,60 130,70 150,50" fill="none" stroke="var(--color-success)" stroke-width="3"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SEO Content Block -->
+    <section class="content-block">
+        <div class="container">
+            <div class="content-block__inner">
+                <h2 class="content-block__title" data-i18n="content.title">Why AgentxSuite for MCP Agent Management?</h2>
+                <div class="content-block__text">
+                    <p data-i18n="content.p1">
+                        <strong>AgentxSuite</strong> is an enterprise-grade platform designed specifically for orchestrating <strong>Model Context Protocol (MCP) agents</strong> at scale. Built with Django and modern web technologies, it provides a robust foundation for managing complex AI agent workflows with security and compliance in mind.
+                    </p>
+                </div>
+                <div class="content-block__features">
+                    <div class="content-block__feature">
+                        <p data-i18n="content.p2">
+                            <strong>Enterprise Security</strong>
+                            The platform addresses critical challenges in AI agent management: secure credential storage with encrypted secret management, fine-grained access control through a flexible policy engine, comprehensive audit logging for compliance requirements, and real-time monitoring of agent performance and system health.
+                        </p>
+                    </div>
+                    <div class="content-block__feature">
+                        <p data-i18n="content.p3">
+                            <strong>Scalable Architecture</strong>
+                            Whether you're running a small team or managing thousands of agents across multiple environments, AgentxSuite scales with your needs. The multi-tenant architecture ensures complete isolation between organizations, while the flexible RBAC system allows you to define precise permissions for different team roles.
+                        </p>
+                    </div>
+                    <div class="content-block__feature">
+                        <p data-i18n="content.p4">
+                            <strong>Open & Extensible</strong>
+                            Built on open standards and fully extensible, AgentxSuite integrates seamlessly with your existing infrastructure. Native MCP protocol support ensures compatibility with a wide range of AI models and services, while the RESTful API and webhook system enable custom integrations with your tools and workflows.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Banner -->
+    <section class="cta-banner">
+        <div class="container">
+            <div class="cta-banner__content">
+                <h2 class="cta-banner__title" data-i18n="cta.title">Ready to Get Started?</h2>
+                <p class="cta-banner__text" data-i18n="cta.text">
+                    Star us on GitHub and explore the documentation to begin orchestrating your AI agents today.
+                </p>
+                <div class="cta-banner__actions">
+                    <a href="https://github.com/alparn/agentxsuite" class="btn btn--primary btn--large" target="_blank" rel="noopener noreferrer">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                        </svg>
+                        <span data-i18n="cta.starGithub">Star on GitHub</span>
+                    </a>
+                    <a href="https://github.com/alparn/agentxsuite#readme" class="btn btn--secondary btn--large" target="_blank" rel="noopener noreferrer">
+                        <span data-i18n="cta.readDocs">Read the Docs</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer" id="contact" role="contentinfo">
+        <div class="container">
+            <div class="footer__grid">
+                <div class="footer__column">
+                    <div class="footer__logo">
+                        <svg class="logo__icon" width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect width="32" height="32" rx="6" fill="url(#logo-gradient-footer)"/>
+                            <path d="M16 8L24 20H8L16 8Z" fill="white" opacity="0.9"/>
+                            <path d="M16 24L8 12H24L16 24Z" fill="white" opacity="0.6"/>
+                            <defs>
+                                <linearGradient id="logo-gradient-footer" x1="0" y1="0" x2="32" y2="32">
+                                    <stop offset="0%" stop-color="#6366f1"/>
+                                    <stop offset="100%" stop-color="#8b5cf6"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <span class="logo__text">AgentxSuite</span>
+                    </div>
+                    <p class="footer__description" data-i18n="footer.description">
+                        Enterprise-grade MCP agent orchestration platform for secure and scalable AI operations.
+                    </p>
+                </div>
+
+                <div class="footer__column">
+                    <h3 class="footer__title" data-i18n="footer.product">Product</h3>
+                    <ul class="footer__links">
+                        <li><a href="#features" data-i18n="footer.features">Features</a></li>
+                        <li><a href="#how-it-works" data-i18n="footer.howItWorks">How it works</a></li>
+                        <li><a href="https://github.com/alparn/agentxsuite#readme" target="_blank" rel="noopener noreferrer" data-i18n="footer.documentation">Documentation</a></li>
+                        <li><a href="blog/index.html" data-i18n="footer.blog">Blog</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer__column">
+                    <h3 class="footer__title" data-i18n="footer.legal">Legal</h3>
+                    <ul class="footer__links">
+                        <li><a href="legal/imprint.html" data-i18n="footer.imprint">Imprint</a></li>
+                        <li><a href="legal/privacy.html" data-i18n="footer.privacy">Privacy Policy</a></li>
+                        <li><a href="https://github.com/alparn/agentxsuite/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-i18n="footer.license">License (AGPL-3.0)</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer__column">
+                    <h3 class="footer__title" data-i18n="footer.connect">Connect</h3>
+                    <ul class="footer__links">
+                        <li>
+                            <a href="https://github.com/alparn/agentxsuite" target="_blank" rel="noopener noreferrer">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 8px; vertical-align: middle;">
+                                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                                </svg>
+                                <span data-i18n="footer.github">GitHub</span>
+                            </a>
+                        </li>
+                        <li><a href="mailto:ali@international-it-outsourcing.com" data-i18n="footer.contact">Contact Us</a></li>
+                        <li><a href="/feed.xml" data-i18n="footer.rss">RSS Feed</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="footer__bottom">
+                <p class="footer__copyright">
+                    &copy; <span id="current-year">2025</span> AgentxSuite. 
+                    <span data-i18n="footer.rights">All rights reserved.</span>
+                </p>
+                <div class="footer__badges">
+                    <a href="https://github.com/alparn/agentxsuite" class="github-badge" target="_blank" rel="noopener noreferrer">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                        </svg>
+                        <span data-i18n="footer.viewGithub">View on GitHub</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="assets/js/main.js" defer></script>
+    <script src="assets/js/i18n.js" defer></script>
+    <script src="assets/js/theme-toggle.js" defer></script>
+    <script src="assets/js/cookie-banner.js" defer></script>
+</body>
+</html>
+

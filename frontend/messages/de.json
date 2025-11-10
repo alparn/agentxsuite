@@ -29,7 +29,9 @@
     "noData": "Keine Daten verfügbar",
     "select": "Auswählen",
     "optional": "Optional",
-    "add": "Hinzufügen"
+    "add": "Hinzufügen",
+    "enabled": "Aktiviert",
+    "disabled": "Deaktiviert"
   },
   "nav": {
     "overview": "Übersicht",
@@ -40,7 +42,9 @@
     "policies": "Richtlinien",
     "environments": "Umgebungen",
     "audit": "Audit & Logs",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "resources": "Resources",
+    "prompts": "Prompts"
   },
   "auth": {
     "loginTitle": "Willkommen zurück",
@@ -148,6 +152,53 @@
     "newEnvironment": "Neue Umgebung",
     "type": "Typ",
     "confirmDelete": "Möchten Sie die Umgebung \"{name}\" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+  },
+  "resources": {
+    "title": "Resources",
+    "subtitle": "Verwalten Sie MCP Resources",
+    "newResource": "Neue Resource",
+    "type": "Typ",
+    "environment": "Umgebung",
+    "allEnvironments": "Alle Umgebungen",
+    "mimeType": "MIME-Typ",
+    "noResources": "Keine Resources gefunden",
+    "confirmDelete": "Möchten Sie die Resource '{name}' wirklich löschen?",
+    "deleteSuccess": "Resource erfolgreich gelöscht",
+    "deleteError": "Fehler beim Löschen der Resource",
+    "name": "Name",
+    "configJson": "Konfiguration (JSON)",
+    "schemaJson": "Schema (JSON, optional)",
+    "secretRef": "Secret-Referenz",
+    "enabled": "Aktiviert",
+    "typeStatic": "Static",
+    "typeHttp": "HTTP",
+    "typeSql": "SQL",
+    "typeS3": "S3",
+    "typeFile": "File"
+  },
+  "prompts": {
+    "title": "Prompts",
+    "subtitle": "Verwalten Sie MCP Prompts",
+    "newPrompt": "Neuer Prompt",
+    "environment": "Umgebung",
+    "allEnvironments": "Alle Umgebungen",
+    "noPrompts": "Keine Prompts gefunden",
+    "confirmDelete": "Möchten Sie den Prompt '{name}' wirklich löschen?",
+    "deleteSuccess": "Prompt erfolgreich gelöscht",
+    "deleteError": "Fehler beim Löschen des Prompts",
+    "name": "Name",
+    "description": "Beschreibung",
+    "inputSchema": "Input Schema (JSON)",
+    "templateSystem": "System Template (Jinja2)",
+    "templateUser": "User Template (Jinja2)",
+    "usesResources": "Verwendete Resources",
+    "outputHints": "Output Hints (JSON, optional)",
+    "enabled": "Aktiviert",
+    "invoke": "Ausführen",
+    "invokePrompt": "Prompt ausführen",
+    "invokeSuccess": "Prompt erfolgreich ausgeführt",
+    "invokeError": "Fehler beim Ausführen des Prompts",
+    "noInputRequired": "Keine Eingabeparameter erforderlich"
   }
 }
 

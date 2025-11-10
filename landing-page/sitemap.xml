@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+    
+    <!-- Homepage EN -->
+    <url>
+        <loc>${SITE_URL}/</loc>
+        <lastmod>2025-01-15</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>1.0</priority>
+        <xhtml:link rel="alternate" hreflang="de" href="${SITE_URL}/de/" />
+        <xhtml:link rel="alternate" hreflang="en" href="${SITE_URL}/" />
+    </url>
+    
+    <!-- Homepage DE -->
+    <url>
+        <loc>${SITE_URL}/de/</loc>
+        <lastmod>2025-01-15</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>1.0</priority>
+        <xhtml:link rel="alternate" hreflang="de" href="${SITE_URL}/de/" />
+        <xhtml:link rel="alternate" hreflang="en" href="${SITE_URL}/" />
+    </url>
+    
+    <!-- Blog Index EN -->
+    <url>
+        <loc>${SITE_URL}/blog/</loc>
+        <lastmod>2025-01-15</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.8</priority>
+        <xhtml:link rel="alternate" hreflang="de" href="${SITE_URL}/de/blog/" />
+        <xhtml:link rel="alternate" hreflang="en" href="${SITE_URL}/blog/" />
+    </url>
+    
+    <!-- Blog Index DE -->
+    <url>
+        <loc>${SITE_URL}/de/blog/</loc>
+        <lastmod>2025-01-15</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.8</priority>
+        <xhtml:link rel="alternate" hreflang="de" href="${SITE_URL}/de/blog/" />
+        <xhtml:link rel="alternate" hreflang="en" href="${SITE_URL}/blog/" />
+    </url>
+    
+    <!-- Blog Posts -->
+    <url>
+        <loc>${SITE_URL}/blog/getting-started-with-agentxsuite.html</loc>
+        <lastmod>2025-01-15</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    
+    <url>
+        <loc>${SITE_URL}/blog/understanding-mcp-protocol.html</loc>
+        <lastmod>2025-01-10</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    
+    <!-- Legal Pages EN -->
+    <url>
+        <loc>${SITE_URL}/legal/imprint.html</loc>
+        <lastmod>2025-01-15</lastmod>
+        <changefreq>yearly</changefreq>
+        <priority>0.3</priority>
+        <xhtml:link rel="alternate" hreflang="de" href="${SITE_URL}/legal/impressum.html" />
+        <xhtml:link rel="alternate" hreflang="en" href="${SITE_URL}/legal/imprint.html" />
+    </url>
+    
+    <url>
+        <loc>${SITE_URL}/legal/privacy.html</loc>
+        <lastmod>2025-01-15</lastmod>
+        <changefreq>yearly</changefreq>
+        <priority>0.3</priority>
+        <xhtml:link rel="alternate" hreflang="de" href="${SITE_URL}/legal/datenschutz.html" />
+        <xhtml:link rel="alternate" hreflang="en" href="${SITE_URL}/legal/privacy.html" />
+    </url>
+    
+    <!-- Legal Pages DE -->
+    <url>
+        <loc>${SITE_URL}/legal/impressum.html</loc>
+        <lastmod>2025-01-15</lastmod>
+        <changefreq>yearly</changefreq>
+        <priority>0.3</priority>
+        <xhtml:link rel="alternate" hreflang="de" href="${SITE_URL}/legal/impressum.html" />
+        <xhtml:link rel="alternate" hreflang="en" href="${SITE_URL}/legal/imprint.html" />
+    </url>
+    
+    <url>
+        <loc>${SITE_URL}/legal/datenschutz.html</loc>
+        <lastmod>2025-01-15</lastmod>
+        <changefreq>yearly</changefreq>
+        <priority>0.3</priority>
+        <xhtml:link rel="alternate" hreflang="de" href="${SITE_URL}/legal/datenschutz.html" />
+        <xhtml:link rel="alternate" hreflang="en" href="${SITE_URL}/legal/privacy.html" />
+    </url>
+    
+</urlset>
+
+
+
+
+

@@ -41,6 +41,39 @@ export interface MCPRunResponse {
   isError: boolean;
 }
 
+// Resource types
+export interface MCPResource {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType: string;
+}
+
+export interface MCPResourceContent {
+  uri: string;
+  mimeType: string;
+  text?: string;
+  blob?: string;
+}
+
+// Prompt types
+export interface MCPPrompt {
+  name: string;
+  description?: string;
+  arguments?: Array<{
+    name: string;
+    description?: string;
+    required?: boolean;
+  }>;
+}
+
+export interface MCPPromptResponse {
+  messages: Array<{
+    role: "user" | "assistant" | "system";
+    content: string | Array<{ type: string; text: string }>;
+  }>;
+}
+
 // Error Handling
 export class MCPFabricError extends Error {
   constructor(
@@ -190,6 +223,76 @@ class MCPFabricClient {
         ],
         isError: true,
       };
+    }
+  }
+
+  async getResources(orgId: string, envId: string): Promise<MCPResource[]> {
+    try {
+      const response = await axios.get<MCPResource[]>(
+        `${MCP_FABRIC_URL}/api/v1/mcp/${orgId}/${envId}/.well-known/mcp/resources`,
+        { headers: this.getHeaders() }
+      );
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error: any) {
+      throw new MCPFabricError(
+        handleMCPError(error),
+        error.response?.status || 500
+      );
+    }
+  }
+
+  async getResource(
+    orgId: string,
+    envId: string,
+    resourceName: string
+  ): Promise<MCPResourceContent> {
+    try {
+      const response = await axios.get<MCPResourceContent>(
+        `${MCP_FABRIC_URL}/api/v1/mcp/${orgId}/${envId}/.well-known/mcp/resources/${resourceName}`,
+        { headers: this.getHeaders() }
+      );
+      return response.data;
+    } catch (error: any) {
+      throw new MCPFabricError(
+        handleMCPError(error),
+        error.response?.status || 500
+      );
+    }
+  }
+
+  async getPrompts(orgId: string, envId: string): Promise<MCPPrompt[]> {
+    try {
+      const response = await axios.get<MCPPrompt[]>(
+        `${MCP_FABRIC_URL}/api/v1/mcp/${orgId}/${envId}/.well-known/mcp/prompts`,
+        { headers: this.getHeaders() }
+      );
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error: any) {
+      throw new MCPFabricError(
+        handleMCPError(error),
+        error.response?.status || 500
+      );
+    }
+  }
+
+  async invokePrompt(
+    orgId: string,
+    envId: string,
+    promptName: string,
+    input: Record<string, any>
+  ): Promise<MCPPromptResponse> {
+    try {
+      const response = await axios.post<MCPPromptResponse>(
+        `${MCP_FABRIC_URL}/api/v1/mcp/${orgId}/${envId}/.well-known/mcp/prompts/${promptName}/invoke`,
+        { arguments: input },
+        { headers: this.getHeaders() }
+      );
+      return response.data;
+    } catch (error: any) {
+      throw new MCPFabricError(
+        handleMCPError(error),
+        error.response?.status || 500
+      );
     }
   }
 }

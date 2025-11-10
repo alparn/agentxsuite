@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    
+    <title>Blog - AgentxSuite</title>
+    <meta name="description" content="Neueste Updates, Tutorials und Einblicke zu AgentxSuite und MCP-Agent-Orchestrierung.">
+    <link rel="canonical" href="${SITE_URL}/de/blog/">
+    
+    <link rel="alternate" hreflang="de" href="${SITE_URL}/de/blog/">
+    <link rel="alternate" hreflang="en" href="${SITE_URL}/blog/">
+    
+    <link rel="icon" type="image/svg+xml" href="../../assets/img/favicon.svg">
+    <link rel="stylesheet" href="../../assets/css/base.css">
+    <link rel="stylesheet" href="../../assets/css/theme-dark.css">
+    <link rel="stylesheet" href="../../assets/css/utilities.css">
+    
+    <link rel="alternate" type="application/rss+xml" title="AgentxSuite Blog RSS" href="../../feed.xml">
+    
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Blog",
+      "name": "AgentxSuite Blog",
+      "description": "Neueste Updates und Einblicke zur MCP-Agent-Orchestrierung",
+      "url": "${SITE_URL}/de/blog/",
+      "inLanguage": "de"
+    }
+    </script>
+</head>
+<body data-lang="de">
+    <header class="header" role="banner">
+        <div class="container">
+            <div class="header__inner">
+                <div class="header__logo">
+                    <a href="../../de/index.html" class="logo" aria-label="AgentxSuite Startseite">
+                        <svg class="logo__icon" width="32" height="32" viewBox="0 0 32 32" fill="none">
+                            <rect width="32" height="32" rx="6" fill="url(#logo-gradient)"/>
+                            <path d="M16 8L24 20H8L16 8Z" fill="white" opacity="0.9"/>
+                            <path d="M16 24L8 12H24L16 24Z" fill="white" opacity="0.6"/>
+                            <defs>
+                                <linearGradient id="logo-gradient" x1="0" y1="0" x2="32" y2="32">
+                                    <stop offset="0%" stop-color="#6366f1"/>
+                                    <stop offset="100%" stop-color="#8b5cf6"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <span class="logo__text">AgentxSuite</span>
+                    </a>
+                </div>
+                
+                <nav class="nav" role="navigation">
+                    <ul class="nav__list">
+                        <li class="nav__item"><a href="../../de/index.html#features" class="nav__link">Features</a></li>
+                        <li class="nav__item"><a href="../../de/index.html#how-it-works" class="nav__link">So funktioniert's</a></li>
+                        <li class="nav__item"><a href="index.html" class="nav__link">Blog</a></li>
+                        <li class="nav__item"><a href="https://github.com/alparn/agentxsuite" class="nav__link" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+                    </ul>
+                </nav>
+                
+                <div class="header__actions">
+                    <button class="theme-toggle" aria-label="Theme umschalten">
+                        <svg class="theme-toggle__icon theme-toggle__icon--light" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="5"/>
+                            <line x1="12" y1="1" x2="12" y2="3"/>
+                            <line x1="12" y1="21" x2="12" y2="23"/>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                            <line x1="1" y1="12" x2="3" y2="12"/>
+                            <line x1="21" y1="12" x2="23" y2="12"/>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                        </svg>
+                        <svg class="theme-toggle__icon theme-toggle__icon--dark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                        </svg>
+                    </button>
+                    
+                    <div class="lang-switcher">
+                        <button class="lang-switcher__toggle" aria-label="Sprache wechseln">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <line x1="2" y1="12" x2="22" y2="12"/>
+                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                            </svg>
+                            <span class="lang-switcher__current">DE</span>
+                        </button>
+                        <ul class="lang-switcher__menu">
+                            <li><a href="../../blog/index.html" class="lang-switcher__link" data-lang="en">English</a></li>
+                            <li><a href="index.html" class="lang-switcher__link" data-lang="de">Deutsch</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <section class="blog-hero">
+            <div class="container">
+                <h1 class="blog-hero__title" data-i18n="blog.title">Blog</h1>
+                <p class="blog-hero__subtitle" data-i18n="blog.subtitle">Neueste Updates, Tutorials und Einblicke</p>
+                
+                <div class="blog-search">
+                    <input type="search" class="search-input" placeholder="Beiträge durchsuchen..." data-i18n-placeholder="blog.searchPlaceholder">
+                    <div class="search-results"></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="blog-content">
+            <div class="container">
+                <div class="blog-layout">
+                    <div class="blog-main">
+                        <div class="blog-posts">
+                            <!-- Post 1 -->
+                            <article class="blog-card" 
+                                     data-post-title="Erste Schritte mit AgentxSuite"
+                                     data-post-description="Lernen Sie, wie Sie Ihre erste MCP-Agent-Orchestrierung mit AgentxSuite einrichten und konfigurieren"
+                                     data-post-tags="agents,tutorial"
+                                     data-post-date="2025-01-15"
+                                     data-post-url="getting-started-with-agentxsuite.html"
+                                     data-post-lang="de">
+                                <div class="blog-card__meta">
+                                    <time datetime="2025-01-15">15. Januar 2025</time>
+                                    <div class="blog-card__tags">
+                                        <a href="tags/agents.html" class="tag">agents</a>
+                                        <a href="tags/tutorial.html" class="tag">tutorial</a>
+                                    </div>
+                                </div>
+                                <h2 class="blog-card__title">
+                                    <a href="getting-started-with-agentxsuite.html">Erste Schritte mit AgentxSuite</a>
+                                </h2>
+                                <p class="blog-card__excerpt">
+                                    Lernen Sie, wie Sie Ihre erste MCP-Agent-Orchestrierung mit AgentxSuite einrichten und konfigurieren. Diese umfassende Anleitung führt Sie durch Installation, Konfiguration und Ihr erstes Agent-Deployment.
+                                </p>
+                                <a href="getting-started-with-agentxsuite.html" class="blog-card__link" data-i18n="blog.readMore">Weiterlesen →</a>
+                            </article>
+
+                            <!-- Post 2 -->
+                            <article class="blog-card"
+                                     data-post-title="MCP-Protokoll-Integration verstehen"
+                                     data-post-description="Tiefere Einblicke in Model Context Protocol und wie AgentxSuite es für Agent-Orchestrierung nutzt"
+                                     data-post-tags="mcp,architecture"
+                                     data-post-date="2025-01-10"
+                                     data-post-url="understanding-mcp-protocol.html"
+                                     data-post-lang="de">
+                                <div class="blog-card__meta">
+                                    <time datetime="2025-01-10">10. Januar 2025</time>
+                                    <div class="blog-card__tags">
+                                        <a href="tags/mcp.html" class="tag">mcp</a>
+                                        <a href="tags/architecture.html" class="tag">architecture</a>
+                                    </div>
+                                </div>
+                                <h2 class="blog-card__title">
+                                    <a href="understanding-mcp-protocol.html">MCP-Protokoll-Integration verstehen</a>
+                                </h2>
+                                <p class="blog-card__excerpt">
+                                    Tiefere Einblicke in Model Context Protocol und wie AgentxSuite es für nahtlose Agent-Orchestrierung nutzt. Lernen Sie die technische Architektur und Integrationsmuster kennen.
+                                </p>
+                                <a href="understanding-mcp-protocol.html" class="blog-card__link" data-i18n="blog.readMore">Weiterlesen →</a>
+                            </article>
+                        </div>
+
+                        <!-- Pagination -->
+                        <nav class="pagination" aria-label="Blog-Pagination">
+                            <span class="pagination__info">Seite 1 von 1</span>
+                        </nav>
+                    </div>
+
+                    <aside class="blog-sidebar">
+                        <div class="sidebar-widget">
+                            <h3 class="sidebar-widget__title" data-i18n="blog.filterByTag">Nach Tag filtern</h3>
+                            <div class="tag-cloud">
+                                <a href="tags/agents.html" class="tag">agents</a>
+                                <a href="tags/mcp.html" class="tag">mcp</a>
+                                <a href="tags/tutorial.html" class="tag">tutorial</a>
+                                <a href="tags/architecture.html" class="tag">architecture</a>
+                            </div>
+                        </div>
+
+                        <div class="sidebar-widget">
+                            <h3 class="sidebar-widget__title">RSS-Feed</h3>
+                            <a href="../../feed.xml" class="btn btn--secondary btn--small">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M4 11a9 9 0 0 1 9 9"/>
+                                    <path d="M4 4a16 16 0 0 1 16 16"/>
+                                    <circle cx="5" cy="19" r="1"/>
+                                </svg>
+                                Abonnieren
+                            </a>
+                        </div>
+                    </aside>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer__grid">
+                <div class="footer__column">
+                    <div class="footer__logo">
+                        <svg class="logo__icon" width="32" height="32" viewBox="0 0 32 32" fill="none">
+                            <rect width="32" height="32" rx="6" fill="url(#logo-gradient-footer)"/>
+                            <path d="M16 8L24 20H8L16 8Z" fill="white" opacity="0.9"/>
+                            <path d="M16 24L8 12H24L16 24Z" fill="white" opacity="0.6"/>
+                            <defs>
+                                <linearGradient id="logo-gradient-footer" x1="0" y1="0" x2="32" y2="32">
+                                    <stop offset="0%" stop-color="#6366f1"/>
+                                    <stop offset="100%" stop-color="#8b5cf6"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <span class="logo__text">AgentxSuite</span>
+                    </div>
+                    <p class="footer__description">Enterprise-Grade MCP-Agent-Orchestrierungsplattform.</p>
+                </div>
+                <div class="footer__column">
+                    <h3 class="footer__title">Produkt</h3>
+                    <ul class="footer__links">
+                        <li><a href="../../de/index.html#features">Features</a></li>
+                        <li><a href="../../de/index.html#how-it-works">So funktioniert's</a></li>
+                        <li><a href="index.html">Blog</a></li>
+                    </ul>
+                </div>
+                <div class="footer__column">
+                    <h3 class="footer__title">Rechtliches</h3>
+                    <ul class="footer__links">
+                        <li><a href="../../legal/impressum.html">Impressum</a></li>
+                        <li><a href="../../legal/datenschutz.html">Datenschutz</a></li>
+                        <li><a href="https://github.com/alparn/agentxsuite/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">Lizenz</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer__bottom">
+                <p class="footer__copyright">&copy; <span id="current-year">2025</span> AgentxSuite</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="../../assets/js/main.js" defer></script>
+    <script src="../../assets/js/i18n.js" defer></script>
+    <script src="../../assets/js/theme-toggle.js" defer></script>
+    <script src="../../assets/js/search.js" defer></script>
+    <script src="../../assets/js/cookie-banner.js" defer></script>
+</body>
+</html>
+

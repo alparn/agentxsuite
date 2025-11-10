@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+    <channel>
+        <title>AgentxSuite Blog</title>
+        <description>Latest updates, tutorials, and insights about AgentxSuite and MCP agent orchestration</description>
+        <link>${SITE_URL}/blog/</link>
+        <atom:link href="${SITE_URL}/feed.xml" rel="self" type="application/rss+xml" />
+        <language>en</language>
+        <lastBuildDate>Wed, 15 Jan 2025 12:00:00 +0000</lastBuildDate>
+        
+        <item>
+            <title>Getting Started with AgentxSuite</title>
+            <link>${SITE_URL}/blog/getting-started-with-agentxsuite.html</link>
+            <description>Learn how to set up and configure your first MCP agent orchestration with AgentxSuite. This comprehensive guide walks you through installation, configuration, and your first agent deployment.</description>
+            <pubDate>Wed, 15 Jan 2025 10:00:00 +0000</pubDate>
+            <guid isPermaLink="true">${SITE_URL}/blog/getting-started-with-agentxsuite.html</guid>
+            <category>agents</category>
+            <category>tutorial</category>
+        </item>
+        
+        <item>
+            <title>Understanding MCP Protocol Integration</title>
+            <link>${SITE_URL}/blog/understanding-mcp-protocol.html</link>
+            <description>Deep dive into Model Context Protocol and how AgentxSuite leverages it for seamless agent orchestration. Learn about the technical architecture and integration patterns.</description>
+            <pubDate>Fri, 10 Jan 2025 14:00:00 +0000</pubDate>
+            <guid isPermaLink="true">${SITE_URL}/blog/understanding-mcp-protocol.html</guid>
+            <category>mcp</category>
+            <category>architecture</category>
+        </item>
+        
+    </channel>
+</rss>
+
+
+
+
+

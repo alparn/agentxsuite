@@ -27,8 +27,13 @@ export function PolicyDialog({
     description: "",
     allow: [] as string[],
     deny: [] as string[],
+    allow_resources: [] as string[],
+    deny_resources: [] as string[],
+    allow_prompts: [] as string[],
+    deny_prompts: [] as string[],
     enabled: true,
   });
+  const [activeTab, setActiveTab] = useState<"tools" | "resources" | "prompts">("tools");
   const [allowInput, setAllowInput] = useState("");
   const [denyInput, setDenyInput] = useState("");
   const [allowDropdownOpen, setAllowDropdownOpen] = useState(false);
@@ -67,19 +72,82 @@ export function PolicyDialog({
     enabled: !!orgId && isOpen,
   });
 
+  // Fetch resources for the organization
+  const { data: resourcesData } = useQuery({
+    queryKey: ["resources", orgId],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const response = await api.get(`/orgs/${orgId}/resources/`);
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      return response.data?.results || [];
+    },
+    enabled: !!orgId && isOpen,
+  });
+
+  // Fetch prompts for the organization
+  const { data: promptsData } = useQuery({
+    queryKey: ["prompts", orgId],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const response = await api.get(`/orgs/${orgId}/prompts/`);
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      return response.data?.results || [];
+    },
+    enabled: !!orgId && isOpen,
+  });
+
   const environments = Array.isArray(environmentsData) ? environmentsData : [];
   const tools = Array.isArray(toolsData) ? toolsData : [];
+  const resources = Array.isArray(resourcesData) ? resourcesData : [];
+  const prompts = Array.isArray(promptsData) ? promptsData : [];
   
-  // Filter tools based on input
-  const filteredAllowTools = tools.filter((tool: any) => 
-    tool.name.toLowerCase().includes(allowInput.toLowerCase()) &&
-    !formData.allow.includes(tool.name)
-  );
-  
-  const filteredDenyTools = tools.filter((tool: any) => 
-    tool.name.toLowerCase().includes(denyInput.toLowerCase()) &&
-    !formData.deny.includes(tool.name)
-  );
+  // Filter based on active tab and input
+  const getFilteredAllowItems = () => {
+    const input = allowInput.toLowerCase();
+    if (activeTab === "tools") {
+      return tools.filter((tool: any) => 
+        tool.name.toLowerCase().includes(input) &&
+        !formData.allow.includes(tool.name)
+      );
+    } else if (activeTab === "resources") {
+      return resources.filter((resource: any) => 
+        resource.name.toLowerCase().includes(input) &&
+        !formData.allow_resources.includes(resource.name)
+      );
+    } else {
+      return prompts.filter((prompt: any) => 
+        prompt.name.toLowerCase().includes(input) &&
+        !formData.allow_prompts.includes(prompt.name)
+      );
+    }
+  };
+
+  const getFilteredDenyItems = () => {
+    const input = denyInput.toLowerCase();
+    if (activeTab === "tools") {
+      return tools.filter((tool: any) => 
+        tool.name.toLowerCase().includes(input) &&
+        !formData.deny.includes(tool.name)
+      );
+    } else if (activeTab === "resources") {
+      return resources.filter((resource: any) => 
+        resource.name.toLowerCase().includes(input) &&
+        !formData.deny_resources.includes(resource.name)
+      );
+    } else {
+      return prompts.filter((prompt: any) => 
+        prompt.name.toLowerCase().includes(input) &&
+        !formData.deny_prompts.includes(prompt.name)
+      );
+    }
+  };
+
+  const filteredAllowItems = getFilteredAllowItems();
+  const filteredDenyItems = getFilteredDenyItems();
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -113,6 +181,10 @@ export function PolicyDialog({
         description: rulesJson.description || "",
         allow: Array.isArray(rulesJson.allow) ? rulesJson.allow : [],
         deny: Array.isArray(rulesJson.deny) ? rulesJson.deny : [],
+        allow_resources: Array.isArray(rulesJson.allow_resources) ? rulesJson.allow_resources : [],
+        deny_resources: Array.isArray(rulesJson.deny_resources) ? rulesJson.deny_resources : [],
+        allow_prompts: Array.isArray(rulesJson.allow_prompts) ? rulesJson.allow_prompts : [],
+        deny_prompts: Array.isArray(rulesJson.deny_prompts) ? rulesJson.deny_prompts : [],
         enabled: policy.enabled ?? true,
       });
     } else {
@@ -122,6 +194,10 @@ export function PolicyDialog({
         description: "",
         allow: [],
         deny: [],
+        allow_resources: [],
+        deny_resources: [],
+        allow_prompts: [],
+        deny_prompts: [],
         enabled: true,
       });
     }
@@ -132,42 +208,114 @@ export function PolicyDialog({
     setErrors({});
   }, [policy, isOpen]);
 
-  const addToAllow = (toolName?: string) => {
-    const nameToAdd = toolName || allowInput.trim();
-    if (nameToAdd && !formData.allow.includes(nameToAdd)) {
-      setFormData({
-        ...formData,
-        allow: [...formData.allow, nameToAdd],
-      });
-      setAllowInput("");
-      setAllowDropdownOpen(false);
+  const addToAllow = (name?: string) => {
+    const nameToAdd = name || allowInput.trim();
+    if (!nameToAdd) return;
+
+    if (activeTab === "tools") {
+      if (!formData.allow.includes(nameToAdd)) {
+        setFormData({
+          ...formData,
+          allow: [...formData.allow, nameToAdd],
+        });
+      }
+    } else if (activeTab === "resources") {
+      if (!formData.allow_resources.includes(nameToAdd)) {
+        setFormData({
+          ...formData,
+          allow_resources: [...formData.allow_resources, nameToAdd],
+        });
+      }
+    } else {
+      if (!formData.allow_prompts.includes(nameToAdd)) {
+        setFormData({
+          ...formData,
+          allow_prompts: [...formData.allow_prompts, nameToAdd],
+        });
+      }
     }
+    setAllowInput("");
+    setAllowDropdownOpen(false);
   };
 
   const removeFromAllow = (index: number) => {
-    setFormData({
-      ...formData,
-      allow: formData.allow.filter((_, i) => i !== index),
-    });
-  };
-
-  const addToDeny = (toolName?: string) => {
-    const nameToAdd = toolName || denyInput.trim();
-    if (nameToAdd && !formData.deny.includes(nameToAdd)) {
+    if (activeTab === "tools") {
       setFormData({
         ...formData,
-        deny: [...formData.deny, nameToAdd],
+        allow: formData.allow.filter((_, i) => i !== index),
       });
-      setDenyInput("");
-      setDenyDropdownOpen(false);
+    } else if (activeTab === "resources") {
+      setFormData({
+        ...formData,
+        allow_resources: formData.allow_resources.filter((_, i) => i !== index),
+      });
+    } else {
+      setFormData({
+        ...formData,
+        allow_prompts: formData.allow_prompts.filter((_, i) => i !== index),
+      });
     }
   };
 
+  const addToDeny = (name?: string) => {
+    const nameToAdd = name || denyInput.trim();
+    if (!nameToAdd) return;
+
+    if (activeTab === "tools") {
+      if (!formData.deny.includes(nameToAdd)) {
+        setFormData({
+          ...formData,
+          deny: [...formData.deny, nameToAdd],
+        });
+      }
+    } else if (activeTab === "resources") {
+      if (!formData.deny_resources.includes(nameToAdd)) {
+        setFormData({
+          ...formData,
+          deny_resources: [...formData.deny_resources, nameToAdd],
+        });
+      }
+    } else {
+      if (!formData.deny_prompts.includes(nameToAdd)) {
+        setFormData({
+          ...formData,
+          deny_prompts: [...formData.deny_prompts, nameToAdd],
+        });
+      }
+    }
+    setDenyInput("");
+    setDenyDropdownOpen(false);
+  };
+
   const removeFromDeny = (index: number) => {
-    setFormData({
-      ...formData,
-      deny: formData.deny.filter((_, i) => i !== index),
-    });
+    if (activeTab === "tools") {
+      setFormData({
+        ...formData,
+        deny: formData.deny.filter((_, i) => i !== index),
+      });
+    } else if (activeTab === "resources") {
+      setFormData({
+        ...formData,
+        deny_resources: formData.deny_resources.filter((_, i) => i !== index),
+      });
+    } else {
+      setFormData({
+        ...formData,
+        deny_prompts: formData.deny_prompts.filter((_, i) => i !== index),
+      });
+    }
+  };
+
+  const getAllowList = () => {
+    if (activeTab === "tools") return formData.allow;
+    if (activeTab === "resources") return formData.allow_resources;
+    return formData.allow_prompts;
+  };
+
+  const getDenyList = () => {
+    if (activeTab === "tools") return formData.deny;
+    if (activeTab === "resources") return formData.deny_resources;
+    return formData.deny_prompts;
   };
 
   const mutation = useMutation({
@@ -182,6 +330,18 @@ export function PolicyDialog({
       }
       if (data.deny.length > 0) {
         rulesJson.deny = data.deny;
+      }
+      if (data.allow_resources.length > 0) {
+        rulesJson.allow_resources = data.allow_resources;
+      }
+      if (data.deny_resources.length > 0) {
+        rulesJson.deny_resources = data.deny_resources;
+      }
+      if (data.allow_prompts.length > 0) {
+        rulesJson.allow_prompts = data.allow_prompts;
+      }
+      if (data.deny_prompts.length > 0) {
+        rulesJson.deny_prompts = data.deny_prompts;
       }
 
       const payload: any = {
@@ -304,9 +464,49 @@ export function PolicyDialog({
             />
           </div>
 
+          {/* Tabs */}
+          <div className="border-b border-slate-200 dark:border-slate-700">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab("tools")}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  activeTab === "tools"
+                    ? "border-b-2 border-purple-500 text-purple-500"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+              >
+                {t("tools.title")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("resources")}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  activeTab === "resources"
+                    ? "border-b-2 border-purple-500 text-purple-500"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+              >
+                {t("resources.title")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("prompts")}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  activeTab === "prompts"
+                    ? "border-b-2 border-purple-500 text-purple-500"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                }`}
+              >
+                {t("prompts.title")}
+              </button>
+            </div>
+          </div>
+
+          {/* Allow List */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-              {t("policies.allow")} ({t("policies.toolNames")})
+              {t("policies.allow")}
             </label>
             <div className="relative">
               <div className="flex gap-2 mb-2">
@@ -322,26 +522,33 @@ export function PolicyDialog({
                     onKeyPress={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        if (filteredAllowTools.length > 0) {
-                          addToAllow(filteredAllowTools[0].name);
+                        if (filteredAllowItems.length > 0) {
+                          const item = filteredAllowItems[0];
+                          addToAllow(item.name);
                         } else {
                           addToAllow();
                         }
                       }
                     }}
                     className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder={t("policies.enterToolName")}
+                    placeholder={
+                      activeTab === "tools"
+                        ? t("policies.enterToolName")
+                        : activeTab === "resources"
+                        ? t("resources.name")
+                        : t("prompts.name")
+                    }
                   />
-                  {allowDropdownOpen && filteredAllowTools.length > 0 && (
+                  {allowDropdownOpen && filteredAllowItems.length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {filteredAllowTools.map((tool: any) => (
+                      {filteredAllowItems.map((item: any) => (
                         <button
-                          key={tool.id}
+                          key={item.id}
                           type="button"
-                          onClick={() => addToAllow(tool.name)}
+                          onClick={() => addToAllow(item.name)}
                           className="w-full text-left px-4 py-2 hover:bg-purple-500/10 text-slate-900 dark:text-white text-sm"
                         >
-                          {tool.name}
+                          {item.name}
                         </button>
                       ))}
                     </div>
@@ -355,9 +562,9 @@ export function PolicyDialog({
                   {t("common.add")}
                 </button>
               </div>
-              {formData.allow.length > 0 && (
+              {getAllowList().length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {formData.allow.map((item, index) => (
+                  {getAllowList().map((item, index) => (
                     <span
                       key={index}
                       className="inline-flex items-center gap-1 px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm"
@@ -377,9 +584,10 @@ export function PolicyDialog({
             </div>
           </div>
 
+          {/* Deny List */}
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-              {t("policies.deny")} ({t("policies.toolNames")})
+              {t("policies.deny")}
             </label>
             <div className="relative">
               <div className="flex gap-2 mb-2">
@@ -395,26 +603,33 @@ export function PolicyDialog({
                     onKeyPress={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        if (filteredDenyTools.length > 0) {
-                          addToDeny(filteredDenyTools[0].name);
+                        if (filteredDenyItems.length > 0) {
+                          const item = filteredDenyItems[0];
+                          addToDeny(item.name);
                         } else {
                           addToDeny();
                         }
                       }
                     }}
                     className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    placeholder={t("policies.enterToolName")}
+                    placeholder={
+                      activeTab === "tools"
+                        ? t("policies.enterToolName")
+                        : activeTab === "resources"
+                        ? t("resources.name")
+                        : t("prompts.name")
+                    }
                   />
-                  {denyDropdownOpen && filteredDenyTools.length > 0 && (
+                  {denyDropdownOpen && filteredDenyItems.length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {filteredDenyTools.map((tool: any) => (
+                      {filteredDenyItems.map((item: any) => (
                         <button
-                          key={tool.id}
+                          key={item.id}
                           type="button"
-                          onClick={() => addToDeny(tool.name)}
+                          onClick={() => addToDeny(item.name)}
                           className="w-full text-left px-4 py-2 hover:bg-red-500/10 text-slate-900 dark:text-white text-sm"
                         >
-                          {tool.name}
+                          {item.name}
                         </button>
                       ))}
                     </div>
@@ -428,9 +643,9 @@ export function PolicyDialog({
                   {t("common.add")}
                 </button>
               </div>
-              {formData.deny.length > 0 && (
+              {getDenyList().length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {formData.deny.map((item, index) => (
+                  {getDenyList().map((item, index) => (
                     <span
                       key={index}
                       className="inline-flex items-center gap-1 px-3 py-1 bg-red-500/20 text-red-400 rounded-full text-sm"

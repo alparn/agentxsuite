@@ -29,7 +29,9 @@
     "noData": "No data available",
     "select": "Select",
     "optional": "Optional",
-    "add": "Add"
+    "add": "Add",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
   },
   "nav": {
     "overview": "Overview",
@@ -40,7 +42,9 @@
     "policies": "Policies",
     "environments": "Environments",
     "audit": "Audit & Logs",
-    "settings": "Settings"
+    "settings": "Settings",
+    "resources": "Resources",
+    "prompts": "Prompts"
   },
   "auth": {
     "loginTitle": "Welcome back",
@@ -148,6 +152,53 @@
     "newEnvironment": "New Environment",
     "type": "Type",
     "confirmDelete": "Are you sure you want to delete the environment \"{name}\"? This action cannot be undone."
+  },
+  "resources": {
+    "title": "Resources",
+    "subtitle": "Manage MCP Resources",
+    "newResource": "New Resource",
+    "type": "Type",
+    "environment": "Environment",
+    "allEnvironments": "All Environments",
+    "mimeType": "MIME Type",
+    "noResources": "No resources found",
+    "confirmDelete": "Are you sure you want to delete resource '{name}'?",
+    "deleteSuccess": "Resource deleted successfully",
+    "deleteError": "Error deleting resource",
+    "name": "Name",
+    "configJson": "Configuration (JSON)",
+    "schemaJson": "Schema (JSON, optional)",
+    "secretRef": "Secret Reference",
+    "enabled": "Enabled",
+    "typeStatic": "Static",
+    "typeHttp": "HTTP",
+    "typeSql": "SQL",
+    "typeS3": "S3",
+    "typeFile": "File"
+  },
+  "prompts": {
+    "title": "Prompts",
+    "subtitle": "Manage MCP Prompts",
+    "newPrompt": "New Prompt",
+    "environment": "Environment",
+    "allEnvironments": "All Environments",
+    "noPrompts": "No prompts found",
+    "confirmDelete": "Are you sure you want to delete prompt '{name}'?",
+    "deleteSuccess": "Prompt deleted successfully",
+    "deleteError": "Error deleting prompt",
+    "name": "Name",
+    "description": "Description",
+    "inputSchema": "Input Schema (JSON)",
+    "templateSystem": "System Template (Jinja2)",
+    "templateUser": "User Template (Jinja2)",
+    "usesResources": "Uses Resources",
+    "outputHints": "Output Hints (JSON, optional)",
+    "enabled": "Enabled",
+    "invoke": "Invoke",
+    "invokePrompt": "Invoke Prompt",
+    "invokeSuccess": "Prompt invoked successfully",
+    "invokeError": "Error invoking prompt",
+    "noInputRequired": "No input parameters required"
   }
 }
 

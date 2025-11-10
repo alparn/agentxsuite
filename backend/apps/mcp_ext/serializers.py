@@ -14,7 +14,7 @@ class ResourceSerializer(serializers.ModelSerializer):
 
     organization = OrganizationSerializer(read_only=True)
     environment = EnvironmentSerializer(read_only=True)
-    environment_id = serializers.UUIDField(write_only=True)
+    environment_id = serializers.UUIDField(write_only=True, required=False)
     config_json = serializers.JSONField()
     schema_json = serializers.JSONField(required=False, allow_null=True)
 
@@ -37,13 +37,20 @@ class ResourceSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
+    def to_representation(self, instance):
+        """Add environment_id to representation for filtering."""
+        representation = super().to_representation(instance)
+        if instance.environment:
+            representation["environment_id"] = str(instance.environment.id)
+        return representation
+
 
 class PromptSerializer(serializers.ModelSerializer):
     """Serializer for Prompt (list)."""
 
     organization = OrganizationSerializer(read_only=True)
     environment = EnvironmentSerializer(read_only=True)
-    environment_id = serializers.UUIDField(write_only=True)
+    environment_id = serializers.UUIDField(write_only=True, required=False)
     input_schema = serializers.JSONField()
     uses_resources = serializers.JSONField()
     output_hints = serializers.JSONField(required=False, allow_null=True)
@@ -67,4 +74,11 @@ class PromptSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def to_representation(self, instance):
+        """Add environment_id to representation for filtering."""
+        representation = super().to_representation(instance)
+        if instance.environment:
+            representation["environment_id"] = str(instance.environment.id)
+        return representation
 

@@ -15,6 +15,8 @@ import {
   Settings,
   LogOut as LogOutIcon,
   X,
+  Database,
+  MessageSquare,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -24,6 +26,8 @@ const navItems = [
   { href: "/agents", icon: Bot, key: "agents" },
   { href: "/connections", icon: Plug, key: "connections" },
   { href: "/tools", icon: Wrench, key: "tools" },
+  { href: "/resources", icon: Database, key: "resources" },
+  { href: "/prompts", icon: MessageSquare, key: "prompts" },
   { href: "/runs", icon: Play, key: "runs" },
   { href: "/policies", icon: Shield, key: "policies" },
   { href: "/environments", icon: Globe, key: "environments" },

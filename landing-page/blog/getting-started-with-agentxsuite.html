@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <title>Getting Started with AgentxSuite - AgentxSuite Blog</title>
+    <meta name="description" content="Learn how to set up and configure your first MCP agent orchestration with AgentxSuite">
+    <link rel="canonical" href="${SITE_URL}/blog/getting-started-with-agentxsuite.html">
+    
+    <link rel="icon" type="image/svg+xml" href="../assets/img/favicon.svg">
+    <link rel="stylesheet" href="../assets/css/base.css">
+    <link rel="stylesheet" href="../assets/css/theme-dark.css">
+    <link rel="stylesheet" href="../assets/css/utilities.css">
+    
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      "headline": "Getting Started with AgentxSuite",
+      "description": "Learn how to set up and configure your first MCP agent orchestration with AgentxSuite",
+      "datePublished": "2025-01-15",
+      "author": {
+        "@type": "Organization",
+        "name": "AgentxSuite"
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "AgentxSuite"
+      }
+    }
+    </script>
+</head>
+<body data-lang="en">
+    <header class="header">
+        <div class="container">
+            <div class="header__inner">
+                <div class="header__logo">
+                    <a href="/" class="logo">
+                        <svg class="logo__icon" width="32" height="32" viewBox="0 0 32 32" fill="none">
+                            <rect width="32" height="32" rx="6" fill="url(#logo-gradient)"/>
+                            <path d="M16 8L24 20H8L16 8Z" fill="white" opacity="0.9"/>
+                            <path d="M16 24L8 12H24L16 24Z" fill="white" opacity="0.6"/>
+                            <defs>
+                                <linearGradient id="logo-gradient" x1="0" y1="0" x2="32" y2="32">
+                                    <stop offset="0%" stop-color="#6366f1"/>
+                                    <stop offset="100%" stop-color="#8b5cf6"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <span class="logo__text">AgentxSuite</span>
+                    </a>
+                </div>
+                <nav class="nav">
+                    <ul class="nav__list">
+                        <li class="nav__item"><a href="/" class="nav__link">Home</a></li>
+                        <li class="nav__item"><a href="/blog/" class="nav__link">Blog</a></li>
+                        <li class="nav__item"><a href="https://github.com/alparn/agentxsuite" class="nav__link" target="_blank" rel="noopener">GitHub</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main class="blog-post">
+        <div class="container">
+            <article class="post-content">
+                <header class="post-header">
+                    <div class="post-meta">
+                        <time datetime="2025-01-15">January 15, 2025</time>
+                        <div class="post-tags">
+                            <a href="/blog/tags/agents.html" class="tag">agents</a>
+                            <a href="/blog/tags/tutorial.html" class="tag">tutorial</a>
+                        </div>
+                    </div>
+                    <h1 class="post-title">Getting Started with AgentxSuite</h1>
+                    <p class="post-lead">Learn how to set up and configure your first MCP agent orchestration with AgentxSuite. This comprehensive guide walks you through installation, configuration, and your first agent deployment.</p>
+                </header>
+
+                <div class="post-body">
+                    <h2>Introduction</h2>
+                    <p>AgentxSuite provides a powerful platform for orchestrating Model Context Protocol (MCP) agents at enterprise scale. This guide will walk you through the essential steps to get started with your first agent deployment.</p>
+
+                    <h2>Prerequisites</h2>
+                    <ul>
+                        <li>Python 3.11 or higher</li>
+                        <li>PostgreSQL 14+ (SQLite works for development)</li>
+                        <li>Redis (for rate limiting and caching)</li>
+                        <li>Basic understanding of MCP protocol</li>
+                    </ul>
+
+                    <h2>Installation</h2>
+                    <p>Clone the repository and install dependencies:</p>
+                    <pre><code>git clone https://github.com/alparn/agentxsuite
+cd AgentxSuite/backend
+pip install -r requirements/base.txt</code></pre>
+
+                    <h2>Configuration</h2>
+                    <p>Set up your environment variables:</p>
+                    <pre><code>export SECRET_KEY="your-secret-key"
+export FERNET_KEY="your-fernet-key"
+export DATABASE_URL="postgresql://user:pass@localhost/agentxsuite"</code></pre>
+
+                    <h2>Your First Agent</h2>
+                    <p>Create your first organization, environment, and agent through the Django admin or API. Configure MCP connections and define security policies before executing your first run.</p>
+
+                    <h2>Next Steps</h2>
+                    <p>Explore the <a href="https://github.com/alparn/agentxsuite#readme">full documentation</a> to learn about advanced features like policy management, custom tools, and monitoring.</p>
+                </div>
+
+                <footer class="post-footer">
+                    <a href="/blog/" class="btn btn--secondary">← Back to Blog</a>
+                </footer>
+            </article>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer__bottom">
+                <p class="footer__copyright">&copy; <span id="current-year">2025</span> AgentxSuite</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="../assets/js/main.js" defer></script>
+    <script src="../assets/js/theme-toggle.js" defer></script>
+</body>
+</html>
+
