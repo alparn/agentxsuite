@@ -137,3 +137,6 @@ Thumbs.db
 # Local test application (nicht ins Git)
 local_test/
 
+# Documentation
+docs/
+
