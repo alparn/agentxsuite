@@ -21,6 +21,28 @@ from apps.tools.models import Tool
 logger = logging.getLogger(__name__)
 
 
+def _get_mcp_fabric_endpoints() -> list[str]:
+    """
+    Get list of MCP Fabric endpoints for own service detection.
+    
+    Returns both localhost and 127.0.0.1 variants of the configured MCP Fabric URL.
+    """
+    try:
+        from mcp_fabric.deps import MCP_FABRIC_BASE_URL
+        
+        endpoints = [MCP_FABRIC_BASE_URL.rstrip("/")]
+        
+        # Also add 127.0.0.1 variant if URL contains localhost
+        if "localhost" in MCP_FABRIC_BASE_URL:
+            endpoints.append(MCP_FABRIC_BASE_URL.replace("localhost", "127.0.0.1").rstrip("/"))
+        
+        return endpoints
+    except ImportError:
+        # Fallback if mcp_fabric is not available
+        logger.warning("Could not import MCP_FABRIC_BASE_URL, using defaults")
+        return ["http://localhost:8090", "http://127.0.0.1:8090"]
+
+
 def start_run(
     *,
     agent: Agent,
@@ -208,10 +230,7 @@ def start_run(
             # Check if connection points to our own MCP Fabric service
             # If so, execute tool directly without HTTP call (avoid recursion)
             connection_endpoint = tool.connection.endpoint.rstrip("/")
-            mcp_fabric_endpoints = [
-                "http://localhost:8090",
-                "http://127.0.0.1:8090",
-            ]
+            mcp_fabric_endpoints = _get_mcp_fabric_endpoints()
             
             # Check if this is our own MCP Fabric service
             is_own_service = any(

@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from mcp_fabric.routers import mcp, prm
 from mcp_fabric.routes_prompts import router as prompts_router
 from mcp_fabric.routes_resources import router as resources_router
-from mcp_fabric.settings import API_V1_PREFIX
+from mcp_fabric.settings import API_V1_PREFIX, MCP_FABRIC_CORS_ORIGINS
 
 # Initialize Django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
@@ -37,14 +37,7 @@ app = FastAPI(
 # Allow requests from frontend and also direct browser requests (for testing)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",  # Alternative port
-        "http://127.0.0.1:3001",
-        "http://localhost:8090",  # Allow direct access for testing
-        "http://127.0.0.1:8090",
-    ],
+    allow_origins=MCP_FABRIC_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
     allow_headers=[
@@ -73,14 +66,7 @@ async def options_handler(request: Request, full_path: str):
     to OPTIONS requests. This handler intercepts OPTIONS requests early.
     """
     origin = request.headers.get("origin")
-    allowed_origins = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-        "http://localhost:8090",  # Allow direct access for testing
-        "http://127.0.0.1:8090",
-    ]
+    allowed_origins = MCP_FABRIC_CORS_ORIGINS
     
     # Check if origin is allowed
     # IMPORTANT: Cannot use "*" when allow_credentials=True

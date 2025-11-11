@@ -38,6 +38,7 @@ venv.bak/
 .env.test
 *.env
 .envrc
+# .env.example is a template and should be committed
 
 # Django
 *.log

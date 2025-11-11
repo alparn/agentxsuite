@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from apps.agents.models import Agent
+from apps.connections.models import Connection
 from apps.policies.models import Policy
 from apps.policies.services import is_allowed
 from apps.runs.services import start_run
@@ -20,6 +21,43 @@ from apps.tools.schemas import ToolRunInputSchema
 from apps.tools.serializers import ToolSerializer
 
 logger = logging.getLogger(__name__)
+
+
+def _get_mcp_fabric_base_url() -> str:
+    """
+    Get MCP Fabric base URL from configuration.
+    
+    Returns:
+        MCP Fabric base URL, defaults to http://localhost:8090 if not configured.
+    """
+    try:
+        from mcp_fabric.deps import MCP_FABRIC_BASE_URL
+        return MCP_FABRIC_BASE_URL
+    except ImportError:
+        logger.warning("Could not import MCP_FABRIC_BASE_URL, using default")
+        return "http://localhost:8090"
+
+
+def _get_mcp_fabric_endpoints() -> list[str]:
+    """
+    Get list of MCP Fabric endpoints for own service detection.
+    
+    Returns both localhost and 127.0.0.1 variants of the configured MCP Fabric URL.
+    """
+    try:
+        from mcp_fabric.deps import MCP_FABRIC_BASE_URL
+        
+        endpoints = [MCP_FABRIC_BASE_URL.rstrip("/")]
+        
+        # Also add 127.0.0.1 variant if URL contains localhost
+        if "localhost" in MCP_FABRIC_BASE_URL:
+            endpoints.append(MCP_FABRIC_BASE_URL.replace("localhost", "127.0.0.1").rstrip("/"))
+        
+        return endpoints
+    except ImportError:
+        # Fallback if mcp_fabric is not available
+        logger.warning("Could not import MCP_FABRIC_BASE_URL, using defaults")
+        return ["http://localhost:8090", "http://127.0.0.1:8090"]
 
 
 class ToolViewSet(ModelViewSet):
@@ -52,12 +90,13 @@ class ToolViewSet(ModelViewSet):
         if "connection_id" not in validated_data or not validated_data.get("connection_id"):
             if environment_id:
                 # Find or create a local connection for MCP Fabric
+                mcp_fabric_url = _get_mcp_fabric_base_url()
                 connection, _ = Connection.objects.get_or_create(
                     organization_id=org_id,
                     environment_id=environment_id,
                     name="mcp-fabric-local",
                     defaults={
-                        "endpoint": "http://localhost:8090",  # MCP Fabric endpoint
+                        "endpoint": mcp_fabric_url,  # MCP Fabric endpoint from ENV
                         "auth_method": "none",
                         "status": "ok",
                     },
@@ -94,10 +133,7 @@ class ToolViewSet(ModelViewSet):
             # If so, redirect user to use MCP Fabric API instead
             if tool.connection:
                 connection_endpoint = tool.connection.endpoint.rstrip("/")
-                mcp_fabric_endpoints = [
-                    "http://localhost:8090",
-                    "http://127.0.0.1:8090",
-                ]
+                mcp_fabric_endpoints = _get_mcp_fabric_endpoints()
                 
                 # Check if this is our own MCP Fabric service
                 is_mcp_fabric_tool = any(

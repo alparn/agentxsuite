@@ -3,6 +3,7 @@ Management command to seed local test data for AgentxSuite runner/caller tests.
 """
 from __future__ import annotations
 
+from decouple import config
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
@@ -42,12 +43,16 @@ class Command(BaseCommand):
             )
 
         # Verbindung zum Mock-MCP
+        mock_mcp_url = config(
+            "MOCK_MCP_SERVER_URL",
+            default="http://127.0.0.1:8091/.well-known/mcp/",
+        )
         conn, created = Connection.objects.get_or_create(
             organization=org,
             environment=env,
             name="mock-mcp",
             defaults={
-                "endpoint": "http://127.0.0.1:8091/.well-known/mcp/",
+                "endpoint": mock_mcp_url,
                 "auth_method": "bearer",
                 "status": "ok",
                 "last_seen_at": timezone.now(),
