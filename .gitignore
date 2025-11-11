@@ -139,5 +139,6 @@ Thumbs.db
 local_test/
 
 # Documentation
-docs/
+# Ignore .md files in docs/, but allow images
+docs/*.md
 
