@@ -9,8 +9,15 @@ from rest_framework.authtoken.models import Token
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet
 
-from apps.accounts.serializers import LoginSerializer, UserRegistrationSerializer, UserSerializer
+from apps.accounts.models import ServiceAccount, User
+from apps.accounts.serializers import (
+    LoginSerializer,
+    ServiceAccountSerializer,
+    UserRegistrationSerializer,
+    UserSerializer,
+)
 
 
 @api_view(["POST"])
@@ -157,3 +164,23 @@ def my_organizations(request) -> Response:
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
+
+class ServiceAccountViewSet(ModelViewSet):
+    """ViewSet for ServiceAccount management."""
+
+    queryset = ServiceAccount.objects.all()
+    serializer_class = ServiceAccountSerializer
+
+    def get_queryset(self):
+        """Filter by organization if org_id is provided."""
+        queryset = super().get_queryset()
+        org_id = self.kwargs.get("org_id")
+        if org_id:
+            queryset = queryset.filter(organization_id=org_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        """Set organization from URL parameter."""
+        org_id = self.kwargs.get("org_id")
+        if org_id:
+            serializer.save(organization_id=org_id)

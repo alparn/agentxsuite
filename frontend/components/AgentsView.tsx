@@ -5,8 +5,9 @@ import { useTranslations } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
-import { Plus, Power, PowerOff, Edit, Radio, X, CheckCircle2, AlertCircle, AlertTriangle } from "lucide-react";
+import { Plus, Power, PowerOff, Edit, Radio, X, CheckCircle2, AlertCircle, AlertTriangle, Link as LinkIcon } from "lucide-react";
 import { AgentDialog } from "./AgentDialog";
+import { ServiceAccountDialog } from "./ServiceAccountDialog";
 
 interface Toast {
   id: string;
@@ -21,6 +22,8 @@ export function AgentsView() {
   const [selectedAgent, setSelectedAgent] = useState<any>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<any>(null);
+  const [showServiceAccountDialog, setShowServiceAccountDialog] = useState(false);
+  const [serviceAccountAgent, setServiceAccountAgent] = useState<any>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   // Fetch organizations and auto-select first one if none selected
@@ -244,7 +247,7 @@ export function AgentsView() {
                             }}
                             disabled={pingMutation.isPending}
                             className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={pingMutation.isPending ? t("common.loading") : t("agents.pingAgent")}
+                            title={pingMutation.isPending ? t("common.loading") : `${t("agents.pingAgent")} - ${agent.name}`}
                           >
                             <Radio className={`w-4 h-4 ${pingMutation.isPending ? "animate-pulse" : ""}`} />
                           </button>
@@ -257,7 +260,7 @@ export function AgentsView() {
                               });
                             }}
                             className="p-2 text-slate-400 hover:text-green-400 hover:bg-green-500/10 rounded transition-colors"
-                            title={agent.enabled ? t("agents.disable") : t("agents.enable")}
+                            title={agent.enabled ? `${t("agents.disable")} - ${agent.name}` : `${t("agents.enable")} - ${agent.name}`}
                           >
                             {agent.enabled ? (
                               <PowerOff className="w-4 h-4" />
@@ -272,10 +275,31 @@ export function AgentsView() {
                               setIsDialogOpen(true);
                             }}
                             className="p-2 text-slate-400 hover:text-purple-400 hover:bg-purple-500/10 rounded transition-colors"
-                            title={t("common.edit")}
+                            title={`${t("common.edit")} - ${agent.name}`}
                           >
                             <Edit className="w-4 h-4" />
                           </button>
+                          {!agent.service_account && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setServiceAccountAgent(agent);
+                                setShowServiceAccountDialog(true);
+                              }}
+                              className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
+                              title={t("agents.createServiceAccountTooltip")}
+                            >
+                              <LinkIcon className="w-4 h-4" />
+                            </button>
+                          )}
+                          {agent.service_account && (
+                            <span
+                              className="p-2 text-green-400 cursor-help"
+                              title={t("agents.serviceAccountExists")}
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -336,7 +360,7 @@ export function AgentsView() {
                     }}
                     disabled={pingMutation.isPending}
                     className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={pingMutation.isPending ? t("common.loading") : t("agents.pingAgent")}
+                    title={pingMutation.isPending ? t("common.loading") : `${t("agents.pingAgent")} - ${agent.name}`}
                   >
                     <Radio className={`w-4 h-4 ${pingMutation.isPending ? "animate-pulse" : ""}`} />
                   </button>
@@ -349,7 +373,7 @@ export function AgentsView() {
                       });
                     }}
                     className="p-2 text-slate-400 hover:text-green-400 hover:bg-green-500/10 rounded transition-colors"
-                    title={agent.enabled ? t("agents.disable") : t("agents.enable")}
+                    title={agent.enabled ? `${t("agents.disable")} - ${agent.name}` : `${t("agents.enable")} - ${agent.name}`}
                   >
                     {agent.enabled ? (
                       <PowerOff className="w-4 h-4" />
@@ -364,10 +388,31 @@ export function AgentsView() {
                       setIsDialogOpen(true);
                     }}
                     className="p-2 text-slate-400 hover:text-purple-400 hover:bg-purple-500/10 rounded transition-colors"
-                    title={t("common.edit")}
+                    title={`${t("common.edit")} - ${agent.name}`}
                   >
                     <Edit className="w-4 h-4" />
                   </button>
+                  {!agent.service_account && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setServiceAccountAgent(agent);
+                        setShowServiceAccountDialog(true);
+                      }}
+                      className="p-2 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded transition-colors"
+                      title={t("agents.createServiceAccountTooltip")}
+                    >
+                      <LinkIcon className="w-4 h-4" />
+                    </button>
+                  )}
+                  {agent.service_account && (
+                    <span
+                      className="p-2 text-green-400 cursor-help"
+                      title="ServiceAccount vorhanden - Agent kann Tokens generieren"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -455,6 +500,16 @@ export function AgentsView() {
         }}
         agent={editingAgent}
         orgId={orgId}
+      />
+      <ServiceAccountDialog
+        agents={agents}
+        orgId={orgId}
+        isOpen={showServiceAccountDialog}
+        onClose={() => {
+          setShowServiceAccountDialog(false);
+          setServiceAccountAgent(null);
+        }}
+        preselectedAgentId={serviceAccountAgent?.id}
       />
     </div>
   );

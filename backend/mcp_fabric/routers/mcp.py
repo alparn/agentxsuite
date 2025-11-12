@@ -7,7 +7,7 @@ import logging
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastmcp.server.server import FastMCP as MCPServer
 
 from mcp_fabric.deps import create_token_validator
@@ -58,6 +58,7 @@ def _resolve_org_env(org_id: str, env_id: str) -> tuple:
 
 @router.get("/manifest.json")
 async def manifest(
+    request: Request,
     org_id: UUID = Path(..., description="Organization ID"),
     env_id: UUID = Path(..., description="Environment ID"),
     token_claims: dict = Depends(
@@ -84,6 +85,7 @@ async def manifest(
 
 @router.get("/tools")
 async def tools(
+    request: Request,
     org_id: UUID = Path(..., description="Organization ID"),
     env_id: UUID = Path(..., description="Environment ID"),
     token_claims: dict = Depends(
@@ -122,6 +124,7 @@ async def tools(
 
 @router.post("/run")
 async def run(
+    request: Request,
     org_id: UUID = Path(..., description="Organization ID"),
     env_id: UUID = Path(..., description="Environment ID"),
     payload: dict = None,
@@ -151,12 +154,30 @@ async def run(
 
     org, env = await sync_to_async(_resolve_org_env)(str(org_id), str(env_id))
 
+    # P0: Extract resolved agent_id from token claims (set by deps via subject/issuer mapping)
+    # This is the source of truth - resolved via (subject, issuer) → Agent mapping
+    token_agent_id = token_claims.get("_resolved_agent_id") or token_claims.get("agent_id")
+
+    if not token_agent_id:
+        raise raise_mcp_http_exception(
+            ErrorCodes.AGENT_NOT_FOUND,
+            "Agent not resolved from token claims. Token must have valid (subject, issuer) mapping.",
+            status.HTTP_403_FORBIDDEN,
+        )
+
     mcp = MCPServer(name=f"AgentxSuite MCP - {org.name}/{env.name}")
     await sync_to_async(register_tools_for_org_env)(mcp, org=org, env=env)
 
     # Support both formats: {"tool": "...", "input": {...}} and {"name": "...", "arguments": {...}}
     tool_name = payload.get("tool") or payload.get("name")
     input_args = payload.get("input") or payload.get("arguments") or {}
+    
+    # P0: Pass resolved agent_id and audit metadata to tool handlers via input_args
+    # This allows the adapter to validate Session-Lock and log audit events
+    input_args["_token_agent_id"] = token_agent_id
+    input_args["_jti"] = token_claims.get("_jti")
+    input_args["_client_ip"] = token_claims.get("_client_ip")
+    input_args["_request_id"] = token_claims.get("_request_id")
 
     if not tool_name:
         raise raise_mcp_http_exception(

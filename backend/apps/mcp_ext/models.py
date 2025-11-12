@@ -112,3 +112,8 @@ class Prompt(TimeStamped):
     def __str__(self) -> str:
         return f"{self.organization.name}/{self.environment.name}/{self.name}"
 
+
+
+
+
+

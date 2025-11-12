@@ -12,25 +12,33 @@ class AuditEventSerializer(serializers.ModelSerializer):
     """Serializer for AuditEvent."""
 
     actor = serializers.SerializerMethodField()
-    action = serializers.CharField(source="event_type", read_only=True)
+    action_field = serializers.CharField(source="action", read_only=True)
     object_type = serializers.SerializerMethodField()
     details = serializers.SerializerMethodField()
+    ts = serializers.DateTimeField(source="created_at", read_only=True)
 
     class Meta:
         model = AuditEvent
         fields = [
             "id",
+            "ts",
             "created_at",
             "updated_at",
-            "actor",
+            "subject",
             "action",
+            "action_field",
+            "target",
+            "decision",
+            "rule_id",
+            "context",
+            "actor",
             "object_type",
             "details",
             "event_type",
             "event_data",
             "organization",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "created_at", "updated_at", "ts"]
 
     def get_actor(self, obj) -> str:
         """Extract actor from event_data if available."""

@@ -41,6 +41,7 @@
     "runs": "Ausführungen",
     "policies": "Richtlinien",
     "environments": "Umgebungen",
+    "mcpConnect": "MCP Verbinden",
     "audit": "Audit & Logs",
     "settings": "Einstellungen",
     "resources": "Resources",
@@ -106,7 +107,10 @@
     "pingSuccess": "Agent erfolgreich gepingt",
     "pingError": "Fehler beim Ping des Agents",
     "enable": "Aktivieren",
-    "disable": "Deaktivieren"
+    "disable": "Deaktivieren",
+    "createServiceAccount": "ServiceAccount erstellen",
+    "createServiceAccountTooltip": "ServiceAccount für diesen Agent erstellen, um Tokens generieren zu können",
+    "serviceAccountExists": "ServiceAccount vorhanden - Agent kann Tokens generieren"
   },
   "tools": {
     "title": "Tools",
@@ -199,6 +203,39 @@
     "invokeSuccess": "Prompt erfolgreich ausgeführt",
     "invokeError": "Fehler beim Ausführen des Prompts",
     "noInputRequired": "Keine Eingabeparameter erforderlich"
+  },
+  "mcpConnect": {
+    "title": "Verbinde deine Tools mit AI-Assistenten",
+    "subtitle": "Deine MCP-Tools funktionieren sofort mit Claude, Gemini, Cursor und mehr. Ein-Klick-Setup, keine Konfiguration nötig.",
+    "selectEnvironment": "Umgebung auswählen",
+    "mcpServerAddress": "MCP-Server-Adresse",
+    "mcpServerDescription": "Dies ist die Adresse deines MCP-Servers. Verwende sie, um dich mit jedem unterstützten AI-Assistenten zu verbinden.",
+    "copy": "Kopieren",
+    "noEnvironments": "Keine Umgebungen verfügbar. Bitte erstelle zuerst eine Umgebung.",
+    "claudeDesktop": {
+      "title": "Mit Claude Desktop verbinden",
+      "description": "Verwende deine Tools direkt in der Claude Desktop-App. Ein-Klick-Installation.",
+      "button": "Zu Claude Desktop hinzufügen",
+      "hint": "Lädt .json Datei herunter. Öffne sie, um zu verbinden."
+    },
+    "claudeCode": {
+      "title": "Mit Claude Code verbinden",
+      "description": "Greife auf deine Tools über die Kommandozeile zu. Schnelles Setup mit einem einzigen Befehl.",
+      "button": "Zu Claude Code hinzufügen",
+      "hint": "Kopiert Befehl. Füge ihn in dein Terminal ein."
+    },
+    "geminiCLI": {
+      "title": "Mit Gemini CLI verbinden",
+      "description": "Greife auf deine Tools über die Kommandozeile zu. Schnelles Setup mit einem einzigen Befehl.",
+      "button": "Zu Gemini CLI hinzufügen",
+      "hint": "Kopiert Befehl. Füge ihn in dein Terminal ein."
+    },
+    "cursor": {
+      "title": "Mit Cursor verbinden",
+      "description": "AI-gestützter Code-Editor mit integrierter Tool-Unterstützung. Klicke, um sofort zu verbinden.",
+      "button": "Zu Cursor hinzufügen",
+      "hint": "Öffnet Cursor mit Verbindungsaufforderung."
+    }
   }
 }
 

@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { Resource, Prompt } from "./types";
+import type { Resource, Prompt, Policy, PolicyRule, PolicyBinding, PolicyEvaluateRequest, Agent, IssuedToken, TokenGenerateRequest, TokenGenerateResponse, ServiceAccount } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -57,6 +57,105 @@ export const promptsApi = {
     api.put(`/orgs/${orgId}/prompts/${id}/`, data),
   delete: (orgId: string, id: string) =>
     api.delete(`/orgs/${orgId}/prompts/${id}/`),
+};
+
+// Policies API
+export const policiesApi = {
+  list: (orgId: string, params?: { name?: string; is_active?: boolean }) =>
+    api.get(`/orgs/${orgId}/policies/`, { params }),
+  get: (orgId: string, id: string) =>
+    api.get(`/orgs/${orgId}/policies/${id}/`),
+  create: (orgId: string, data: Partial<Policy>) =>
+    api.post(`/orgs/${orgId}/policies/`, data),
+  update: (orgId: string, id: string, data: Partial<Policy>) =>
+    api.put(`/orgs/${orgId}/policies/${id}/`, data),
+  delete: (orgId: string, id: string) =>
+    api.delete(`/orgs/${orgId}/policies/${id}/`),
+};
+
+// Policy Rules API
+export const policyRulesApi = {
+  list: (params?: { policy_id?: string }) =>
+    api.get(`/policy-rules/`, { params }),
+  get: (id: string) => api.get(`/policy-rules/${id}/`),
+  create: (data: Partial<PolicyRule>) =>
+    api.post(`/policy-rules/`, data),
+  update: (id: string, data: Partial<PolicyRule>) =>
+    api.put(`/policy-rules/${id}/`, data),
+  delete: (id: string) =>
+    api.delete(`/policy-rules/${id}/`),
+};
+
+// Policy Bindings API
+export const policyBindingsApi = {
+  list: (params?: { scope_type?: string; scope_id?: string; policy_id?: string }) =>
+    api.get(`/policy-bindings/`, { params }),
+  get: (id: string) => api.get(`/policy-bindings/${id}/`),
+  create: (data: Partial<PolicyBinding>) =>
+    api.post(`/policy-bindings/`, data),
+  update: (id: string, data: Partial<PolicyBinding>) =>
+    api.put(`/policy-bindings/${id}/`, data),
+  delete: (id: string) =>
+    api.delete(`/policy-bindings/${id}/`),
+};
+
+// Policy Evaluate API
+export const policyEvaluateApi = {
+  evaluate: (data: PolicyEvaluateRequest, explain?: boolean) =>
+    api.post(`/policies/evaluate/`, data, { params: explain ? { explain: 'true' } : {} }),
+};
+
+// Audit API (erweitert)
+export const auditApi = {
+  list: (orgId: string, params?: {
+    subject?: string;
+    action?: string;
+    target?: string;
+    decision?: 'allow' | 'deny';
+    ts_from?: string;
+    ts_to?: string;
+  }) =>
+    api.get(`/orgs/${orgId}/audit/`, { params }),
+};
+
+// Agents API
+export const agentsApi = {
+  list: (orgId: string) => api.get(`/orgs/${orgId}/agents/`),
+  get: (orgId: string, id: string) => api.get(`/orgs/${orgId}/agents/${id}/`),
+  create: (orgId: string, data: Partial<Agent>) =>
+    api.post(`/orgs/${orgId}/agents/`, data),
+  update: (orgId: string, id: string, data: Partial<Agent>) =>
+    api.put(`/orgs/${orgId}/agents/${id}/`, data),
+  delete: (orgId: string, id: string) =>
+    api.delete(`/orgs/${orgId}/agents/${id}/`),
+};
+
+// Token API
+export const tokensApi = {
+  // Generate token for agent
+  generate: (orgId: string, agentId: string, data?: TokenGenerateRequest) =>
+    api.post<TokenGenerateResponse>(`/orgs/${orgId}/agents/${agentId}/tokens/`, data || {}),
+  // List tokens for agent
+  list: (orgId: string, agentId: string) =>
+    api.get<IssuedToken[]>(`/orgs/${orgId}/agents/${agentId}/tokens/`),
+  // Revoke token
+  revoke: (orgId: string, agentId: string, jti: string) =>
+    api.post<IssuedToken>(`/orgs/${orgId}/agents/${agentId}/tokens/${jti}/revoke/`),
+  // Delete token
+  delete: (orgId: string, agentId: string, jti: string) =>
+    api.delete(`/orgs/${orgId}/agents/${agentId}/tokens/${jti}/`),
+};
+
+// ServiceAccount API
+export const serviceAccountsApi = {
+  list: (orgId: string) => api.get<ServiceAccount[]>(`/orgs/${orgId}/service-accounts/`),
+  get: (orgId: string, id: string) => api.get<ServiceAccount>(`/orgs/${orgId}/service-accounts/${id}/`),
+  create: (orgId: string, data: Partial<ServiceAccount>) =>
+    api.post<ServiceAccount>(`/orgs/${orgId}/service-accounts/`, data),
+  update: (orgId: string, id: string, data: Partial<ServiceAccount>) =>
+    api.put<ServiceAccount>(`/orgs/${orgId}/service-accounts/${id}/`, data),
+  delete: (orgId: string, id: string) =>
+    api.delete(`/orgs/${orgId}/service-accounts/${id}/`),
 };
 
 export default api;

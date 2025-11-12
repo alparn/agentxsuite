@@ -87,3 +87,167 @@ export interface MCPPromptResponse {
   }>;
 }
 
+// Policy types
+export interface Policy {
+  id: string;
+  organization: Organization;
+  environment_id?: string | null;
+  name: string;
+  version: number;
+  is_active: boolean;
+  enabled: boolean; // Legacy, synced with is_active
+  rules?: PolicyRule[];
+  rules_json?: Record<string, any>; // Legacy
+  description?: string; // Legacy, from rules_json
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PolicyRule {
+  id: number;
+  policy_id: string;
+  policy_name?: string;
+  action: 'tool.invoke' | 'agent.invoke' | 'resource.read' | 'resource.write' | string;
+  target: string; // e.g., "tool:pdf/*", "agent:ocr"
+  effect: 'allow' | 'deny';
+  conditions: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PolicyBinding {
+  id: number;
+  policy_id: string;
+  policy_name?: string;
+  scope_type: 'org' | 'env' | 'agent' | 'tool' | 'role' | 'user' | 'resource_ns';
+  scope_id: string;
+  priority: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PolicyEvaluateRequest {
+  action: string;
+  target: string;
+  subject?: string;
+  organization_id?: string;
+  environment_id?: string;
+  agent_id?: string;
+  tool_id?: string;
+  resource_ns?: string;
+  context?: Record<string, any>;
+  explain?: boolean;
+}
+
+export interface PolicyEvaluateResponse {
+  decision: 'allow' | 'deny';
+  rule_id?: number;
+  matched_rules?: Array<{
+    rule_id: number;
+    policy_id: string;
+    policy_name: string;
+    effect: 'allow' | 'deny';
+    target: string;
+    scope_type: string;
+    priority: number;
+  }>;
+  bindings_order?: Array<{
+    policy_id: string;
+    policy_name: string;
+    scope_type: string;
+    scope_id: string;
+    priority: number;
+  }>;
+}
+
+export interface AuditEvent {
+  id: string;
+  ts: string;
+  created_at: string;
+  updated_at: string;
+  subject?: string;
+  action?: string;
+  action_field?: string;
+  target?: string;
+  decision?: 'allow' | 'deny';
+  rule_id?: number;
+  context?: Record<string, any>;
+  actor?: string;
+  object_type?: string;
+  details?: string;
+  event_type: string;
+  event_data: Record<string, any>;
+  organization: Organization;
+}
+
+// Agent types
+export interface Agent {
+  id: string;
+  name: string;
+  slug?: string;
+  version: string;
+  enabled: boolean;
+  mode: "runner" | "caller";
+  capabilities: string[];
+  tags: string[];
+  organization: Organization;
+  environment: Environment;
+  connection?: any;
+  service_account?: string;
+  default_max_depth: number;
+  default_budget_cents: number;
+  default_ttl_seconds: number;
+  inbound_auth_method: "bearer" | "mtls" | "none";
+  created_at: string;
+  updated_at: string;
+}
+
+// Token types
+export interface IssuedToken {
+  id: string;
+  jti: string;
+  agent: string;
+  agent_name: string;
+  expires_at: string;
+  revoked_at?: string | null;
+  revoked_by?: string | null;
+  scopes: string[];
+  metadata: Record<string, any>;
+  created_at: string;
+  is_expired: boolean;
+  is_revoked: boolean;
+}
+
+export interface TokenGenerateRequest {
+  ttl_minutes?: number;
+  scopes?: string[];
+  metadata?: Record<string, any>;
+}
+
+export interface TokenGenerateResponse {
+  token: string;
+  token_info: IssuedToken;
+}
+
+// ServiceAccount types
+export interface ServiceAccount {
+  id: string;
+  name: string;
+  organization: Organization;
+  organization_name: string;
+  environment?: Environment | null;
+  environment_name?: string | null;
+  subject: string;
+  issuer: string;
+  audience: string;
+  scope_allowlist: string[];
+  credential_ref?: string | null;
+  expires_at?: string | null;
+  rotated_at?: string | null;
+  enabled: boolean;
+  agent_id?: string | null;
+  agent_name?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+

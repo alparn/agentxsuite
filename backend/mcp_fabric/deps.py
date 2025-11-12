@@ -10,7 +10,7 @@ from uuid import UUID
 import django
 from asgiref.sync import sync_to_async
 from decouple import config
-from fastapi import Depends, HTTPException, Path, Security, status
+from fastapi import Depends, HTTPException, Path, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # Initialize Django
@@ -41,19 +41,47 @@ def get_prm_url() -> str:
     return f"{MCP_FABRIC_BASE_URL.rstrip('/')}/.well-known/oauth-protected-resource"
 
 
-def get_www_authenticate_header() -> dict[str, str]:
+def get_www_authenticate_header(
+    resource: str | None = None,
+    scope: str | None = None,
+) -> dict[str, str]:
     """
-    Get WWW-Authenticate header with PRM URL.
+    Get WWW-Authenticate header with PRM URL and optional resource/scope.
+
+    Args:
+        resource: Resource identifier (for resource parameter)
+        scope: Required scope (for scope parameter)
 
     Returns:
-        Dictionary with WWW-Authenticate header
+        Dictionary with WWW-Authenticate header including resource_metadata
     """
+    from mcp_fabric.settings import AUTHORIZATION_SERVERS, MCP_CANONICAL_URI
+
     prm_url = get_prm_url()
-    if OIDC_ISSUER:
-        return {
-            "WWW-Authenticate": f'Bearer realm="{prm_url}", as_uri="{OIDC_ISSUER}"'
-        }
-    return {"WWW-Authenticate": f'Bearer realm="{prm_url}"'}
+    resource_uri = resource or MCP_CANONICAL_URI or MCP_FABRIC_BASE_URL.rstrip("/") + "/mcp"
+
+    # Build WWW-Authenticate header
+    params = [f'realm="{prm_url}"']
+    
+    # Add authorization servers
+    auth_servers = AUTHORIZATION_SERVERS.copy() if AUTHORIZATION_SERVERS else []
+    if OIDC_ISSUER and OIDC_ISSUER not in auth_servers:
+        auth_servers.append(OIDC_ISSUER)
+    
+    if auth_servers:
+        # Use first authorization server as as_uri
+        params.append(f'as_uri="{auth_servers[0]}"')
+    
+    # Add resource parameter
+    params.append(f'resource="{resource_uri}"')
+    
+    # Add scope if provided
+    if scope:
+        params.append(f'scope="{scope}"')
+
+    return {
+        "WWW-Authenticate": f"Bearer {', '.join(params)}",
+    }
 
 
 def init_django() -> None:
@@ -102,6 +130,7 @@ def get_validated_token(
     required_scopes: list[str] | None = None,
     required_org_id: str | None = None,
     required_env_id: str | None = None,
+    resource: str | None = None,
 ) -> dict:
     """
     Validate token with OIDC/JWKS and check scopes/claims.
@@ -111,6 +140,7 @@ def get_validated_token(
         required_scopes: Required scopes (e.g., ["mcp:tools"])
         required_org_id: Required org_id in token claims
         required_env_id: Required env_id in token claims
+        resource: Expected resource/audience identifier (for strict audience check)
 
     Returns:
         Decoded token claims
@@ -124,6 +154,7 @@ def get_validated_token(
             required_scopes=required_scopes,
             required_org_id=required_org_id,
             required_env_id=required_env_id,
+            resource=resource,
         )
     except HTTPException as e:
         # Add WWW-Authenticate header to 401 errors
@@ -170,6 +201,7 @@ def create_token_validator(required_scopes: list[str] | None = None):
     """
 
     async def validate_token_dependency(
+        request: Request,
         org_id: UUID = Path(...),
         env_id: UUID = Path(...),
         credentials: HTTPAuthorizationCredentials | None = Security(security),
@@ -182,8 +214,10 @@ def create_token_validator(required_scopes: list[str] | None = None):
         2. Validates token with OIDC/JWKS (if configured)
         3. Checks required scopes
         4. Validates org_id/env_id claims match URL parameters (cross-tenant protection)
+        5. Validates audience matches resource parameter (if provided) or MCP_CANONICAL_URI
 
         Args:
+            request: FastAPI Request object (for extracting resource parameter)
             org_id: Organization ID from URL path
             env_id: Environment ID from URL path
             credentials: HTTP Bearer credentials
@@ -194,13 +228,67 @@ def create_token_validator(required_scopes: list[str] | None = None):
         Raises:
             HTTPException: 401 if token missing/invalid, 403 if scopes/claims mismatch
         """
+        from mcp_fabric.settings import MCP_CANONICAL_URI
+
         token = get_bearer_token(credentials)
+        
+        # Extract resource parameter from query string or use default
+        resource = request.query_params.get("resource")
+        if not resource:
+            resource = MCP_CANONICAL_URI
+
         claims = get_validated_token(
             token,
             required_scopes=required_scopes,
             required_org_id=str(org_id),
             required_env_id=str(env_id),
+            resource=resource,
         )
+        
+        # P0: Resolve Agent via (subject, issuer) mapping - Source of Truth
+        # NEVER trust agent_id from token directly
+        from mcp_fabric.agent_resolver import resolve_agent_from_token_claims
+
+        resolved_agent = await sync_to_async(resolve_agent_from_token_claims)(
+            claims, str(org_id), str(env_id)
+        )
+
+        if not resolved_agent:
+            raise raise_mcp_http_exception(
+                ErrorCodes.AGENT_NOT_FOUND,
+                "Agent not found or access denied. No ServiceAccount matches (subject, issuer) or Agent is disabled.",
+                status.HTTP_403_FORBIDDEN,
+            )
+
+        # P0: Session-Lock - Validate agent consistency
+        # Query parameter agent_id (if provided) must match resolved agent
+        query_agent_id = request.query_params.get("agent_id")
+        if query_agent_id and query_agent_id != str(resolved_agent.id):
+            raise raise_mcp_http_exception(
+                ErrorCodes.AGENT_SESSION_MISMATCH,
+                f"Agent ID mismatch: query specifies '{query_agent_id}' but token maps to '{resolved_agent.id}'. "
+                "Agent cannot be changed during session. Use a new token to switch agents.",
+                status.HTTP_403_FORBIDDEN,
+            )
+
+        # Extract client IP for audit
+        client_ip = request.client.host if request.client else None
+        # Try to get real IP from X-Forwarded-For header (if behind proxy)
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+        
+        # Generate request ID for tracing
+        import uuid
+        request_id = str(uuid.uuid4())
+        
+        # Add resolved agent_id and audit metadata to claims (for downstream use)
+        claims["_resolved_agent_id"] = str(resolved_agent.id)
+        claims["agent_id"] = str(resolved_agent.id)  # For backward compatibility
+        claims["_client_ip"] = client_ip
+        claims["_request_id"] = request_id
+        claims["_jti"] = claims.get("jti")  # Pass jti through for audit
+        
         return claims
 
     return validate_token_dependency

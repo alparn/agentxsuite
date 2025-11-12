@@ -41,6 +41,7 @@
     "runs": "Runs",
     "policies": "Policies",
     "environments": "Environments",
+    "mcpConnect": "MCP Connect",
     "audit": "Audit & Logs",
     "settings": "Settings",
     "resources": "Resources",
@@ -106,7 +107,10 @@
     "pingSuccess": "Agent pinged successfully",
     "pingError": "Error pinging agent",
     "enable": "Enable",
-    "disable": "Disable"
+    "disable": "Disable",
+    "createServiceAccount": "Create ServiceAccount",
+    "createServiceAccountTooltip": "Create a ServiceAccount for this agent to enable token generation",
+    "serviceAccountExists": "ServiceAccount exists - Agent can generate tokens"
   },
   "tools": {
     "title": "Tools",
@@ -199,6 +203,39 @@
     "invokeSuccess": "Prompt invoked successfully",
     "invokeError": "Error invoking prompt",
     "noInputRequired": "No input parameters required"
+  },
+  "mcpConnect": {
+    "title": "Connect your tools to AI assistants",
+    "subtitle": "Your MCP tools work instantly with Claude, Gemini, Cursor and more. One-click setup, no configuration needed.",
+    "selectEnvironment": "Select Environment",
+    "mcpServerAddress": "MCP Server Address",
+    "mcpServerDescription": "This is your MCP server's address. Use it to connect to any supported AI assistant.",
+    "copy": "Copy",
+    "noEnvironments": "No environments available. Please create an environment first.",
+    "claudeDesktop": {
+      "title": "Connect to Claude Desktop",
+      "description": "Use your tools directly in Claude's desktop app. One-click installation.",
+      "button": "Add to Claude Desktop",
+      "hint": "Downloads .json file. Open to connect."
+    },
+    "claudeCode": {
+      "title": "Connect to Claude Code",
+      "description": "Access your tools from the command line. Quick setup with a single command.",
+      "button": "Add to Claude Code",
+      "hint": "Copies command. Paste in your terminal."
+    },
+    "geminiCLI": {
+      "title": "Connect to Gemini CLI",
+      "description": "Access your tools from the command line. Quick setup with a single command.",
+      "button": "Add to Gemini CLI",
+      "hint": "Copies command. Paste in your terminal."
+    },
+    "cursor": {
+      "title": "Connect to Cursor",
+      "description": "AI-powered code editor with built-in tool support. Click to connect instantly.",
+      "button": "Add to Cursor",
+      "hint": "Opens Cursor with connection prompt."
+    }
   }
 }
 

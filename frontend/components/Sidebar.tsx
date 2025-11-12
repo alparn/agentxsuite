@@ -17,6 +17,7 @@ import {
   X,
   Database,
   MessageSquare,
+  Wifi,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,7 @@ const navItems = [
   { href: "/runs", icon: Play, key: "runs" },
   { href: "/policies", icon: Shield, key: "policies" },
   { href: "/environments", icon: Globe, key: "environments" },
+  { href: "/mcp-connect", icon: Wifi, key: "mcpConnect" },
   { href: "/audit", icon: FileText, key: "audit" },
   { href: "/settings", icon: Settings, key: "settings" },
 ];

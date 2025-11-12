@@ -14,6 +14,12 @@ from decouple import config
 from fastapi import HTTPException, status
 
 from mcp_fabric.errors import ErrorCodes, raise_mcp_http_exception
+from mcp_fabric.settings import (
+    AUTHORIZATION_SERVERS,
+    MCP_CANONICAL_URI,
+    MCP_TOKEN_MAX_TTL_MINUTES,
+    MCP_TOKEN_MAX_IAT_AGE_MINUTES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -167,16 +173,19 @@ def validate_token(
     required_scopes: list[str] | None = None,
     required_org_id: str | None = None,
     required_env_id: str | None = None,
+    resource: str | None = None,
 ) -> dict[str, Any]:
     """
-    Validate a JWT token with OIDC/JWKS.
+    Validate a JWT token with OIDC/JWKS with strict audience checking.
 
     Validates:
     - Signature (JWKS)
-    - Issuer (iss)
-    - Audience (aud)
+    - Issuer (iss) - must match one of AUTHORIZATION_SERVERS
+    - Audience (aud) - must match resource parameter or MCP_CANONICAL_URI (NO TOKEN-PASSTHROUGH)
     - Expiration (exp)
     - Not Before (nbf)
+    - Issued At (iat) - must be present and not too old (max age: MCP_TOKEN_MAX_IAT_AGE_MINUTES)
+    - Maximum TTL - exp - iat must not exceed MCP_TOKEN_MAX_TTL_MINUTES
     - Scopes (scope)
     - Org/Env claims (org_id, env_id)
 
@@ -185,6 +194,7 @@ def validate_token(
         required_scopes: List of required scopes (e.g., ["mcp:tools"])
         required_org_id: Required org_id in token (for cross-tenant protection)
         required_env_id: Required env_id in token (for cross-tenant protection)
+        resource: Expected resource/audience identifier (defaults to MCP_CANONICAL_URI)
 
     Returns:
         Decoded token claims
@@ -193,7 +203,7 @@ def validate_token(
         HTTPException: 401 for invalid token, 403 for missing scopes/claims
     """
     # If OIDC not configured, skip validation (fallback for development)
-    if not OIDC_ISSUER:
+    if not OIDC_ISSUER and not AUTHORIZATION_SERVERS:
         logger.warning("OIDC not configured, skipping token validation")
         # Try to decode token anyway (for development)
         try:
@@ -209,77 +219,31 @@ def validate_token(
                 status.HTTP_401_UNAUTHORIZED,
             )
 
+    # Determine expected audience (strict: no passthrough)
+    expected_audience = resource or MCP_CANONICAL_URI
+    if not expected_audience:
+        raise raise_mcp_http_exception(
+            ErrorCodes.INTERNAL_ERROR,
+            "Resource/audience not configured",
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
     # Fetch JWKS
     jwks = get_jwks()
     public_key = get_signing_key(token, jwks)
 
-    # Decode and validate token
+    # Decode token WITHOUT audience validation first to check issuer
     try:
-        # Decode token with validation
-        decoded = jwt.decode(
+        decoded_unverified_aud = jwt.decode(
             token,
             public_key,
-            algorithms=["RS256"],  # Only RSA256 supported for now
-            issuer=OIDC_ISSUER,
-            audience=OIDC_AUDIENCE,
-            options={"verify_exp": True, "verify_nbf": True},
+            algorithms=["RS256"],
+            options={"verify_signature": True, "verify_exp": True, "verify_nbf": True, "verify_aud": False},
         )
-
-        # Check scopes
-        if required_scopes:
-            token_scopes = (
-                decoded.get("scope", "").split()
-                if isinstance(decoded.get("scope"), str)
-                else decoded.get("scope", [])
-            )
-            if not isinstance(token_scopes, list):
-                token_scopes = [token_scopes] if token_scopes else []
-
-            missing_scopes = [s for s in required_scopes if s not in token_scopes]
-            if missing_scopes:
-                raise raise_mcp_http_exception(
-                    ErrorCodes.INSUFFICIENT_SCOPE,
-                    f"Missing required scopes: {', '.join(missing_scopes)}",
-                    status.HTTP_403_FORBIDDEN,
-                )
-
-        # Check org/env binding (cross-tenant protection)
-        if required_org_id:
-            token_org_id = decoded.get("org_id") or decoded.get("organization_id")
-            if token_org_id != required_org_id:
-                raise raise_mcp_http_exception(
-                    ErrorCodes.CROSS_TENANT_ACCESS,
-                    f"Token org_id '{token_org_id}' does not match required org_id '{required_org_id}'",
-                    status.HTTP_403_FORBIDDEN,
-                )
-
-        if required_env_id:
-            token_env_id = decoded.get("env_id") or decoded.get("environment_id")
-            if token_env_id != required_env_id:
-                raise raise_mcp_http_exception(
-                    ErrorCodes.CROSS_TENANT_ACCESS,
-                    f"Token env_id '{token_env_id}' does not match required env_id '{required_env_id}'",
-                    status.HTTP_403_FORBIDDEN,
-                )
-
-        return decoded
-
     except jwt.ExpiredSignatureError:
         raise raise_mcp_http_exception(
             ErrorCodes.EXPIRED_TOKEN,
             "Token has expired",
-            status.HTTP_401_UNAUTHORIZED,
-        )
-    except jwt.InvalidIssuerError:
-        raise raise_mcp_http_exception(
-            ErrorCodes.INVALID_ISSUER,
-            f"Invalid issuer. Expected: {OIDC_ISSUER}",
-            status.HTTP_401_UNAUTHORIZED,
-        )
-    except jwt.InvalidAudienceError:
-        raise raise_mcp_http_exception(
-            ErrorCodes.INVALID_AUDIENCE,
-            f"Invalid audience. Expected: {OIDC_AUDIENCE}",
             status.HTTP_401_UNAUTHORIZED,
         )
     except jwt.InvalidSignatureError:
@@ -294,13 +258,160 @@ def validate_token(
             "Token not yet valid (nbf)",
             status.HTTP_401_UNAUTHORIZED,
         )
-    except HTTPException:
-        # Re-raise HTTPExceptions (e.g., from scope/org/env checks)
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error validating token: {e}", exc_info=True)
+
+    # Validate issuer against AUTHORIZATION_SERVERS (strict)
+    token_issuer = decoded_unverified_aud.get("iss")
+    if not token_issuer:
         raise raise_mcp_http_exception(
-            ErrorCodes.INVALID_TOKEN,
-            "Token validation failed",
+            ErrorCodes.INVALID_ISSUER,
+            "Token missing issuer (iss) claim",
             status.HTTP_401_UNAUTHORIZED,
         )
+
+    # Check if issuer is in allowed list
+    if AUTHORIZATION_SERVERS and token_issuer not in AUTHORIZATION_SERVERS:
+        # Fallback to OIDC_ISSUER for backward compatibility
+        if OIDC_ISSUER and token_issuer != OIDC_ISSUER:
+            raise raise_mcp_http_exception(
+                ErrorCodes.INVALID_ISSUER,
+                f"Invalid issuer '{token_issuer}'. Expected one of: {', '.join(AUTHORIZATION_SERVERS)}",
+                status.HTTP_401_UNAUTHORIZED,
+            )
+    elif OIDC_ISSUER and token_issuer != OIDC_ISSUER:
+        raise raise_mcp_http_exception(
+            ErrorCodes.INVALID_ISSUER,
+            f"Invalid issuer '{token_issuer}'. Expected: {OIDC_ISSUER}",
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    # STRICT AUDIENCE CHECK: Token audience MUST match expected_audience (no passthrough)
+    token_audience = decoded_unverified_aud.get("aud")
+    if not token_audience:
+        raise raise_mcp_http_exception(
+            ErrorCodes.INVALID_AUDIENCE,
+            f"Token missing audience (aud) claim. Expected: {expected_audience}",
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    # Handle both string and list audiences
+    if isinstance(token_audience, str):
+        token_audiences = [token_audience]
+    elif isinstance(token_audience, list):
+        token_audiences = token_audience
+    else:
+        raise raise_mcp_http_exception(
+            ErrorCodes.INVALID_AUDIENCE,
+            f"Invalid audience format. Expected string or list. Got: {type(token_audience)}",
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    # Audience MUST match exactly (strict check, no passthrough)
+    if expected_audience not in token_audiences:
+        raise raise_mcp_http_exception(
+            ErrorCodes.INVALID_AUDIENCE,
+            f"Token audience '{token_audience}' does not match expected resource '{expected_audience}'",
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    # Use decoded token (audience already validated manually)
+    decoded = decoded_unverified_aud
+
+    # P0: Check jti (JWT ID) for replay protection
+    jti = decoded.get("jti")
+    if jti:
+        from mcp_fabric.jti_store import check_jti_replay
+
+        exp = decoded.get("exp")
+        is_replay, reason = check_jti_replay(jti, exp)
+        if is_replay:
+            raise raise_mcp_http_exception(
+                ErrorCodes.INVALID_TOKEN,
+                reason or "Token jti has already been used (replay attack)",
+                status.HTTP_401_UNAUTHORIZED,
+            )
+
+    # P0: Check iat (issued at) claim
+    iat = decoded.get("iat")
+    if iat is None:
+        raise raise_mcp_http_exception(
+            ErrorCodes.INVALID_TOKEN,
+            "Token missing issued at (iat) claim",
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    # Convert iat to datetime (JWT iat is Unix timestamp)
+    try:
+        iat_dt = datetime.fromtimestamp(iat, tz=timezone.utc)
+    except (ValueError, TypeError, OSError):
+        raise raise_mcp_http_exception(
+            ErrorCodes.INVALID_TOKEN,
+            "Invalid issued at (iat) claim format",
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    # Check iat age (token must not be too old)
+    now = datetime.now(timezone.utc)
+    iat_age = now - iat_dt
+    max_iat_age = timedelta(minutes=MCP_TOKEN_MAX_IAT_AGE_MINUTES)
+    if iat_age > max_iat_age:
+        raise raise_mcp_http_exception(
+            ErrorCodes.INVALID_TOKEN,
+            f"Token issued at (iat) is too old. Maximum age: {MCP_TOKEN_MAX_IAT_AGE_MINUTES} minutes",
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    # P0: Check maximum TTL (exp - iat must not exceed max TTL)
+    exp = decoded.get("exp")
+    if exp is not None:
+        try:
+            exp_dt = datetime.fromtimestamp(exp, tz=timezone.utc)
+            token_ttl = exp_dt - iat_dt
+            max_ttl = timedelta(minutes=MCP_TOKEN_MAX_TTL_MINUTES)
+            if token_ttl > max_ttl:
+                raise raise_mcp_http_exception(
+                    ErrorCodes.INVALID_TOKEN,
+                    f"Token TTL exceeds maximum allowed TTL. Maximum: {MCP_TOKEN_MAX_TTL_MINUTES} minutes",
+                    status.HTTP_401_UNAUTHORIZED,
+                )
+        except (ValueError, TypeError, OSError):
+            # exp validation already handled above, but handle edge cases
+            pass
+
+    # Check scopes
+    if required_scopes:
+        token_scopes = (
+            decoded.get("scope", "").split()
+            if isinstance(decoded.get("scope"), str)
+            else decoded.get("scope", [])
+        )
+        if not isinstance(token_scopes, list):
+            token_scopes = [token_scopes] if token_scopes else []
+
+        missing_scopes = [s for s in required_scopes if s not in token_scopes]
+        if missing_scopes:
+            raise raise_mcp_http_exception(
+                ErrorCodes.INSUFFICIENT_SCOPE,
+                f"Missing required scopes: {', '.join(missing_scopes)}",
+                status.HTTP_403_FORBIDDEN,
+            )
+
+    # Check org/env binding (cross-tenant protection)
+    if required_org_id:
+        token_org_id = decoded.get("org_id") or decoded.get("organization_id")
+        if token_org_id != required_org_id:
+            raise raise_mcp_http_exception(
+                ErrorCodes.CROSS_TENANT_ACCESS,
+                f"Token org_id '{token_org_id}' does not match required org_id '{required_org_id}'",
+                status.HTTP_403_FORBIDDEN,
+            )
+
+    if required_env_id:
+        token_env_id = decoded.get("env_id") or decoded.get("environment_id")
+        if token_env_id != required_env_id:
+            raise raise_mcp_http_exception(
+                ErrorCodes.CROSS_TENANT_ACCESS,
+                f"Token env_id '{token_env_id}' does not match required env_id '{required_env_id}'",
+                status.HTTP_403_FORBIDDEN,
+            )
+
+    return decoded

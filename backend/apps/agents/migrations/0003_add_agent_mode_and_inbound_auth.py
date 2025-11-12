@@ -18,8 +18,8 @@ def reverse_set_existing_agents_to_runner_mode(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('agents', '0002_alter_agent_created_at_alter_agent_id'),
-        ('connections', '0002_alter_connection_created_at_alter_connection_id'),
+        ('agents', '0001_initial'),
+        ('connections', '0001_initial'),
     ]
 
     operations = [

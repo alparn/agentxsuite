@@ -61,15 +61,20 @@ def register_tools_for_org_env(
                     body_lines.append(f"if {name} is not None: payload['{name}'] = {name}")
                 body_lines.extend([
                     "agent_id = payload.pop('agent_id', None)",
+                    "# Extract token_agent_id and audit metadata from payload (set by router)",
+                    "token_agent_id = payload.pop('_token_agent_id', None)",
+                    "jti = payload.pop('_jti', None)",
+                    "client_ip = payload.pop('_client_ip', None)",
+                    "request_id = payload.pop('_request_id', None)",
                     "from mcp_fabric.adapters import run_tool_via_agentxsuite",
-                    "return run_tool_via_agentxsuite(tool=_t, payload=payload, agent_id=agent_id)",
+                    "return run_tool_via_agentxsuite(tool=_t, payload=payload, agent_id=agent_id, token_agent_id=token_agent_id, jti=jti, client_ip=client_ip, request_id=request_id)",
                 ])
                 # Join with proper indentation (4 spaces)
                 body_str = "\n    ".join(body_lines)
                 func_code = f"def _handler({params_str}) -> dict:\n    {body_str}"
             else:
                 # No parameters - empty function
-                func_code = "def _handler() -> dict:\n    payload = {}\n    agent_id = payload.pop('agent_id', None)\n    from mcp_fabric.adapters import run_tool_via_agentxsuite\n    return run_tool_via_agentxsuite(tool=_t, payload=payload, agent_id=agent_id)"
+                func_code = "def _handler() -> dict:\n    payload = {}\n    agent_id = payload.pop('agent_id', None)\n    token_agent_id = payload.pop('_token_agent_id', None)\n    jti = payload.pop('_jti', None)\n    client_ip = payload.pop('_client_ip', None)\n    request_id = payload.pop('_request_id', None)\n    from mcp_fabric.adapters import run_tool_via_agentxsuite\n    return run_tool_via_agentxsuite(tool=_t, payload=payload, agent_id=agent_id, token_agent_id=token_agent_id, jti=jti, client_ip=client_ip, request_id=request_id)"
             
             # Execute function code in local namespace
             namespace = {"_t": _t, "Any": Any}

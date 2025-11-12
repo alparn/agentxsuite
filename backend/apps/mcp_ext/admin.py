@@ -25,3 +25,8 @@ class PromptAdmin(admin.ModelAdmin):
     search_fields = ["name", "description", "organization__name", "environment__name"]
     readonly_fields = ["id", "created_at", "updated_at"]
 
+
+
+
+
+

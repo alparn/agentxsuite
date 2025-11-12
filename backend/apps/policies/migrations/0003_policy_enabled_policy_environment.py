@@ -7,8 +7,8 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('policies', '0002_alter_policy_created_at_alter_policy_id'),
-        ('tenants', '0002_environment_updated_at_organization_updated_at_and_more'),
+        ('policies', '0001_initial'),
+        ('tenants', '0001_initial'),
     ]
 
     operations = [

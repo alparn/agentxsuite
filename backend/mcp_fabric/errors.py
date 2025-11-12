@@ -97,6 +97,8 @@ class ErrorCodes:
     CROSS_TENANT_ACCESS = "cross_tenant_access"
     ORG_MISMATCH = "org_mismatch"
     ENV_MISMATCH = "env_mismatch"
+    AGENT_SESSION_MISMATCH = "agent_session_mismatch"
+    AGENT_NOT_FOUND = "agent_not_found"
 
     # Validation errors (400)
     INVALID_REQUEST = "invalid_request"

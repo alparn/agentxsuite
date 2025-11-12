@@ -111,7 +111,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
-        "rest_framework.authentication.SessionAuthentication",
+        # SessionAuthentication removed for security: No sessions as auth replacement
+        # Sessions are only for Django admin, not for API authentication
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -119,6 +120,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 100,
 }
+
+# MCP Fabric: Hard session handling - no sessions as auth replacement
+# FastAPI endpoints only accept Bearer tokens, no session cookies
+MCP_FABRIC_SESSION_AUTH_DISABLED = True
 
 # SecretStore Configuration
 SECRETSTORE_BACKEND = config(

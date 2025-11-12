@@ -34,7 +34,7 @@ def migrate_existing_tools(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('tools', '0002_alter_tool_created_at_alter_tool_id'),
+        ('tools', '0001_initial'),
         ('connections', '0001_initial'),
     ]
 
