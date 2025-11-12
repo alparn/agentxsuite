@@ -142,3 +142,4 @@ local_test/
 # Ignore .md files in docs/, but allow images
 docs/*.md
 
+landing-page/
