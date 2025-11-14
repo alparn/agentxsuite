@@ -33,7 +33,23 @@ def org_env(db):
 def agent(org_env):
     """Create test agent."""
     org, env = org_env
-    return baker.make(Agent, organization=org, environment=env, enabled=True)
+    from apps.agents.models import InboundAuthMethod
+    
+    # Create agent with skip_validation to avoid validation errors during creation
+    agent = baker.prepare(
+        Agent,
+        organization=org,
+        environment=env,
+        name="test-agent",
+        slug="test-agent",
+        enabled=True,
+        inbound_auth_method=InboundAuthMethod.NONE,
+        capabilities=[],
+        tags=[],
+    )
+    # Save with skip_validation=True to bypass clean() validation
+    agent.save(skip_validation=True)
+    return agent
 
 
 @pytest.fixture
@@ -100,11 +116,24 @@ def test_resources_list_requires_scope(org_env, mocker, client):
     # Token with required scope - reset mock to return valid token
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:resources"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:resources"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_resources._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver - return a mock agent
+    mock_agent = mocker.Mock()
+    mock_agent.id = "test-agent-id"
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=mock_agent,
     )
     mock_qs = mocker.Mock()
     mock_qs.values.return_value = []
@@ -129,12 +158,25 @@ def test_resources_list_ok(org_env, static_resource, mocker, client):
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:resources"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:resources"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     # Mock _resolve_org_env to avoid DB locks
     mocker.patch(
         "mcp_fabric.routes_resources._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver to avoid ServiceAccount lookup - return a mock agent
+    mock_agent = mocker.Mock()
+    mock_agent.id = "test-agent-id"
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=mock_agent,
     )
     # Mock Resource.objects.filter to avoid DB queries
     mock_qs = mocker.Mock()
@@ -158,6 +200,7 @@ def test_resources_list_ok(org_env, static_resource, mocker, client):
     assert len(data) == 1
     assert data[0]["name"] == "static-resource"
     assert data[0]["type"] == "static"
+    assert data[0]["mimeType"] == "text/plain"  # MCP standard: CamelCase
 
 
 def test_resources_read_not_found(org_env, agent, mocker, client):
@@ -171,11 +214,22 @@ def test_resources_read_not_found(org_env, agent, mocker, client):
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:resource:read"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:resource:read"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_resources._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=agent,
     )
     mocker.patch(
         "mcp_fabric.routes_resources.get_or_create_mcp_agent",
@@ -211,11 +265,22 @@ def test_resources_read_policy_denied(org_env, static_resource, agent, mocker, c
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:resource:read"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:resource:read"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_resources._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=agent,
     )
     mocker.patch(
         "mcp_fabric.routes_resources.get_or_create_mcp_agent",
@@ -253,11 +318,22 @@ def test_resources_read_static_ok(org_env, static_resource, agent, mocker, clien
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:resource:read"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:resource:read"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_resources._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=agent,
     )
     mocker.patch(
         "mcp_fabric.routes_resources.get_or_create_mcp_agent",
@@ -284,7 +360,7 @@ def test_resources_read_static_ok(org_env, static_resource, agent, mocker, clien
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "static-resource"
-    assert data["mime_type"] == "text/plain"
+    assert data["mimeType"] == "text/plain"  # MCP standard: CamelCase
     assert data["content"] == "Hello, World!"
 
 
@@ -299,11 +375,22 @@ def test_resources_read_http_ok(org_env, http_resource, agent, mocker, client):
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:resource:read"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:resource:read"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_resources._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=agent,
     )
     mocker.patch(
         "mcp_fabric.routes_resources.get_or_create_mcp_agent",
@@ -330,7 +417,7 @@ def test_resources_read_http_ok(org_env, http_resource, agent, mocker, client):
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "http-resource"
-    assert data["mime_type"] == "application/json"
+    assert data["mimeType"] == "application/json"  # MCP standard: CamelCase
     assert "key" in data["content"]
 
 
@@ -345,11 +432,22 @@ def test_resources_read_http_truncation(org_env, http_resource, agent, mocker, c
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:resource:read"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:resource:read"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_resources._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=agent,
     )
     mocker.patch(
         "mcp_fabric.routes_resources.get_or_create_mcp_agent",

@@ -43,28 +43,33 @@ export interface MCPRunResponse {
 
 // Resource types
 export interface MCPResource {
-  uri: string;
   name: string;
+  type?: string;
+  mimeType: string; // MCP standard: CamelCase
+  schema_json?: Record<string, any> | null;
+  uri?: string; // Optional: URI if provided by backend
   description?: string;
-  mimeType: string;
 }
 
 export interface MCPResourceContent {
-  uri: string;
-  mimeType: string;
-  text?: string;
-  blob?: string;
+  name: string;
+  mimeType: string; // MCP standard: CamelCase
+  content: string | Record<string, any>;
+  uri?: string; // Optional: URI if provided by backend
+  text?: string; // Legacy/alternative format
+  blob?: string; // Legacy/alternative format
 }
 
 // Prompt types
 export interface MCPPrompt {
   name: string;
   description?: string;
+  inputSchema?: Record<string, any>; // MCP standard: JSON Schema for prompt inputs
   arguments?: Array<{
     name: string;
     description?: string;
     required?: boolean;
-  }>;
+  }>; // Legacy/alternative format
 }
 
 export interface MCPPromptResponse {

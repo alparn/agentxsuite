@@ -33,7 +33,23 @@ def org_env(db):
 def agent(org_env):
     """Create test agent."""
     org, env = org_env
-    return baker.make(Agent, organization=org, environment=env, enabled=True)
+    from apps.agents.models import InboundAuthMethod
+    
+    # Create agent with skip_validation to avoid validation errors during creation
+    agent = baker.prepare(
+        Agent,
+        organization=org,
+        environment=env,
+        name="test-agent",
+        slug="test-agent",
+        enabled=True,
+        inbound_auth_method=InboundAuthMethod.NONE,
+        capabilities=[],
+        tags=[],
+    )
+    # Save with skip_validation=True to bypass clean() validation
+    agent.save(skip_validation=True)
+    return agent
 
 
 @pytest.fixture
@@ -122,11 +138,28 @@ def test_prompts_list_ok(org_env, simple_prompt, prompt_with_schema, mocker, cli
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:prompts"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:prompts"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_prompts._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver - return a mock agent
+    mock_agent = mocker.Mock()
+    mock_agent.id = "test-agent-id"
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=mock_agent,
+    )
+    mocker.patch(
+        "mcp_fabric.routes_prompts.get_or_create_mcp_agent",
+        return_value=None,  # Not needed for list endpoint
     )
     # Mock Prompt.objects.filter to avoid DB queries
     mock_qs = mocker.Mock()
@@ -153,14 +186,14 @@ def test_prompts_list_ok(org_env, simple_prompt, prompt_with_schema, mocker, cli
     assert isinstance(data, list)
     assert len(data) == 2
 
-    # Check that input_schema is present
+    # Check that inputSchema is present (MCP standard: CamelCase)
     prompt_names = [p["name"] for p in data]
     assert "simple-prompt" in prompt_names
     assert "schema-prompt" in prompt_names
 
     schema_prompt = next(p for p in data if p["name"] == "schema-prompt")
-    assert "input_schema" in schema_prompt
-    assert schema_prompt["input_schema"]["type"] == "object"
+    assert "inputSchema" in schema_prompt  # MCP standard: CamelCase
+    assert schema_prompt["inputSchema"]["type"] == "object"
 
 
 def test_prompt_invoke_not_found(org_env, agent, mocker, client):
@@ -174,11 +207,22 @@ def test_prompt_invoke_not_found(org_env, agent, mocker, client):
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:prompt:invoke"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:prompt:invoke"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_prompts._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=agent,
     )
     mocker.patch(
         "mcp_fabric.routes_prompts.get_or_create_mcp_agent",
@@ -217,11 +261,22 @@ def test_prompt_invoke_policy_denied(org_env, prompt_with_schema, agent, mocker,
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:prompt:invoke"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:prompt:invoke"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_prompts._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=agent,
     )
     mocker.patch(
         "mcp_fabric.routes_prompts.get_or_create_mcp_agent",
@@ -262,11 +317,22 @@ def test_prompt_invoke_schema_violation(org_env, prompt_with_schema, agent, mock
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:prompt:invoke"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:prompt:invoke"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_prompts._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=agent,
     )
     mocker.patch(
         "mcp_fabric.routes_prompts.get_or_create_mcp_agent",
@@ -313,11 +379,22 @@ def test_prompt_invoke_ok(org_env, prompt_with_schema, agent, mocker, client):
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:prompt:invoke"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:prompt:invoke"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_prompts._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=agent,
     )
     mocker.patch(
         "mcp_fabric.routes_prompts.get_or_create_mcp_agent",
@@ -345,10 +422,11 @@ def test_prompt_invoke_ok(org_env, prompt_with_schema, agent, mocker, client):
         },
     )
 
+    # Test with MCP standard format (arguments)
     response = client.post(
         url,
         headers={"Authorization": "Bearer test-token", "Content-Type": "application/json"},
-        json={"input": {"name": "Alice", "age": 30}},
+        json={"arguments": {"name": "Alice", "age": 30}},  # MCP standard format
     )
 
     assert response.status_code == 200
@@ -378,11 +456,22 @@ def test_prompt_invoke_simple_ok(org_env, simple_prompt, agent, mocker, client):
     )
     mocker.patch(
         "mcp_fabric.deps.get_validated_token",
-        return_value={"scope": ["mcp:prompt:invoke"], "org_id": str(org.id), "env_id": str(env.id)},
+        return_value={
+            "scope": ["mcp:prompt:invoke"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
     )
     mocker.patch(
         "mcp_fabric.routes_prompts._resolve_org_env",
         return_value=(org, env),
+    )
+    # Mock agent resolver
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=agent,
     )
     mocker.patch(
         "mcp_fabric.routes_prompts.get_or_create_mcp_agent",
@@ -410,10 +499,11 @@ def test_prompt_invoke_simple_ok(org_env, simple_prompt, agent, mocker, client):
         },
     )
 
+    # Test with compatibility format (input) - should still work
     response = client.post(
         url,
         headers={"Authorization": "Bearer test-token", "Content-Type": "application/json"},
-        json={"input": {}},
+        json={"input": {}},  # Compatibility format
     )
 
     assert response.status_code == 200
@@ -422,3 +512,74 @@ def test_prompt_invoke_simple_ok(org_env, simple_prompt, agent, mocker, client):
     assert len(data["messages"]) == 2
     assert data["messages"][0]["role"] == "system"
     assert data["messages"][1]["role"] == "user"
+
+
+def test_prompt_invoke_with_arguments_format(org_env, prompt_with_schema, agent, mocker, client):
+    """Test prompt invoke with MCP standard arguments format."""
+    org, env = org_env
+    url = f"/mcp/{org.id}/{env.id}/.well-known/mcp/prompts/{prompt_with_schema.name}/invoke"
+
+    mocker.patch(
+        "mcp_fabric.deps.get_bearer_token",
+        return_value="test-token",
+    )
+    mocker.patch(
+        "mcp_fabric.deps.get_validated_token",
+        return_value={
+            "scope": ["mcp:prompt:invoke"],
+            "org_id": str(org.id),
+            "env_id": str(env.id),
+            "sub": "test-subject",
+            "iss": "test-issuer",
+        },
+    )
+    mocker.patch(
+        "mcp_fabric.routes_prompts._resolve_org_env",
+        return_value=(org, env),
+    )
+    # Mock agent resolver
+    mocker.patch(
+        "mcp_fabric.agent_resolver.resolve_agent_from_token_claims",
+        return_value=agent,
+    )
+    mocker.patch(
+        "mcp_fabric.routes_prompts.get_or_create_mcp_agent",
+        return_value=agent,
+    )
+    mocker.patch(
+        "mcp_fabric.routes_prompts.is_allowed_prompt",
+        return_value=(True, None),
+    )
+    mocker.patch(
+        "mcp_fabric.routes_prompts.check_rate_limit",
+        return_value=(True, None),
+    )
+    mocker.patch(
+        "mcp_fabric.routes_prompts.Prompt.objects.get",
+        return_value=prompt_with_schema,
+    )
+    mocker.patch(
+        "mcp_fabric.routes_prompts.render_prompt",
+        return_value={
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "User: Bob, Age: 25"},
+            ]
+        },
+    )
+
+    # Test with MCP standard format (arguments)
+    response = client.post(
+        url,
+        headers={"Authorization": "Bearer test-token", "Content-Type": "application/json"},
+        json={"arguments": {"name": "Bob", "age": 25}},  # MCP standard format
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "messages" in data
+    assert len(data["messages"]) == 2
+    assert data["messages"][0]["role"] == "system"
+    assert data["messages"][1]["role"] == "user"
+    assert "Bob" in data["messages"][1]["content"]
+    assert "25" in data["messages"][1]["content"]

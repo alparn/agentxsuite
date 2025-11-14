@@ -30,7 +30,23 @@ def org_env(db):
 def agent(org_env):
     """Create test agent."""
     org, env = org_env
-    return baker.make(Agent, organization=org, environment=env, enabled=True)
+    from apps.agents.models import InboundAuthMethod
+    
+    # Create agent with skip_validation to avoid validation errors during creation
+    agent = baker.prepare(
+        Agent,
+        organization=org,
+        environment=env,
+        name="test-agent",
+        slug="test-agent",  # Explicit slug to avoid auto-generation issues
+        enabled=True,
+        inbound_auth_method=InboundAuthMethod.NONE,  # NONE doesn't require secret_ref
+        capabilities=[],  # Empty list required
+        tags=[],  # Empty list required
+    )
+    # Save with skip_validation=True to bypass clean() validation
+    agent.save(skip_validation=True)
+    return agent
 
 
 @pytest.fixture

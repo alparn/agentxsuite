@@ -82,7 +82,8 @@ async def list_resources(
     Requires scope: mcp:resources
 
     Returns:
-        List of resource definitions (name, type, mime_type, schema_json)
+        List of resource definitions (name, type, mimeType, schema_json)
+        Following MCP standard with CamelCase field names.
     """
     span = None
     if OTELEMETRY_AVAILABLE and tracer:
@@ -93,17 +94,28 @@ async def list_resources(
     try:
         org, env = await sync_to_async(_resolve_org_env)(str(org_id), str(env_id))
 
-        resources = await sync_to_async(list)(
+        resources_raw = await sync_to_async(list)(
             Resource.objects.filter(
                 organization=org, environment=env, enabled=True
             ).values("name", "type", "mime_type", "schema_json")
         )
 
+        # Convert to MCP standard format: mime_type -> mimeType (CamelCase)
+        resources = []
+        for r in resources_raw:
+            resource_dict = {
+                "name": r["name"],
+                "type": r["type"],
+                "mimeType": r["mime_type"],  # MCP standard: CamelCase
+                "schema_json": r["schema_json"],
+            }
+            resources.append(resource_dict)
+
         if span:
             span.set_attribute("resource_count", len(resources))
             span.set_status(Status(StatusCode.OK))
 
-        return list(resources)
+        return resources
     except Exception as e:
         if span:
             span.set_status(Status(StatusCode.ERROR, str(e)))
@@ -129,7 +141,8 @@ async def get_resource(
     Requires scope: mcp:resource:read
 
     Returns:
-        Resource content dictionary with name, mime_type, and content
+        Resource content dictionary with name, mimeType, and content
+        Following MCP standard with CamelCase field names.
     """
     span = None
     if OTELEMETRY_AVAILABLE and tracer:
@@ -206,7 +219,7 @@ async def get_resource(
 
         return {
             "name": resource.name,
-            "mime_type": resource.mime_type,
+            "mimeType": resource.mime_type,  # MCP standard: CamelCase
             "content": content,
         }
     except Exception as e:

@@ -82,7 +82,8 @@ async def list_prompts(
     Requires scope: mcp:prompts
 
     Returns:
-        List of prompt definitions (name, description, input_schema)
+        List of prompt definitions (name, description, inputSchema)
+        Following MCP standard with CamelCase field names.
     """
     span = None
     if OTELEMETRY_AVAILABLE and tracer:
@@ -93,17 +94,27 @@ async def list_prompts(
     try:
         org, env = await sync_to_async(_resolve_org_env)(str(org_id), str(env_id))
 
-        prompts = await sync_to_async(list)(
+        prompts_raw = await sync_to_async(list)(
             Prompt.objects.filter(organization=org, environment=env, enabled=True).values(
                 "name", "description", "input_schema"
             )
         )
 
+        # Convert to MCP standard format: input_schema -> inputSchema (CamelCase)
+        prompts = []
+        for p in prompts_raw:
+            prompt_dict = {
+                "name": p["name"],
+                "description": p["description"],
+                "inputSchema": p["input_schema"],  # MCP standard: CamelCase
+            }
+            prompts.append(prompt_dict)
+
         if span:
             span.set_attribute("prompt_count", len(prompts))
             span.set_status(Status(StatusCode.OK))
 
-        return list(prompts)
+        return prompts
     except Exception as e:
         if span:
             span.set_status(Status(StatusCode.ERROR, str(e)))
@@ -129,9 +140,16 @@ async def invoke_prompt(
 
     Requires scope: mcp:prompt:invoke
 
-    Body format:
+    Body format (supports both MCP standard and compatibility):
         {
-            "input": {
+            "arguments": {  # MCP standard format
+                "variable1": "value1",
+                "variable2": "value2"
+            }
+        }
+        OR
+        {
+            "input": {  # Compatibility format
                 "variable1": "value1",
                 "variable2": "value2"
             }
@@ -167,14 +185,14 @@ async def invoke_prompt(
                 404,
             )
 
-        # Get input variables
-        input_vars = body.get("input", {})
+        # Get input variables - support both MCP standard (arguments) and compatibility (input)
+        input_vars = body.get("arguments") or body.get("input", {})
         if not isinstance(input_vars, dict):
             if span:
                 span.set_status(Status(StatusCode.ERROR, "Invalid input format"))
             raise raise_mcp_http_exception(
                 ErrorCodes.INVALID_REQUEST,
-                "Input must be a dictionary",
+                "Input must be a dictionary. Use 'arguments' (MCP standard) or 'input' (compatibility).",
                 400,
             )
 
