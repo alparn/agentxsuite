@@ -17,10 +17,16 @@ from apps.agents.serializers import (
 )
 from apps.agents.services import generate_token_for_agent
 from apps.agents.services import revoke_token as revoke_token_service
+from apps.agents.services import create_axcore_agent
 from apps.connections.services import test_connection
+from apps.tenants.models import Organization, Environment
+from apps.audit.mixins import AuditLoggingMixin
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-class AgentViewSet(ModelViewSet):
+class AgentViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for Agent."""
 
     queryset = Agent.objects.all()
@@ -310,8 +316,128 @@ class AgentViewSet(ModelViewSet):
         token.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @action(detail=False, methods=["post"], url_path="create-axcore")
+    def create_axcore(self, request, org_id=None):
+        """
+        Erstellt einen vollständig konfigurierten AxCore-Agent.
+        
+        Erstellt automatisch:
+        - Agent mit "axcore" Tag
+        - ServiceAccount
+        - Policy für System-Tools
+        - Initial Token
+        
+        Request Body:
+        {
+            "name": "Agent Name",
+            "environment_id": "...",
+            "mode": "runner",
+            "enabled": true,
+            "version": "1.0.0",
+            "connection_id": "..." (optional)
+        }
+        
+        Response:
+        {
+            "agent": {...},
+            "service_account": {...},
+            "policy": {...},
+            "token": "...",
+            "token_info": {...}
+        }
+        """
+        org_id = org_id or request.data.get("organization_id")
+        if not org_id:
+            return Response(
+                {"error": "organization_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        try:
+            organization = Organization.objects.get(id=org_id)
+        except Organization.DoesNotExist:
+            return Response(
+                {"error": "Organization not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        environment_id = request.data.get("environment_id")
+        if not environment_id:
+            return Response(
+                {"error": "environment_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        try:
+            environment = Environment.objects.get(
+                id=environment_id,
+                organization=organization,
+            )
+        except Environment.DoesNotExist:
+            return Response(
+                {"error": "Environment not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
+        name = request.data.get("name")
+        if not name:
+            return Response(
+                {"error": "name is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        try:
+            agent, sa, policy, token = create_axcore_agent(
+                organization=organization,
+                environment=environment,
+                name=name,
+                mode=request.data.get("mode", "runner"),
+                enabled=request.data.get("enabled", True),
+                version=request.data.get("version", "1.0.0"),
+                connection_id=request.data.get("connection_id"),
+            )
+            
+            # Get token info
+            token_info = None
+            if agent.issued_tokens.exists():
+                issued_token = agent.issued_tokens.first()
+                token_info = {
+                    "jti": str(issued_token.jti),
+                    "expires_at": issued_token.expires_at.isoformat(),
+                    "scopes": issued_token.scopes,
+                }
+            
+            return Response(
+                {
+                    "agent": AgentSerializer(agent).data,
+                    "service_account": {
+                        "id": str(sa.id),
+                        "name": sa.name,
+                        "subject": sa.subject,
+                    },
+                    "policy": {
+                        "id": str(policy.id),
+                        "name": policy.name,
+                    },
+                    "token": token,
+                    "token_info": token_info,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        except ValueError as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            logger.error(f"Failed to create AxCore agent: {e}", exc_info=True)
+            return Response(
+                {"error": "Failed to create AxCore agent", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
-class TokenViewSet(ModelViewSet):
+
+class TokenViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for Token management (list, revoke, delete)."""
 
     queryset = IssuedToken.objects.all()

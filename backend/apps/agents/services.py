@@ -14,7 +14,10 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from decouple import config
 from django.utils import timezone as django_timezone
 
-from apps.agents.models import Agent, IssuedToken
+from apps.agents.models import Agent, IssuedToken, AgentMode
+from apps.accounts.models import ServiceAccount
+from apps.policies.models import Policy, PolicyRule, PolicyBinding
+from apps.tenants.models import Organization, Environment
 from mcp_fabric.settings import MCP_CANONICAL_URI, MCP_TOKEN_MAX_TTL_MINUTES
 
 logger = logging.getLogger(__name__)
@@ -185,4 +188,167 @@ def revoke_token(jti: str, revoked_by=None) -> IssuedToken:
     logger.info(f"Revoked token {jti}", extra={"jti": jti, "revoked_by": str(revoked_by.id) if revoked_by else None})
     
     return token
+
+
+def create_axcore_agent(
+    organization: Organization,
+    environment: Environment,
+    name: str,
+    mode: str = "runner",
+    enabled: bool = True,
+    version: str = "1.0.0",
+    connection_id: str | None = None,
+) -> tuple[Agent, ServiceAccount, Policy, str]:
+    """
+    Erstellt einen vollständig konfigurierten AxCore-Agent.
+    
+    Erstellt automatisch:
+    1. Agent mit "axcore" Tag
+    2. ServiceAccount für Token-Generierung
+    3. Policy für System-Tools-Zugriff
+    4. Initial Token für sofortige Verwendung
+    
+    Args:
+        organization: Organization instance
+        environment: Environment instance
+        name: Agent name
+        mode: Agent mode (runner/caller)
+        enabled: Whether agent should be enabled
+        version: Agent version
+        connection_id: Optional connection ID
+    
+    Returns:
+        Tuple of (Agent, ServiceAccount, Policy, token_string)
+    
+    Raises:
+        ValueError: If agent already exists or validation fails
+    """
+    # Prüfe ob Agent bereits existiert
+    if Agent.objects.filter(organization=organization, environment=environment, name=name).exists():
+        raise ValueError(f"Agent with name '{name}' already exists")
+    
+    # 1. ServiceAccount erstellen
+    sa_name = f"axcore-{name.lower().replace(' ', '-')}"
+    sa_subject = f"axcore-{name.lower().replace(' ', '-')}@{organization.name.lower().replace(' ', '-')}"
+    
+    # Prüfe ob ServiceAccount bereits existiert
+    sa = ServiceAccount.objects.filter(
+        organization=organization,
+        subject=sa_subject,
+        issuer="https://agentxsuite.local",
+    ).first()
+    
+    if not sa:
+        sa = ServiceAccount.objects.create(
+            organization=organization,
+            environment=environment,
+            name=sa_name,
+            subject=sa_subject,
+            audience="https://agentxsuite.local",
+            issuer="https://agentxsuite.local",
+            scope_allowlist=["mcp:run", "mcp:tools", "mcp:manifest"],
+            enabled=True,
+        )
+        logger.info(
+            f"Created ServiceAccount for AxCore agent: {sa_name}",
+            extra={
+                "service_account_id": str(sa.id),
+                "organization_id": str(organization.id),
+            },
+        )
+    
+    # 2. Agent erstellen
+    agent_data = {
+        "organization": organization,
+        "environment": environment,
+        "name": name,
+        "mode": AgentMode(mode),
+        "enabled": enabled,
+        "service_account": sa,
+        "tags": ["axcore"],  # AxCore-Markierung
+        "capabilities": ["agentxsuite:admin", "agentxsuite:read", "agentxsuite:write"],
+        "version": version,
+    }
+    
+    if connection_id:
+        from apps.connections.models import Connection
+        try:
+            connection = Connection.objects.get(
+                id=connection_id,
+                organization=organization,
+                environment=environment,
+            )
+            agent_data["connection"] = connection
+        except Connection.DoesNotExist:
+            logger.warning(
+                f"Connection {connection_id} not found, creating agent without connection",
+                extra={"connection_id": connection_id},
+            )
+    
+    agent = Agent.objects.create(**agent_data)
+    
+    logger.info(
+        f"Created AxCore agent: {name}",
+        extra={
+            "agent_id": str(agent.id),
+            "organization_id": str(organization.id),
+            "environment_id": str(environment.id),
+        },
+    )
+    
+    # 3. Policy für System-Tools erstellen
+    policy_name = f"axcore-policy-{agent.slug}"
+    
+    policy = Policy.objects.create(
+        organization=organization,
+        environment=environment,
+        name=policy_name,
+        is_active=True,
+        enabled=True,
+    )
+    
+    # PolicyRule: Erlaube alle System-Tools
+    rule = PolicyRule.objects.create(
+        policy=policy,
+        action="tool.invoke",
+        target="tool:agentxsuite:*",
+        effect="allow",
+        conditions={},
+    )
+    
+    # PolicyBinding: Nur für diesen Agent
+    binding = PolicyBinding.objects.create(
+        policy=policy,
+        scope_type="agent",
+        scope_id=str(agent.id),
+        priority=1,  # Sehr spezifisch
+    )
+    
+    logger.info(
+        f"Created policy for AxCore agent: {policy_name}",
+        extra={
+            "policy_id": str(policy.id),
+            "rule_id": str(rule.id),
+            "binding_id": str(binding.id),
+            "agent_id": str(agent.id),
+        },
+    )
+    
+    # 4. Initial Token generieren
+    token_string, issued_token = generate_token_for_agent(
+        agent,
+        ttl_minutes=60,  # 1 Stunde
+        scopes=["mcp:run", "mcp:tools", "mcp:manifest"],
+        metadata={"created_by": "axcore_setup", "initial": True},
+    )
+    
+    logger.info(
+        f"Generated initial token for AxCore agent: {name}",
+        extra={
+            "agent_id": str(agent.id),
+            "token_jti": issued_token.jti,
+        },
+    )
+    
+    return agent, sa, policy, token_string
 

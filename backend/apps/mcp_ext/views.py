@@ -9,9 +9,10 @@ from rest_framework.viewsets import ModelViewSet
 from apps.mcp_ext.models import Prompt, Resource
 from apps.mcp_ext.serializers import PromptSerializer, ResourceSerializer
 from apps.tenants.models import Environment
+from apps.audit.mixins import AuditLoggingMixin
 
 
-class ResourceViewSet(ModelViewSet):
+class ResourceViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for Resource."""
 
     queryset = Resource.objects.all()
@@ -60,7 +61,7 @@ class ResourceViewSet(ModelViewSet):
         serializer.save(organization_id=org_id)
 
 
-class PromptViewSet(ModelViewSet):
+class PromptViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for Prompt."""
 
     queryset = Prompt.objects.all()

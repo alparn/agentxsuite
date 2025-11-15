@@ -1,15 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { X, CheckCircle2, XCircle, AlertCircle, Info, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { useAppStore } from "@/lib/store";
 
 interface ToolRunDialogProps {
   tool: any;
-  onRun: (inputJson: Record<string, any>) => void;
+  onRun: (inputJson: Record<string, any>, agentId?: string) => void;
   onClose: () => void;
   running: boolean;
   result: any;
   error: string | null;
+  agents?: any[];
+  selectedAgentId?: string | null;
+  onAgentChange?: (agentId: string | null) => void;
 }
 
 export function ToolRunDialog({
@@ -19,8 +25,52 @@ export function ToolRunDialog({
   running,
   result,
   error,
+  agents = [],
+  selectedAgentId = null,
+  onAgentChange,
 }: ToolRunDialogProps) {
+  const { currentOrgId: orgId } = useAppStore();
   const [args, setArgs] = useState<Record<string, any>>({});
+  const [localAgentId, setLocalAgentId] = useState<string | null>(selectedAgentId || null);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [showChat, setShowChat] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch run steps if runId is set
+  const { data: stepsData } = useQuery({
+    queryKey: ["run-steps", orgId, runId],
+    queryFn: async () => {
+      if (!orgId || !runId) return [];
+      const response = await api.get(`/orgs/${orgId}/runs/${runId}/steps/`);
+      return Array.isArray(response.data) ? response.data : [];
+    },
+    enabled: !!orgId && !!runId && (running || showChat),
+    refetchInterval: running ? 500 : false, // Poll every 500ms while running
+  });
+
+  const steps = Array.isArray(stepsData) ? stepsData : [];
+
+  // Scroll to bottom when new steps arrive
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [steps]);
+
+  // Extract runId from result
+  useEffect(() => {
+    if (result?.id) {
+      setRunId(result.id);
+      setShowChat(true);
+    }
+  }, [result]);
+
+  // Show chat automatically when running starts
+  useEffect(() => {
+    if (running) {
+      setShowChat(true);
+    }
+  }, [running]);
 
   // Parse JSON Schema to generate form fields
   const schema = tool.schema_json || {};
@@ -32,18 +82,63 @@ export function ToolRunDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onRun(args);
+    onRun(args, localAgentId || undefined);
   };
+
+  const effectiveAgentId = selectedAgentId !== undefined ? selectedAgentId : localAgentId;
 
   const updateArg = (key: string, value: any) => {
     setArgs((prev) => ({ ...prev, [key]: value }));
   };
 
+  const getStepIcon = (stepType: string) => {
+    switch (stepType) {
+      case "success":
+        return <CheckCircle2 className="w-4 h-4 text-green-400" />;
+      case "error":
+        return <XCircle className="w-4 h-4 text-red-400" />;
+      case "warning":
+        return <AlertCircle className="w-4 h-4 text-yellow-400" />;
+      case "check":
+        return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
+      case "execution":
+        return <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />;
+      default:
+        return <Info className="w-4 h-4 text-slate-400" />;
+    }
+  };
+
+  const getStepColor = (stepType: string) => {
+    switch (stepType) {
+      case "success":
+        return "bg-green-500/10 border-green-500/20 text-green-300";
+      case "error":
+        return "bg-red-500/10 border-red-500/20 text-red-300";
+      case "warning":
+        return "bg-yellow-500/10 border-yellow-500/20 text-yellow-300";
+      case "check":
+        return "bg-blue-500/10 border-blue-500/20 text-blue-300";
+      case "execution":
+        return "bg-purple-500/10 border-purple-500/20 text-purple-300";
+      default:
+        return "bg-slate-800 border-slate-700 text-slate-300";
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between mb-4 flex-shrink-0">
           <h2 className="text-2xl font-bold text-white">Run Tool: {tool.name}</h2>
+          <div className="flex items-center gap-2">
+            {runId && (
+              <button
+                onClick={() => setShowChat(!showChat)}
+                className="px-3 py-1.5 text-sm bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition-colors"
+              >
+                {showChat ? "Formular" : "Chat"}
+              </button>
+            )}
           <button
             onClick={onClose}
             className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors"
@@ -51,11 +146,88 @@ export function ToolRunDialog({
           >
             <X className="w-5 h-5" />
           </button>
+          </div>
         </div>
 
+        {showChat && runId ? (
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="mb-2 text-sm text-slate-400">Agent-Schritte:</div>
+            <div className="flex-1 overflow-y-auto bg-slate-950 border border-slate-800 rounded-lg p-4 space-y-2">
+              {steps.length === 0 ? (
+                <div className="text-center text-slate-500 py-8">
+                  {running ? "Warte auf Schritte..." : "Keine Schritte verfügbar"}
+                </div>
+              ) : (
+                steps.map((step: any) => (
+                  <div
+                    key={step.id}
+                    className={`p-3 rounded-lg border ${getStepColor(step.step_type)} flex items-start gap-3`}
+                  >
+                    <div className="flex-shrink-0 mt-0.5">{getStepIcon(step.step_type)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium break-words">{step.message}</div>
+                      {step.details && Object.keys(step.details).length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-400">
+                            Details anzeigen
+                          </summary>
+                          <pre className="mt-2 text-xs bg-slate-900/50 p-2 rounded overflow-x-auto">
+                            {JSON.stringify(step.details, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                      <div className="text-xs text-slate-500 mt-1">
+                        {new Date(step.timestamp).toLocaleTimeString()}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+              {running && (
+                <div className="flex items-center gap-2 text-slate-400 text-sm p-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Läuft...</span>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto">
         {toolDescription && (
           <p className="text-slate-400 mb-4">{toolDescription}</p>
         )}
+
+            {agents && agents.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium mb-1 text-slate-300">
+                  Agent auswählen
+                  <span className="text-red-500 ml-1">*</span>
+                </label>
+                <select
+                  value={effectiveAgentId || ""}
+                  onChange={(e) => {
+                    const newAgentId = e.target.value || null;
+                    setLocalAgentId(newAgentId);
+                    if (onAgentChange) {
+                      onAgentChange(newAgentId);
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                >
+                  <option value="">-- Agent auswählen --</option>
+                  {agents.map((agent: any) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name} {agent.is_axcore || agent.tags?.includes("axcore") ? "(AxCore)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-500 mt-1">
+                  Wählen Sie den Agent aus, der diese Aufgabe ausführen soll.
+                </p>
+              </div>
+            )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {Object.entries(properties).map(([key, prop]: [string, any]) => (
@@ -86,14 +258,14 @@ export function ToolRunDialog({
             <button
               type="submit"
               className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={running}
+                  disabled={running || (agents && agents.length > 0 && !effectiveAgentId)}
             >
               {running ? "Running..." : "Run Tool"}
             </button>
           </div>
         </form>
 
-        {result && (
+            {result && !showChat && (
           <div className="mt-4 p-4 bg-green-500/10 border border-green-500/20 rounded">
             <h3 className="font-semibold mb-2 text-green-400">Result:</h3>
             <div className="space-y-2 text-sm text-green-300">
@@ -134,12 +306,14 @@ export function ToolRunDialog({
           </div>
         )}
 
-        {error && (
+            {error && !showChat && (
           <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded">
             <h3 className="font-semibold mb-2 text-red-400">Error:</h3>
             <pre className="whitespace-pre-wrap text-sm text-red-300 overflow-x-auto">
               {error}
             </pre>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -12,6 +12,7 @@ interface ResourceDialogProps {
   onClose: () => void;
   orgId: string;
   environments: any[];
+  onSuccess?: (resource: any) => void;
 }
 
 export function ResourceDialog({
@@ -19,6 +20,7 @@ export function ResourceDialog({
   onClose,
   orgId,
   environments,
+  onSuccess,
 }: ResourceDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -104,9 +106,13 @@ export function ResourceDialog({
         return resourcesApi.create(orgId, payload);
       }
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["resources"] });
       setErrors({});
+      // Call onSuccess callback if provided (for canvas integration)
+      if (onSuccess) {
+        onSuccess(data.data || data);
+      }
       onClose();
     },
     onError: (error: any) => {

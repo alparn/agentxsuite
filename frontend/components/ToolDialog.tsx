@@ -11,6 +11,7 @@ interface ToolDialogProps {
   onClose: () => void;
   tool?: any;
   orgId: string | null;
+  onSuccess?: (tool: any) => void;
 }
 
 export function ToolDialog({
@@ -18,6 +19,7 @@ export function ToolDialog({
   onClose,
   tool,
   orgId,
+  onSuccess,
 }: ToolDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -94,9 +96,13 @@ export function ToolDialog({
         return api.post(`/orgs/${orgId}/tools/`, payload);
       }
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["tools"] });
       setErrors({});
+      // Call onSuccess callback if provided (for canvas integration)
+      if (onSuccess) {
+        onSuccess(data.data || data);
+      }
       onClose();
     },
     onError: (error: any) => {

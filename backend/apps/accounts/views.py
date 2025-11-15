@@ -18,6 +18,7 @@ from apps.accounts.serializers import (
     UserRegistrationSerializer,
     UserSerializer,
 )
+from apps.audit.mixins import AuditLoggingMixin
 
 
 @api_view(["POST"])
@@ -165,7 +166,7 @@ def my_organizations(request) -> Response:
         )
 
 
-class ServiceAccountViewSet(ModelViewSet):
+class ServiceAccountViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for ServiceAccount management."""
 
     queryset = ServiceAccount.objects.all()

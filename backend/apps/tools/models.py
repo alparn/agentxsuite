@@ -31,7 +31,6 @@ class Tool(TimeStamped):
         "connections.Connection",
         on_delete=models.CASCADE,
         related_name="tools",
-        null=False,
         help_text="MCP server connection this tool belongs to",
     )
     name = models.CharField(max_length=255)
@@ -54,6 +53,11 @@ class Tool(TimeStamped):
         db_table = "tools_tool"
         ordering = ["-created_at"]
         unique_together = [["organization", "environment", "name", "version"]]
+    
+    @property
+    def is_system_tool(self) -> bool:
+        """Check if this is a system tool (belongs to system connection)."""
+        return self.connection.endpoint == "agentxsuite://system"
 
     def __str__(self) -> str:
         return f"{self.organization.name}/{self.environment.name}/{self.name}"

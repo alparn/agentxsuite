@@ -207,6 +207,22 @@ export interface Agent {
   updated_at: string;
 }
 
+// Tool types
+export interface Tool {
+  id: string;
+  organization: Organization;
+  environment: Environment;
+  connection: Connection;
+  name: string;
+  version: string;
+  schema_json: Record<string, any>;
+  enabled: boolean;
+  sync_status: "synced" | "failed" | "stale";
+  synced_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Token types
 export interface IssuedToken {
   id: string;
@@ -252,6 +268,68 @@ export interface ServiceAccount {
   enabled: boolean;
   agent_id?: string | null;
   agent_name?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Run types (for list view - optimized)
+export interface RunList {
+  id: string;
+  organization_id: string;
+  organization_name: string;
+  environment_id: string;
+  environment_name: string;
+  agent_id: string;
+  agent_name: string;
+  tool_id: string;
+  tool_name: string;
+  status: "pending" | "running" | "succeeded" | "failed";
+  started_at?: string | null;
+  ended_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Run types (for detail view - full nested objects)
+export interface RunDetail {
+  id: string;
+  organization: Organization;
+  environment: Environment;
+  agent: Agent;
+  tool: {
+    id: string;
+    organization: Organization;
+    environment: Environment;
+    name: string;
+    version: string;
+    schema_json: Record<string, any>;
+    enabled: boolean;
+    sync_status: string;
+    synced_at?: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  status: "pending" | "running" | "succeeded" | "failed";
+  started_at?: string | null;
+  ended_at?: string | null;
+  input_json: Record<string, any>;
+  output_json?: Record<string, any> | null;
+  error_text?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Connection types
+export interface Connection {
+  id: string;
+  organization: Organization;
+  environment: Environment;
+  name: string;
+  endpoint: string;
+  auth_method: "none" | "bearer" | "basic";
+  secret_ref?: string | null;
+  status: "unknown" | "ok" | "fail";
+  last_seen_at?: string | null;
   created_at: string;
   updated_at: string;
 }

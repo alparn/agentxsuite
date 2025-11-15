@@ -105,3 +105,6 @@ def revoke_jti(jti: str) -> None:
     logger.info(f"Revoked jti={jti}", extra={"jti": jti})
 
 
+
+
+

@@ -42,7 +42,7 @@ export function MCPConnectionView() {
 
   const getMCPUrl = (env: any) => {
     if (!orgId || !env) return "";
-    return `${mcpFabricBaseUrl}/mcp/${orgId}/${env.id}/.well-known/mcp`;
+    return `${mcpFabricBaseUrl}/.well-known/mcp`;
   };
 
   const copyToClipboard = async (text: string, type: string) => {

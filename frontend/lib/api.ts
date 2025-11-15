@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { Resource, Prompt, Policy, PolicyRule, PolicyBinding, PolicyEvaluateRequest, Agent, IssuedToken, TokenGenerateRequest, TokenGenerateResponse, ServiceAccount } from "./types";
+import type { Resource, Prompt, Policy, PolicyRule, PolicyBinding, PolicyEvaluateRequest, Agent, IssuedToken, TokenGenerateRequest, TokenGenerateResponse, ServiceAccount, RunList, RunDetail } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -156,6 +156,40 @@ export const serviceAccountsApi = {
     api.put<ServiceAccount>(`/orgs/${orgId}/service-accounts/${id}/`, data),
   delete: (orgId: string, id: string) =>
     api.delete(`/orgs/${orgId}/service-accounts/${id}/`),
+};
+
+// Runs API
+export const runsApi = {
+  list: (orgId: string, params?: { status?: string; agent?: string; tool?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.status) queryParams.append("status", params.status);
+    if (params?.agent) queryParams.append("agent", params.agent);
+    if (params?.tool) queryParams.append("tool", params.tool);
+    const queryString = queryParams.toString();
+    return api.get<{ count: number; next: string | null; previous: string | null; results: RunList[] }>(
+      `/orgs/${orgId}/runs/${queryString ? `?${queryString}` : ""}`
+    );
+  },
+  get: (orgId: string, id: string) => api.get<RunDetail>(`/orgs/${orgId}/runs/${id}/`),
+  steps: (orgId: string, id: string) => api.get(`/orgs/${orgId}/runs/${id}/steps/`),
+};
+
+// Canvas API
+export const canvasApi = {
+  getDefault: (orgId: string) =>
+    api.get(`/orgs/${orgId}/canvas/default/`),
+  saveDefault: (orgId: string, state: any) =>
+    api.post(`/orgs/${orgId}/canvas/default/`, { state_json: state }),
+  list: (orgId: string) =>
+    api.get(`/orgs/${orgId}/canvas/`),
+  get: (orgId: string, id: string) =>
+    api.get(`/orgs/${orgId}/canvas/${id}/`),
+  create: (orgId: string, data: any) =>
+    api.post(`/orgs/${orgId}/canvas/`, data),
+  update: (orgId: string, id: string, data: any) =>
+    api.put(`/orgs/${orgId}/canvas/${id}/`, data),
+  delete: (orgId: string, id: string) =>
+    api.delete(`/orgs/${orgId}/canvas/${id}/`),
 };
 
 export default api;

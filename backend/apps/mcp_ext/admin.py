@@ -30,3 +30,7 @@ class PromptAdmin(admin.ModelAdmin):
 
 
 
+
+
+
+

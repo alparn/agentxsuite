@@ -32,21 +32,18 @@ def agent(org_env):
     org, env = org_env
     from apps.agents.models import InboundAuthMethod
     
-    # Create agent with skip_validation to avoid validation errors during creation
-    agent = baker.prepare(
-        Agent,
+    # Use Agent.objects.create() directly instead of baker to avoid validation issues
+    # This matches the pattern used in other agent tests
+    return Agent.objects.create(
         organization=org,
         environment=env,
         name="test-agent",
         slug="test-agent",  # Explicit slug to avoid auto-generation issues
         enabled=True,
         inbound_auth_method=InboundAuthMethod.NONE,  # NONE doesn't require secret_ref
-        capabilities=[],  # Empty list required
-        tags=[],  # Empty list required
+        capabilities=[],  # Empty list is valid for JSONField
+        tags=[],  # Empty list is valid for JSONField
     )
-    # Save with skip_validation=True to bypass clean() validation
-    agent.save(skip_validation=True)
-    return agent
 
 
 @pytest.fixture

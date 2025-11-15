@@ -7,7 +7,7 @@ import logging
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
-from fastapi import APIRouter, Body, Depends, Path
+from fastapi import APIRouter, Body, Depends, Path, status
 
 try:
     from opentelemetry import trace
@@ -30,7 +30,7 @@ from mcp_fabric.errors import ErrorCodes, raise_mcp_http_exception
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/{org_id}/{env_id}/.well-known/mcp", tags=["mcp-prompts"])
+router = APIRouter(prefix="/.well-known/mcp", tags=["mcp-prompts"])
 
 
 def _resolve_org_env(org_id: str, env_id: str) -> tuple[Organization, Environment]:
@@ -70,8 +70,6 @@ def _resolve_org_env(org_id: str, env_id: str) -> tuple[Organization, Environmen
 
 @router.get("/prompts")
 async def list_prompts(
-    org_id: UUID = Path(..., description="Organization ID"),
-    env_id: UUID = Path(..., description="Environment ID"),
     token_claims: dict = Depends(
         create_token_validator(required_scopes=["mcp:prompts"])
     ),
@@ -80,11 +78,23 @@ async def list_prompts(
     List available prompts for organization/environment.
 
     Requires scope: mcp:prompts
+    org_id/env_id are extracted from token claims (secure multi-tenant).
 
     Returns:
         List of prompt definitions (name, description, inputSchema)
         Following MCP standard with CamelCase field names.
     """
+    # Extract org_id/env_id from token claims
+    org_id = token_claims.get("org_id")
+    env_id = token_claims.get("env_id")
+    
+    if not org_id or not env_id:
+        raise raise_mcp_http_exception(
+            ErrorCodes.AGENT_NOT_FOUND,
+            "Token missing org_id or env_id claims",
+            status.HTTP_403_FORBIDDEN,
+        )
+    
     span = None
     if OTELEMETRY_AVAILABLE and tracer:
         span = tracer.start_span("mcp.prompts.list")
@@ -127,8 +137,6 @@ async def list_prompts(
 
 @router.post("/prompts/{prompt_name}/invoke")
 async def invoke_prompt(
-    org_id: UUID = Path(..., description="Organization ID"),
-    env_id: UUID = Path(..., description="Environment ID"),
     prompt_name: str = Path(..., description="Prompt name"),
     body: dict = Body(..., description="Request body with input variables"),
     token_claims: dict = Depends(
@@ -139,6 +147,7 @@ async def invoke_prompt(
     Invoke a prompt with input variables.
 
     Requires scope: mcp:prompt:invoke
+    org_id/env_id are extracted from token claims (secure multi-tenant).
 
     Body format (supports both MCP standard and compatibility):
         {
@@ -158,6 +167,17 @@ async def invoke_prompt(
     Returns:
         Dictionary with "messages" list
     """
+    # Extract org_id/env_id from token claims
+    org_id = token_claims.get("org_id")
+    env_id = token_claims.get("env_id")
+    
+    if not org_id or not env_id:
+        raise raise_mcp_http_exception(
+            ErrorCodes.AGENT_NOT_FOUND,
+            "Token missing org_id or env_id claims",
+            status.HTTP_403_FORBIDDEN,
+        )
+    
     span = None
     if OTELEMETRY_AVAILABLE and tracer:
         span = tracer.start_span("mcp.prompts.invoke")

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAppStore } from "@/lib/store";
 import { X } from "lucide-react";
 
 interface AgentDialogProps {
@@ -11,16 +12,21 @@ interface AgentDialogProps {
   onClose: () => void;
   agent?: any;
   orgId: string | null;
+  onSuccess?: (agent: any) => void;
 }
 
 export function AgentDialog({
   isOpen,
   onClose,
   agent,
-  orgId,
+  orgId: propOrgId,
+  onSuccess,
 }: AgentDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
+  const { currentOrgId: storeOrgId } = useAppStore();
+  // Use prop orgId if provided, otherwise fall back to store
+  const orgId = propOrgId || storeOrgId;
   const [formData, setFormData] = useState({
     name: "",
     version: "1.0.0",
@@ -30,37 +36,56 @@ export function AgentDialog({
     mode: "runner" as "runner" | "caller",
     inbound_auth_method: "bearer" as "bearer" | "mtls" | "none",
     inbound_secret_ref: "",
+    is_axcore: false,
   });
+  const [showTokenDialog, setShowTokenDialog] = useState(false);
+  const [newToken, setNewToken] = useState<string | null>(null);
 
   // Fetch environments for the organization
-  const { data: environments } = useQuery({
+  const { data: environmentsData, isLoading: environmentsLoading } = useQuery({
     queryKey: ["environments", orgId],
     queryFn: async () => {
       if (!orgId) return [];
+      try {
       const response = await api.get(`/orgs/${orgId}/environments/`);
       // Handle paginated response
       if (Array.isArray(response.data)) {
         return response.data;
       }
       return response.data?.results || [];
+      } catch (error) {
+        console.error("Failed to fetch environments:", error);
+        return [];
+      }
     },
     enabled: !!orgId && isOpen,
+    staleTime: 30000, // Cache for 30 seconds
   });
 
+  const environments = Array.isArray(environmentsData) ? environmentsData : [];
+
   // Fetch connections for the organization
-  const { data: connections } = useQuery({
+  const { data: connectionsData, isLoading: connectionsLoading } = useQuery({
     queryKey: ["connections", orgId],
     queryFn: async () => {
       if (!orgId) return [];
+      try {
       const response = await api.get(`/orgs/${orgId}/connections/`);
       // Handle paginated response
       if (Array.isArray(response.data)) {
         return response.data;
       }
       return response.data?.results || [];
+      } catch (error) {
+        console.error("Failed to fetch connections:", error);
+        return [];
+      }
     },
     enabled: !!orgId && isOpen,
+    staleTime: 30000, // Cache for 30 seconds
   });
+
+  const connections = Array.isArray(connectionsData) ? connectionsData : [];
 
   useEffect(() => {
     if (agent) {
@@ -73,6 +98,7 @@ export function AgentDialog({
         mode: agent.mode || "runner",
         inbound_auth_method: agent.inbound_auth_method || "bearer",
         inbound_secret_ref: agent.inbound_secret_ref || "",
+        is_axcore: agent.is_axcore || agent.tags?.includes("axcore") || false,
       });
     } else {
       setFormData({
@@ -84,6 +110,7 @@ export function AgentDialog({
         mode: "runner",
         inbound_auth_method: "bearer",
         inbound_secret_ref: "",
+        is_axcore: false,
       });
     }
   }, [agent]);
@@ -93,13 +120,28 @@ export function AgentDialog({
       if (agent) {
         return api.put(`/orgs/${orgId}/agents/${agent.id}/`, data);
       } else {
+        // Wenn AxCore: Spezieller Endpoint für vollständige Erstellung
+        if (data.is_axcore) {
+          return api.post(`/orgs/${orgId}/agents/create-axcore/`, data);
+        }
         // organization_id is automatically set by backend from URL
         return api.post(`/orgs/${orgId}/agents/`, data);
       }
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
+      
+      // Wenn AxCore erstellt wurde und Token zurückkommt
+      if (response.data?.token) {
+        setNewToken(response.data.token);
+        setShowTokenDialog(true);
+      } else {
+        // Call onSuccess callback if provided (for canvas integration)
+        if (onSuccess && response.data) {
+          onSuccess(response.data);
+        }
       onClose();
+      }
     },
   });
 
@@ -130,6 +172,11 @@ export function AgentDialog({
       if (formData.inbound_auth_method !== "none") {
         submitData.inbound_secret_ref = formData.inbound_secret_ref || null;
       }
+    }
+    
+    // AxCore: Tags hinzufügen (nur bei Erstellung)
+    if (!agent && formData.is_axcore) {
+      submitData.is_axcore = true; // Flag für Backend
     }
     
     mutation.mutate(submitData);
@@ -193,15 +240,21 @@ export function AgentDialog({
               onChange={(e) =>
                 setFormData({ ...formData, environment_id: e.target.value })
               }
-              className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              disabled={environmentsLoading}
+              className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <option value="">{t("common.select")}...</option>
-              {environments?.map((env: any) => (
+              <option value="">{environmentsLoading ? t("common.loading") : `${t("common.select")}...`}</option>
+              {environments.map((env: any) => (
                 <option key={env.id} value={env.id}>
                   {env.name} ({env.type})
                 </option>
               ))}
             </select>
+            {!environmentsLoading && environments.length === 0 && orgId && (
+              <p className="mt-1 text-xs text-red-500 dark:text-red-400">
+                {t("agents.noEnvironments") || "No environments found. Please create an environment first."}
+              </p>
+            )}
           </div>
 
           <div>
@@ -245,15 +298,21 @@ export function AgentDialog({
               onChange={(e) =>
                 setFormData({ ...formData, connection_id: e.target.value })
               }
-              className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              disabled={connectionsLoading}
+              className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <option value="">{t("common.select")}...</option>
-              {connections?.map((conn: any) => (
+              <option value="">{connectionsLoading ? t("common.loading") : `${t("common.select")}...`}</option>
+              {connections.map((conn: any) => (
                 <option key={conn.id} value={conn.id}>
                   {conn.name} ({conn.endpoint})
                 </option>
               ))}
             </select>
+            {!connectionsLoading && connections.length === 0 && formData.mode === "runner" && orgId && (
+              <p className="mt-1 text-xs text-red-500 dark:text-red-400">
+                {t("agents.noConnections") || "No connections found. Please create a connection first."}
+              </p>
+            )}
             {formData.mode === "caller" && (
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 {t("agents.connectionOptional")}
@@ -328,6 +387,26 @@ export function AgentDialog({
             </label>
           </div>
 
+          {!agent && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="is_axcore"
+                checked={formData.is_axcore ?? false}
+                onChange={(e) =>
+                  setFormData({ ...formData, is_axcore: e.target.checked })
+                }
+                className="w-4 h-4 text-purple-600 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 rounded focus:ring-purple-500"
+              />
+              <label
+                htmlFor="is_axcore"
+                className="text-sm font-medium text-slate-700 dark:text-slate-300"
+              >
+                AxCore Agent (automatische System-Tools-Konfiguration)
+              </label>
+            </div>
+          )}
+
           {mutation.error && (
             <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
               <p className="text-sm text-red-400 font-semibold mb-1">Error:</p>
@@ -374,6 +453,41 @@ export function AgentDialog({
           </div>
         </form>
       </div>
+      
+      {showTokenDialog && newToken && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 max-w-2xl w-full">
+            <h3 className="text-xl font-bold text-white mb-4">AxCore Agent erstellt</h3>
+            <p className="text-slate-300 mb-4">
+              Der Agent wurde erfolgreich erstellt. Hier ist der Initial Token:
+            </p>
+            <div className="bg-slate-800 p-4 rounded mb-4">
+              <code className="text-sm text-green-400 break-all">{newToken}</code>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(newToken);
+                  alert("Token kopiert!");
+                }}
+                className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600"
+              >
+                Token kopieren
+              </button>
+              <button
+                onClick={() => {
+                  setShowTokenDialog(false);
+                  setNewToken(null);
+                  onClose();
+                }}
+                className="px-4 py-2 bg-slate-700 text-white rounded hover:bg-slate-600"
+              >
+                Schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

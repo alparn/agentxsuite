@@ -23,6 +23,7 @@ from apps.audit.models import AuditEvent
 from apps.audit.services import log_security_event
 from apps.policies.pdp import get_pdp
 from apps.tools.models import Tool
+from libs.logging.context import set_context_ids
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,14 @@ def check_policy_before_tool_call(
         )
         return False, "Agent not found or disabled"
 
+    # Set context IDs for logging (agent_id, tool_id, org_id, env_id)
+    set_context_ids(
+        agent_id=str(agent.id),
+        tool_id=str(tool.id),
+        org_id=str(tool.organization.id),
+        env_id=str(tool.environment.id),
+    )
+
     # Build context for PDP
     pdp_context = context or {}
     pdp_context.update(
@@ -94,7 +103,7 @@ def check_policy_before_tool_call(
     if not subject and agent.service_account:
         subject = agent.service_account.subject
     elif not subject:
-        subject = f"agent:{agent.slug}@{tool.organization.name}/{tool.environment.name}"
+        subject = f"agent:{agent.slug}@{tool.organization.name}/{tool.environment.id}"
 
     # OpenTelemetry span for PEP decision
     span = None
@@ -130,7 +139,7 @@ def check_policy_before_tool_call(
             context=pdp_context,
         )
 
-        # Audit log for policy decision (P0: include jti, ip, request_id)
+        # Audit log for policy decision using log_security_event (includes context IDs automatically)
         audit_context = {
             "agent_id": str(agent.id),
             "tool_id": str(tool.id),
@@ -148,18 +157,18 @@ def check_policy_before_tool_call(
         if request_id:
             audit_context["request_id"] = request_id
         
-        from django.utils import timezone
+        from apps.audit.services import log_security_event
         
-        audit_event = AuditEvent.objects.create(
-            organization=tool.organization,
-            event_type="pep_decision",
+        # Use log_security_event for consistent MCP event logging
+        audit_event = log_security_event(
+            organization_id=str(tool.organization.id),
+            event_type="mcp.policy.decision",
+            event_data=audit_context,
             subject=subject,
             action="tool.invoke",
             target=f"tool:{tool.name}",
             decision=decision.decision,
             rule_id=None,  # PolicyRule.id is UUID, not compatible with IntegerField; stored in context instead
-            context=audit_context,
-            ts=timezone.now(),  # Explicitly set ts for filtering
         )
         # Update OpenTelemetry span with decision and audit event ID
         if span:

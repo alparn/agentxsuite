@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   LayoutDashboard,
@@ -18,12 +18,16 @@ import {
   Database,
   MessageSquare,
   Wifi,
+  Zap,
+  Network,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, key: "overview" },
+  { href: "/axcore", icon: Zap, key: "axcore" },
+  { href: "/canvas", icon: Network, key: "agentDesigner" },
   { href: "/agents", icon: Bot, key: "agents" },
   { href: "/connections", icon: Plug, key: "connections" },
   { href: "/tools", icon: Wrench, key: "tools" },
@@ -46,6 +50,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
   const t = useTranslations("nav");
   const tCommon = useTranslations("common");
   const pathname = usePathname();
+  const params = useParams();
+  const locale = (params?.locale as string) || "en";
   const clearAuth = useAuthStore((state) => state.clearAuth);
 
   const handleLogout = () => {
@@ -86,21 +92,47 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       <nav className="flex-1 p-2 sm:p-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+          // Remove locale prefix from pathname for comparison
+          // Handle cases like "/de" or "/de/" -> "/"
+          let pathnameWithoutLocale = pathname.replace(new RegExp(`^/${locale}(/|$)`), "/");
+          if (pathnameWithoutLocale === "") {
+            pathnameWithoutLocale = "/";
+          }
+          
+          // Normalize paths: ensure they start with /
+          const normalizedPathname = pathnameWithoutLocale;
+          const normalizedHref = item.href;
+          
+          // Check if active: exact match or pathname starts with href + "/"
+          // Special case: if pathname is "/" and href is "/dashboard", consider dashboard active
+          const isActive = 
+            normalizedPathname === normalizedHref || 
+            (normalizedHref !== "/" && normalizedPathname.startsWith(normalizedHref + "/")) ||
+            (normalizedPathname === "/" && normalizedHref === "/dashboard");
+          
+          const isAxCore = item.href === "/axcore";
+          const hrefWithLocale = `/${locale}${item.href}`;
           
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={hrefWithLocale}
               onClick={handleLinkClick}
               className={cn(
                 "flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-3 rounded-lg transition-colors text-sm sm:text-base",
                 isActive
-                  ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                  ? isAxCore
+                    ? "bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-400 border border-purple-500/30"
+                    : "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+                  : isAxCore
+                    ? "text-purple-400/70 hover:text-purple-400 hover:bg-purple-500/10"
                   : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
               )}
             >
-              <Icon className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+              <Icon className={cn(
+                "w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0",
+                isAxCore && isActive && "text-purple-400"
+              )} />
               <span className="font-medium truncate">{t(item.key)}</span>
             </Link>
           );

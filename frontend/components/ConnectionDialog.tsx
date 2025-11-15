@@ -11,7 +11,7 @@ interface ConnectionDialogProps {
   onClose: () => void;
   connection?: any;
   orgId: string | null;
-  onSuccess?: () => void;
+  onSuccess?: (connection: any) => void;
 }
 
 export function ConnectionDialog({
@@ -131,14 +131,17 @@ export function ConnectionDialog({
         return api.post(`/orgs/${orgId}/connections/`, payload);
       }
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       // Invalidate all connection queries (with and without orgId)
       queryClient.invalidateQueries({ queryKey: ["connections"] });
       if (orgId) {
         queryClient.invalidateQueries({ queryKey: ["connections", orgId] });
       }
       setErrors({});
-      onSuccess?.();
+      // Call onSuccess callback if provided (for canvas integration)
+      if (onSuccess) {
+        onSuccess(data.data || data);
+      }
       onClose();
     },
     onError: (error: any) => {

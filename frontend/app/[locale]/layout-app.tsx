@@ -6,7 +6,7 @@ import { useAuthStore } from "@/lib/store";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function AppLayout({ children }: { children: React.ReactNode }) {
+export function AppLayout({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
   const [mounted, setMounted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated());
@@ -42,7 +42,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       
       <div className="flex-1 flex flex-col overflow-hidden w-full lg:w-auto">
         <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
+        <main className={`flex-1 overflow-y-auto ${noPadding ? "bg-slate-950" : "p-4 sm:p-6"}`}>{children}</main>
       </div>
     </div>
   );

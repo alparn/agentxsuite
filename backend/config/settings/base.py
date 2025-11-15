@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     "apps.audit",
     "apps.secretstore",
     "apps.mcp_ext",
+    "apps.system_tools",
+    "apps.canvas",
 ]
 
 MIDDLEWARE = [
@@ -46,6 +48,7 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "config.middleware.LoggingContextMiddleware",  # Context propagation for logging
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -154,5 +157,94 @@ CORS_ALLOW_HEADERS = [
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
+    "x-request-id",  # For request ID propagation
 ]
+
+# Logging Configuration
+# JSON logging with context propagation and secret redaction
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "json": {
+            "()": "libs.logging.formatters.JSONFormatter",
+        },
+        "verbose": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s [trace_id=%(trace_id)s run_id=%(run_id)s request_id=%(request_id)s]",
+        },
+    },
+    "filters": {
+        "context": {
+            "()": "libs.logging.filters.ContextFilter",
+        },
+        "secret_redaction": {
+            "()": "libs.logging.filters.SecretRedactionFilter",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "json",
+            "filters": ["context", "secret_redaction"],
+            "stream": "ext://sys.stdout",
+        },
+        "null": {
+            "class": "logging.NullHandler",
+        },
+    },
+    "root": {
+        "level": config("LOG_LEVEL", default="INFO"),
+        "handlers": ["console"],
+    },
+    "loggers": {
+        # Django loggers
+        "django": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+        "django.request": {
+            "level": "WARNING",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+        "django.security": {
+            "level": "WARNING",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+        # Application loggers
+        "apps": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+        "mcp_fabric": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+        "libs": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+        # Uvicorn/FastAPI loggers (will be configured by FastAPI middleware)
+        "uvicorn": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+        "uvicorn.access": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+        "fastapi": {
+            "level": "INFO",
+            "handlers": ["console"],
+            "propagate": False,
+        },
+    },
+}
 

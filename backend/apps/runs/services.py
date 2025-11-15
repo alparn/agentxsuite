@@ -12,13 +12,40 @@ from django.utils import timezone
 from apps.agents.models import Agent
 from apps.audit.services import log_run_event, log_security_event
 from apps.policies.services import is_allowed
-from apps.runs.models import Run
+from apps.runs.models import Run, RunStep
 from apps.runs.rate_limit import check_rate_limit
 from apps.runs.timeout import execute_with_timeout, TimeoutError
 from apps.runs.validators import validate_input_json
 from apps.tools.models import Tool
+from libs.logging.context import set_context_ids
 
 logger = logging.getLogger(__name__)
+
+
+def _add_run_step(
+    run: Run,
+    step_type: str,
+    message: str,
+    details: dict | None = None,
+) -> RunStep:
+    """
+    Add a step to a run for tracking progress.
+    
+    Args:
+        run: Run instance
+        step_type: Type of step (info, success, warning, error, check, execution)
+        message: Human-readable message
+        details: Optional additional details as dict
+        
+    Returns:
+        Created RunStep instance
+    """
+    return RunStep.objects.create(
+        run=run,
+        step_type=step_type,
+        message=message,
+        details=details or {},
+    )
 
 
 def _get_mcp_fabric_endpoints() -> list[str]:
@@ -87,9 +114,23 @@ def start_run(
         input_json=input_json or {},
     )
 
+    # Set run_id in logging context for automatic log injection
+    set_context_ids(
+        run_id=str(run.id),
+        agent_id=str(agent.id),
+        tool_id=str(tool.id),
+        org_id=str(agent.organization.id),
+        env_id=str(agent.environment.id),
+    )
+
+    # Initial step: Run created
+    _add_run_step(run, "info", f"Run erstellt für Tool '{tool.name}' mit Agent '{agent.name}'")
+
     try:
         # 1. Tool verification: Check sync status and existence on MCP server
+        _add_run_step(run, "check", "Prüfe Tool-Verbindung...")
         if not tool.connection:
+            _add_run_step(run, "error", f"Tool '{tool.name}' hat keine Verbindung. Bitte Tools synchronisieren.")
             run.status = "failed"
             run.error_text = f"Tool '{tool.name}' has no connection. Please sync tools first."
             run.ended_at = timezone.now()
@@ -104,8 +145,11 @@ def start_run(
                 },
             )
             raise ValueError(f"Tool '{tool.name}' has no connection. Please sync tools first.")
+        _add_run_step(run, "success", f"Verbindung gefunden: {tool.connection.name}")
 
+        _add_run_step(run, "check", f"Prüfe Sync-Status... (aktuell: {tool.sync_status})")
         if tool.sync_status != "synced":
+            _add_run_step(run, "error", f"Tool '{tool.name}' ist nicht synchronisiert (Status: {tool.sync_status}). Bitte Tools synchronisieren.")
             run.status = "failed"
             run.error_text = (
                 f"Tool '{tool.name}' sync status is '{tool.sync_status}'. "
@@ -126,6 +170,7 @@ def start_run(
                 f"Tool '{tool.name}' sync status is '{tool.sync_status}'. "
                 "Please sync tools first."
             )
+        _add_run_step(run, "success", "Tool ist synchronisiert")
 
         # Verify tool exists on MCP server
         # Skip verification if tool is already synced (trust the sync status)
@@ -157,8 +202,10 @@ def start_run(
             )
 
         # 2. Policy check
+        _add_run_step(run, "check", "Prüfe Policy-Berechtigung...")
         allowed, deny_reason = is_allowed(agent, tool, input_json)
         if not allowed:
+            _add_run_step(run, "error", f"Policy verweigert: {deny_reason}")
             run.status = "failed"
             run.error_text = f"Policy denied: {deny_reason}"
             run.ended_at = timezone.now()
@@ -173,14 +220,18 @@ def start_run(
                 },
             )
             raise ValueError(f"Policy denied: {deny_reason}")
+        _add_run_step(run, "success", "Policy-Berechtigung erteilt")
 
         # 3. Input validation (with automatic type normalization)
+        _add_run_step(run, "check", "Validiere Eingabeparameter...")
         try:
             validate_input_json(tool, input_json)
             # Normalize input types after validation for execution
             from apps.runs.validators import _normalize_input_types
             input_json = _normalize_input_types(input_json, tool.schema_json or {})
+            _add_run_step(run, "success", "Eingabeparameter validiert", {"input": input_json})
         except ValueError as e:
+            _add_run_step(run, "error", f"Validierungsfehler: {str(e)}")
             run.status = "failed"
             run.error_text = str(e)
             run.ended_at = timezone.now()
@@ -197,8 +248,10 @@ def start_run(
             raise
 
         # 4. Rate limit check
+        _add_run_step(run, "check", "Prüfe Rate-Limit...")
         rate_allowed, rate_reason = check_rate_limit(agent)
         if not rate_allowed:
+            _add_run_step(run, "error", f"Rate-Limit überschritten: {rate_reason}")
             run.status = "failed"
             run.error_text = f"Rate limit: {rate_reason}"
             run.ended_at = timezone.now()
@@ -213,6 +266,7 @@ def start_run(
                 },
             )
             raise ValueError(f"Rate limit: {rate_reason}")
+        _add_run_step(run, "success", "Rate-Limit OK")
 
         # 5. Update status to running
         run.status = "running"
@@ -220,6 +274,7 @@ def start_run(
 
         # Log run start
         log_run_event(run, "run_started")
+        _add_run_step(run, "execution", "Starte Tool-Ausführung...")
 
         # 6. Execute with timeout protection
         def execute_tool() -> dict:
@@ -355,8 +410,10 @@ def start_run(
         try:
             output = execute_with_timeout(execute_tool, timeout_seconds=timeout_seconds)
             if output is None:
+                _add_run_step(run, "error", f"Timeout nach {timeout_seconds} Sekunden")
                 raise TimeoutError(f"Run exceeded timeout of {timeout_seconds} seconds")
 
+            _add_run_step(run, "success", "Tool erfolgreich ausgeführt", {"output": output})
             run.output_json = output
             run.status = "succeeded"
             run.ended_at = timezone.now()
@@ -364,8 +421,10 @@ def start_run(
 
             # Log success
             log_run_event(run, "run_succeeded")
+            _add_run_step(run, "success", f"Run erfolgreich abgeschlossen in {(timezone.now() - started).total_seconds():.2f} Sekunden")
 
         except TimeoutError as e:
+            _add_run_step(run, "error", f"Timeout-Fehler: {str(e)}")
             run.status = "failed"
             run.error_text = str(e)
             run.ended_at = timezone.now()
@@ -374,6 +433,7 @@ def start_run(
             raise
 
         except Exception as e:
+            _add_run_step(run, "error", f"Fehler bei Ausführung: {str(e)}")
             run.status = "failed"
             run.error_text = str(e)
             run.ended_at = timezone.now()

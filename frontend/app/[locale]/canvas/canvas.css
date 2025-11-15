@@ -1,0 +1,56 @@
+/* Custom styles for ReactFlow controls and minimap on dark background */
+
+.react-flow__controls {
+  background: transparent !important;
+}
+
+.react-flow__controls-button {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+  color: #e2e8f0 !important;
+  fill: #e2e8f0 !important;
+}
+
+.react-flow__controls-button:hover {
+  background: #334155 !important;
+  color: #ffffff !important;
+  fill: #ffffff !important;
+}
+
+.react-flow__minimap {
+  background: #0f172a !important;
+  border: 1px solid #334155 !important;
+  border-radius: 8px !important;
+  cursor: grab !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  z-index: 10 !important;
+}
+
+.react-flow__minimap:active {
+  cursor: grabbing !important;
+}
+
+.react-flow__minimap-mask {
+  fill: rgba(0, 0, 0, 0.5) !important;
+  stroke: rgba(255, 255, 255, 0.3) !important;
+  stroke-width: 2px !important;
+}
+
+.react-flow__minimap-node {
+  cursor: pointer !important;
+  stroke-width: 2px !important;
+  stroke: currentColor !important;
+}
+
+.react-flow__minimap svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+}
+
+/* Ensure minimap is clickable */
+.react-flow__minimap * {
+  pointer-events: auto !important;
+}
+

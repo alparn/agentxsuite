@@ -19,6 +19,7 @@ from apps.runs.serializers import RunSerializer
 from apps.tools.models import Tool
 from apps.tools.schemas import ToolRunInputSchema
 from apps.tools.serializers import ToolSerializer
+from apps.audit.mixins import AuditLoggingMixin
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ def _get_mcp_fabric_endpoints() -> list[str]:
         return ["http://localhost:8090", "http://127.0.0.1:8090"]
 
 
-class ToolViewSet(ModelViewSet):
+class ToolViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for Tool."""
 
     queryset = Tool.objects.all()
@@ -146,7 +147,7 @@ class ToolViewSet(ModelViewSet):
                     return Response(
                         {
                             "error": "This tool must be executed via MCP Fabric API",
-                            "mcp_fabric_endpoint": f"/mcp/{tool.organization.id}/{tool.environment.id}/.well-known/mcp/run",
+                            "mcp_fabric_endpoint": "/.well-known/mcp/run",
                             "tool_name": tool.name,
                         },
                         status=status.HTTP_400_BAD_REQUEST,
@@ -185,16 +186,42 @@ class ToolViewSet(ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Get agent (stub: use first agent for tool's org/env)
-            agent = Agent.objects.filter(
-                organization=tool.organization,
-                environment=tool.environment,
-                enabled=True,
-            ).first()
+            # Get agent_id from request if provided
+            agent_id = None
+            try:
+                if isinstance(request.data, dict):
+                    input_schema = ToolRunInputSchema(**request.data)
+                    agent_id = input_schema.agent_id
+            except Exception:
+                # If schema parsing fails, try direct access
+                if isinstance(request.data, dict) and "agent_id" in request.data:
+                    agent_id = request.data.get("agent_id")
+
+            # Get agent - use provided agent_id or fall back to first enabled agent
+            if agent_id:
+                try:
+                    agent = Agent.objects.get(
+                        id=agent_id,
+                        organization=tool.organization,
+                        environment=tool.environment,
+                        enabled=True,
+                    )
+                except Agent.DoesNotExist:
+                    return Response(
+                        {"error": f"Agent {agent_id} not found or not enabled for this tool's organization/environment"},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+            else:
+                # Fall back to first enabled agent (backward compatibility)
+                agent = Agent.objects.filter(
+                    organization=tool.organization,
+                    environment=tool.environment,
+                    enabled=True,
+                ).first()
 
             if not agent:
                 return Response(
-                    {"error": "No enabled agent found for this tool's organization/environment"},
+                    {"error": "No enabled agent found for this tool's organization/environment. Please specify agent_id."},
                     status=status.HTTP_404_NOT_FOUND,
                 )
 

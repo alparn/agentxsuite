@@ -202,8 +202,6 @@ def create_token_validator(required_scopes: list[str] | None = None):
 
     async def validate_token_dependency(
         request: Request,
-        org_id: UUID = Path(...),
-        env_id: UUID = Path(...),
         credentials: HTTPAuthorizationCredentials | None = Security(security),
     ) -> dict:
         """
@@ -213,17 +211,15 @@ def create_token_validator(required_scopes: list[str] | None = None):
         1. Extracts Bearer token from Authorization header
         2. Validates token with OIDC/JWKS (if configured)
         3. Checks required scopes
-        4. Validates org_id/env_id claims match URL parameters (cross-tenant protection)
+        4. Extracts org_id/env_id from token claims (no URL parameters - secure multi-tenant)
         5. Validates audience matches resource parameter (if provided) or MCP_CANONICAL_URI
 
         Args:
             request: FastAPI Request object (for extracting resource parameter)
-            org_id: Organization ID from URL path
-            env_id: Environment ID from URL path
             credentials: HTTP Bearer credentials
 
         Returns:
-            Decoded token claims
+            Decoded token claims with org_id/env_id from token
 
         Raises:
             HTTPException: 401 if token missing/invalid, 403 if scopes/claims mismatch
@@ -237,12 +233,24 @@ def create_token_validator(required_scopes: list[str] | None = None):
         if not resource:
             resource = MCP_CANONICAL_URI
 
+        # Validate token and get claims (without requiring org_id/env_id in URL)
         claims = get_validated_token(
             token,
             required_scopes=required_scopes,
-            required_org_id=str(org_id),
-            required_env_id=str(env_id),
+            required_org_id=None,  # Will be extracted from token claims
+            required_env_id=None,  # Will be extracted from token claims
             resource=resource,
+        )
+        
+        # Extract org_id/env_id from token claims (source of truth)
+        org_id = claims.get("org_id")
+        env_id = claims.get("env_id")
+        
+        if not org_id or not env_id:
+            raise raise_mcp_http_exception(
+                ErrorCodes.AGENT_NOT_FOUND,
+                "Token missing org_id or env_id claims. Token must be issued for a specific organization/environment.",
+                status.HTTP_403_FORBIDDEN,
         )
         
         # P0: Resolve Agent via (subject, issuer) mapping - Source of Truth

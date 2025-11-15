@@ -4,12 +4,15 @@ MCP Fabric - FastAPI application for MCP-compatible endpoints.
 from __future__ import annotations
 
 import logging
+import logging.config
 import os
+from contextlib import asynccontextmanager
 
 import django
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from mcp_fabric.middleware import LoggingContextMiddleware
 from mcp_fabric.routers import mcp, prm
 from mcp_fabric.routes_prompts import router as prompts_router
 from mcp_fabric.routes_resources import router as resources_router
@@ -19,19 +22,32 @@ from mcp_fabric.settings import API_V1_PREFIX, MCP_FABRIC_CORS_ORIGINS
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.dev")
 django.setup()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+# Configure logging - use Django's LOGGING config (JSON format)
+# This ensures all logs (including Uvicorn/FastAPI) use JSON format
+logging.config.dictConfig(django.conf.settings.LOGGING)  # noqa: F405
 logger = logging.getLogger(__name__)
 
-# Create FastAPI app
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown."""
+    # Startup
+    logger.info("MCP Fabric service starting up...")
+    yield
+    # Shutdown
+    logger.info("MCP Fabric service shutting down...")
+
+
+# Create FastAPI app with lifespan
 app = FastAPI(
     title="MCP Fabric",
     description="MCP-compatible API for AgentxSuite",
     version="1.0.0",
+    lifespan=lifespan,
 )
+
+# Logging context middleware - must be first to set context IDs
+app.add_middleware(LoggingContextMiddleware)
 
 # CORS middleware - configured exactly like Django corsheaders
 # Allow requests from frontend and also direct browser requests (for testing)
@@ -50,8 +66,9 @@ app.add_middleware(
         "user-agent",
         "x-csrftoken",
         "x-requested-with",
+        "x-request-id",  # For request ID propagation
     ],
-    expose_headers=["*"],
+    expose_headers=["X-Trace-ID", "X-Request-ID", "*"],
 )
 
 
@@ -95,25 +112,13 @@ async def options_handler(request: Request, full_path: str):
 
 # Include routers
 app.include_router(prm.router)  # PRM endpoint (no prefix)
-app.include_router(mcp.router, prefix=API_V1_PREFIX)
-app.include_router(resources_router, prefix=API_V1_PREFIX)
-app.include_router(prompts_router, prefix=API_V1_PREFIX)
+app.include_router(mcp.router)  # Standard MCP endpoints: /.well-known/mcp/*
+app.include_router(resources_router)  # Standard MCP endpoints: /.well-known/mcp/*
+app.include_router(prompts_router)  # Standard MCP endpoints: /.well-known/mcp/*
 
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok"}
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize on startup."""
-    logger.info("MCP Fabric service starting up...")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown."""
-    logger.info("MCP Fabric service shutting down...")
 

@@ -7,7 +7,7 @@ import logging
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, status
 
 try:
     from opentelemetry import trace
@@ -30,7 +30,7 @@ from mcp_fabric.errors import ErrorCodes, raise_mcp_http_exception
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/{org_id}/{env_id}/.well-known/mcp", tags=["mcp-resources"])
+router = APIRouter(prefix="/.well-known/mcp", tags=["mcp-resources"])
 
 
 def _resolve_org_env(org_id: str, env_id: str) -> tuple[Organization, Environment]:
@@ -70,8 +70,6 @@ def _resolve_org_env(org_id: str, env_id: str) -> tuple[Organization, Environmen
 
 @router.get("/resources")
 async def list_resources(
-    org_id: UUID = Path(..., description="Organization ID"),
-    env_id: UUID = Path(..., description="Environment ID"),
     token_claims: dict = Depends(
         create_token_validator(required_scopes=["mcp:resources"])
     ),
@@ -80,11 +78,23 @@ async def list_resources(
     List available resources for organization/environment.
 
     Requires scope: mcp:resources
+    org_id/env_id are extracted from token claims (secure multi-tenant).
 
     Returns:
         List of resource definitions (name, type, mimeType, schema_json)
         Following MCP standard with CamelCase field names.
     """
+    # Extract org_id/env_id from token claims
+    org_id = token_claims.get("org_id")
+    env_id = token_claims.get("env_id")
+    
+    if not org_id or not env_id:
+        raise raise_mcp_http_exception(
+            ErrorCodes.AGENT_NOT_FOUND,
+            "Token missing org_id or env_id claims",
+            status.HTTP_403_FORBIDDEN,
+        )
+    
     span = None
     if OTELEMETRY_AVAILABLE and tracer:
         span = tracer.start_span("mcp.resources.list")
@@ -128,8 +138,6 @@ async def list_resources(
 
 @router.get("/resources/{resource_name}")
 async def get_resource(
-    org_id: UUID = Path(..., description="Organization ID"),
-    env_id: UUID = Path(..., description="Environment ID"),
     resource_name: str = Path(..., description="Resource name"),
     token_claims: dict = Depends(
         create_token_validator(required_scopes=["mcp:resource:read"])
@@ -139,11 +147,23 @@ async def get_resource(
     Get resource content.
 
     Requires scope: mcp:resource:read
+    org_id/env_id are extracted from token claims (secure multi-tenant).
 
     Returns:
         Resource content dictionary with name, mimeType, and content
         Following MCP standard with CamelCase field names.
     """
+    # Extract org_id/env_id from token claims
+    org_id = token_claims.get("org_id")
+    env_id = token_claims.get("env_id")
+    
+    if not org_id or not env_id:
+        raise raise_mcp_http_exception(
+            ErrorCodes.AGENT_NOT_FOUND,
+            "Token missing org_id or env_id claims",
+            status.HTTP_403_FORBIDDEN,
+        )
+    
     span = None
     if OTELEMETRY_AVAILABLE and tracer:
         span = tracer.start_span("mcp.resources.read")

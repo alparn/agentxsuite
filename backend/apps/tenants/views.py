@@ -10,9 +10,10 @@ from rest_framework.viewsets import ModelViewSet
 
 from apps.tenants.models import Environment, Organization
 from apps.tenants.serializers import EnvironmentSerializer, OrganizationSerializer
+from apps.audit.mixins import AuditLoggingMixin
 
 
-class OrganizationViewSet(ModelViewSet):
+class OrganizationViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for Organization."""
 
     queryset = Organization.objects.all()
@@ -32,7 +33,7 @@ class OrganizationViewSet(ModelViewSet):
         return Response(serializer.data)
 
 
-class EnvironmentViewSet(ModelViewSet):
+class EnvironmentViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for Environment."""
 
     queryset = Environment.objects.all()

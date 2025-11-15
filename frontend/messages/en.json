@@ -31,10 +31,12 @@
     "optional": "Optional",
     "add": "Add",
     "enabled": "Enabled",
-    "disabled": "Disabled"
+    "disabled": "Disabled",
+    "refresh": "Refresh"
   },
   "nav": {
     "overview": "Overview",
+    "axcore": "AxCore",
     "agents": "Agents",
     "connections": "Connections",
     "tools": "Tools",
@@ -45,7 +47,8 @@
     "audit": "Audit & Logs",
     "settings": "Settings",
     "resources": "Resources",
-    "prompts": "Prompts"
+    "prompts": "Prompts",
+    "agentDesigner": "Agent Designer"
   },
   "auth": {
     "loginTitle": "Welcome back",
@@ -80,7 +83,9 @@
     "confirmDelete": "Delete Connection?",
     "deleteConfirmMessage": "Are you sure you want to delete connection '{name}'? This action cannot be undone.",
     "deleteSuccess": "Connection deleted successfully",
-    "deleteError": "Error deleting connection"
+    "deleteError": "Error deleting connection",
+    "deleteTitle": "Delete Connection",
+    "deleteMessage": "Are you sure you want to delete this connection? This action cannot be undone."
   },
   "agents": {
     "title": "Agents",
@@ -110,7 +115,9 @@
     "disable": "Disable",
     "createServiceAccount": "Create ServiceAccount",
     "createServiceAccountTooltip": "Create a ServiceAccount for this agent to enable token generation",
-    "serviceAccountExists": "ServiceAccount exists - Agent can generate tokens"
+    "serviceAccountExists": "ServiceAccount exists - Agent can generate tokens",
+    "deleteTitle": "Delete Agent",
+    "deleteMessage": "Are you sure you want to delete this agent? This action cannot be undone."
   },
   "tools": {
     "title": "Tools",
@@ -120,7 +127,9 @@
     "connection": "Connection",
     "testRun": "Test Run",
     "input": "Input",
-    "output": "Output"
+    "output": "Output",
+    "deleteTitle": "Delete Tool",
+    "deleteMessage": "Are you sure you want to delete this tool? This action cannot be undone."
   },
   "runs": {
     "title": "Runs",
@@ -141,7 +150,9 @@
     "allow": "Allow",
     "deny": "Deny",
     "toolNames": "Tool Names",
-    "enterToolName": "Enter tool name"
+    "enterToolName": "Enter tool name",
+    "deleteTitle": "Delete Policy",
+    "deleteMessage": "Are you sure you want to delete this policy? This action cannot be undone."
   },
   "audit": {
     "title": "Audit & Logs",
@@ -155,7 +166,9 @@
   "environments": {
     "newEnvironment": "New Environment",
     "type": "Type",
-    "confirmDelete": "Are you sure you want to delete the environment \"{name}\"? This action cannot be undone."
+    "confirmDelete": "Are you sure you want to delete the environment \"{name}\"? This action cannot be undone.",
+    "deleteTitle": "Delete Environment",
+    "deleteMessage": "Are you sure you want to delete this environment? This action cannot be undone."
   },
   "resources": {
     "title": "Resources",
@@ -178,7 +191,13 @@
     "typeHttp": "HTTP",
     "typeSql": "SQL",
     "typeS3": "S3",
-    "typeFile": "File"
+    "typeFile": "File",
+    "deleteTitle": "Delete Resource",
+    "deleteMessage": "Are you sure you want to delete this resource? This action cannot be undone."
+  },
+  "organizations": {
+    "deleteTitle": "Delete Organization",
+    "deleteMessage": "Are you sure you want to delete this organization? This action cannot be undone."
   },
   "prompts": {
     "title": "Prompts",

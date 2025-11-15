@@ -19,9 +19,10 @@ from apps.policies.serializers import (
     PolicySerializer,
 )
 from apps.tenants.models import Environment
+from apps.audit.mixins import AuditLoggingMixin
 
 
-class PolicyViewSet(ModelViewSet):
+class PolicyViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for Policy."""
 
     queryset = Policy.objects.all()
@@ -105,7 +106,9 @@ class PolicyViewSet(ModelViewSet):
         """Prevent deletion if policy has bindings."""
         if instance.bindings.exists():
             raise ValidationError("Cannot delete policy with active bindings. Remove bindings first.")
-        super().perform_destroy(instance)
+        # Call ModelViewSet.perform_destroy directly to avoid recursion with AuditLoggingMixin
+        from rest_framework.viewsets import ModelViewSet
+        ModelViewSet.perform_destroy(self, instance)
 
     @action(detail=True, methods=["post"], url_path="rules")
     def add_rule(self, request, pk=None, org_id=None):
@@ -148,7 +151,7 @@ class PolicyViewSet(ModelViewSet):
         return Response(response_data, status=status.HTTP_200_OK)
 
 
-class PolicyRuleViewSet(ModelViewSet):
+class PolicyRuleViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for PolicyRule."""
 
     queryset = PolicyRule.objects.all()
@@ -174,7 +177,7 @@ class PolicyRuleViewSet(ModelViewSet):
         serializer.save(policy=policy)
 
 
-class PolicyBindingViewSet(ModelViewSet):
+class PolicyBindingViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for PolicyBinding."""
 
     queryset = PolicyBinding.objects.all()

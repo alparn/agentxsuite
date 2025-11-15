@@ -37,6 +37,7 @@ class Run(TimeStamped):
         "tools.Tool",
         on_delete=models.CASCADE,
         related_name="runs",
+        help_text="Tool instance",
     )
     status = models.CharField(
         max_length=10,
@@ -55,4 +56,38 @@ class Run(TimeStamped):
 
     def __str__(self) -> str:
         return f"Run {self.id} - {self.tool.name} ({self.status})"
+
+
+class RunStep(TimeStamped):
+    """Run step model for tracking individual steps during execution."""
+
+    STEP_TYPE_CHOICES = [
+        ("info", "Info"),
+        ("success", "Success"),
+        ("warning", "Warning"),
+        ("error", "Error"),
+        ("check", "Check"),
+        ("execution", "Execution"),
+    ]
+
+    run = models.ForeignKey(
+        Run,
+        on_delete=models.CASCADE,
+        related_name="steps",
+    )
+    step_type = models.CharField(
+        max_length=20,
+        choices=STEP_TYPE_CHOICES,
+        default="info",
+    )
+    message = models.TextField()
+    details = models.JSONField(default=dict, null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "runs_runstep"
+        ordering = ["timestamp"]
+
+    def __str__(self) -> str:
+        return f"Step {self.id} - {self.step_type} - {self.message[:50]}"
 

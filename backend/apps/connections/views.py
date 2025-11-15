@@ -12,10 +12,11 @@ from apps.connections.models import Connection
 from apps.connections.schemas import ConnectionSyncResponse, ConnectionTestResponse
 from apps.connections.serializers import ConnectionSerializer
 from apps.connections.services import sync_connection, test_connection
+from apps.audit.mixins import AuditLoggingMixin
 from libs.secretstore import get_secretstore
 
 
-class ConnectionViewSet(ModelViewSet):
+class ConnectionViewSet(AuditLoggingMixin, ModelViewSet):
     """ViewSet for Connection."""
 
     queryset = Connection.objects.all()

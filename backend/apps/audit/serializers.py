@@ -41,7 +41,17 @@ class AuditEventSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at", "updated_at", "ts"]
 
     def get_actor(self, obj) -> str:
-        """Extract actor from event_data if available."""
+        """Extract actor from subject or event_data if available."""
+        # Prefer subject field (e.g., "agent:name@org/env")
+        if obj.subject:
+            # Extract agent name from subject format: "agent:name@org/env"
+            if obj.subject.startswith("agent:"):
+                parts = obj.subject.split("@")
+                if len(parts) > 0:
+                    return parts[0].replace("agent:", "")
+            return obj.subject
+        
+        # Fallback to event_data
         if isinstance(obj.event_data, dict):
             return obj.event_data.get("actor", obj.event_data.get("user_id", "-"))
         return "-"

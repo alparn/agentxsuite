@@ -7,7 +7,7 @@ import logging
 from uuid import UUID
 
 from asgiref.sync import sync_to_async
-from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from fastmcp.server.server import FastMCP as MCPServer
 
 from mcp_fabric.deps import create_token_validator
@@ -16,7 +16,7 @@ from mcp_fabric.registry import register_tools_for_org_env
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/{org_id}/{env_id}/.well-known/mcp", tags=["mcp"])
+router = APIRouter(prefix="/.well-known/mcp", tags=["mcp"])
 
 
 def _resolve_org_env(org_id: str, env_id: str) -> tuple:
@@ -59,8 +59,6 @@ def _resolve_org_env(org_id: str, env_id: str) -> tuple:
 @router.get("/manifest.json")
 async def manifest(
     request: Request,
-    org_id: UUID = Path(..., description="Organization ID"),
-    env_id: UUID = Path(..., description="Environment ID"),
     token_claims: dict = Depends(
         create_token_validator(required_scopes=["mcp:manifest"])
     ),
@@ -69,10 +67,22 @@ async def manifest(
     Get MCP manifest for organization/environment.
 
     Requires scope: mcp:manifest
+    org_id/env_id are extracted from token claims (secure multi-tenant).
 
     Returns:
         MCP manifest dictionary
     """
+    # Extract org_id/env_id from token claims
+    org_id = token_claims.get("org_id")
+    env_id = token_claims.get("env_id")
+    
+    if not org_id or not env_id:
+        raise raise_mcp_http_exception(
+            ErrorCodes.AGENT_NOT_FOUND,
+            "Token missing org_id or env_id claims",
+            status.HTTP_403_FORBIDDEN,
+        )
+    
     org, env = await sync_to_async(_resolve_org_env)(str(org_id), str(env_id))
 
     # Create a fresh MCPServer instance per request (lightweight)
@@ -86,8 +96,6 @@ async def manifest(
 @router.get("/tools")
 async def tools(
     request: Request,
-    org_id: UUID = Path(..., description="Organization ID"),
-    env_id: UUID = Path(..., description="Environment ID"),
     token_claims: dict = Depends(
         create_token_validator(required_scopes=["mcp:tools"])
     ),
@@ -96,10 +104,22 @@ async def tools(
     Get list of available tools for organization/environment.
 
     Requires scope: mcp:tools
+    org_id/env_id are extracted from token claims (secure multi-tenant).
 
     Returns:
         List of MCP-compatible tool definitions
     """
+    # Extract org_id/env_id from token claims
+    org_id = token_claims.get("org_id")
+    env_id = token_claims.get("env_id")
+    
+    if not org_id or not env_id:
+        raise raise_mcp_http_exception(
+            ErrorCodes.AGENT_NOT_FOUND,
+            "Token missing org_id or env_id claims",
+            status.HTTP_403_FORBIDDEN,
+        )
+    
     org, env = await sync_to_async(_resolve_org_env)(str(org_id), str(env_id))
 
     mcp = MCPServer(name=f"AgentxSuite MCP - {org.name}/{env.name}")
@@ -125,8 +145,6 @@ async def tools(
 @router.post("/run")
 async def run(
     request: Request,
-    org_id: UUID = Path(..., description="Organization ID"),
-    env_id: UUID = Path(..., description="Environment ID"),
     payload: dict = None,
     token_claims: dict = Depends(
         create_token_validator(required_scopes=["mcp:run"])
@@ -136,6 +154,7 @@ async def run(
     Execute a tool via MCP run endpoint.
 
     Requires scope: mcp:run
+    org_id/env_id are extracted from token claims (secure multi-tenant).
 
     Payload format (supports both):
         {
@@ -151,6 +170,17 @@ async def run(
     """
     if payload is None:
         payload = {}
+
+    # Extract org_id/env_id from token claims
+    org_id = token_claims.get("org_id")
+    env_id = token_claims.get("env_id")
+    
+    if not org_id or not env_id:
+        raise raise_mcp_http_exception(
+            ErrorCodes.AGENT_NOT_FOUND,
+            "Token missing org_id or env_id claims",
+            status.HTTP_403_FORBIDDEN,
+        )
 
     org, env = await sync_to_async(_resolve_org_env)(str(org_id), str(env_id))
 
@@ -229,6 +259,14 @@ async def run(
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
+        # Get context IDs for error response
+        from libs.logging.context import get_context_ids
+        
+        context_ids = get_context_ids()
+        trace_id = context_ids.get("trace_id")
+        request_id = context_ids.get("request_id")
+        run_id = context_ids.get("run_id")
+        
         logger.error(
             f"Error running tool '{tool_name}': {e}",
             extra={
@@ -237,6 +275,9 @@ async def run(
                 "tool_name": tool_name,
                 "input_args": str(input_args),
                 "error_type": type(e).__name__,
+                "trace_id": trace_id,
+                "request_id": request_id,
+                "run_id": run_id,
             },
             exc_info=True,
         )
@@ -244,8 +285,17 @@ async def run(
         # This matches the adapter's error format
         from mcp_fabric.errors import mcp_error_response
 
+        error_extra = {}
+        if trace_id:
+            error_extra["trace_id"] = trace_id
+        if request_id:
+            error_extra["request_id"] = request_id
+        if run_id:
+            error_extra["run_id"] = run_id
+
         return mcp_error_response(
             ErrorCodes.EXECUTION_FAILED,
             f"Tool execution failed: {str(e)}",
             500,
+            extra=error_extra,
         )

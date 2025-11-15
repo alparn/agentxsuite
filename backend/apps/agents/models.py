@@ -67,10 +67,12 @@ class Agent(TimeStamped):
     )
     capabilities = models.JSONField(
         default=list,
+        blank=True,  # Allow empty lists
         help_text="List of agent capabilities",
     )
     tags = models.JSONField(
         default=list,
+        blank=True,  # Allow empty lists
         help_text="Tags for filtering and grouping",
     )
     # Delegation defaults
@@ -140,17 +142,24 @@ class Agent(TimeStamped):
         ]
 
     def clean(self) -> None:
-        """Validate agent configuration based on mode and auth method."""
-        # Only validate if inbound_auth_method is set and not NONE
-        if self.inbound_auth_method and self.inbound_auth_method != InboundAuthMethod.NONE:
-            if self.inbound_auth_method == InboundAuthMethod.BEARER:
-                if not self.bearer_secret_ref and not self.inbound_secret_ref:
-                    raise ValidationError(
-                        "Bearer authentication requires bearer_secret_ref or inbound_secret_ref"
-                    )
-            elif self.inbound_auth_method == InboundAuthMethod.MTLS:
-                if not self.mtls_cert_ref or not self.mtls_key_ref:
-                    raise ValidationError("mTLS authentication requires mtls_cert_ref and mtls_key_ref")
+        """
+        Validate agent configuration based on mode and auth method.
+        
+        This validation is only enforced for new instances (pk is None).
+        For updates, validation is handled in the serializer to allow partial updates
+        that don't change auth configuration.
+        """
+        # Only validate for new instances to ensure they are created with valid config
+        if self.pk is None:
+            if self.inbound_auth_method and self.inbound_auth_method != InboundAuthMethod.NONE:
+                if self.inbound_auth_method == InboundAuthMethod.BEARER:
+                    if not self.bearer_secret_ref and not self.inbound_secret_ref:
+                        raise ValidationError(
+                            "Bearer authentication requires bearer_secret_ref or inbound_secret_ref"
+                        )
+                elif self.inbound_auth_method == InboundAuthMethod.MTLS:
+                    if not self.mtls_cert_ref or not self.mtls_key_ref:
+                        raise ValidationError("mTLS authentication requires mtls_cert_ref and mtls_key_ref")
 
     def save(self, *args, **kwargs):
         """Auto-generate slug from name if not provided."""

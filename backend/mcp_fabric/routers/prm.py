@@ -46,11 +46,11 @@ async def oauth_protected_resource() -> dict:
         "resource_type": "mcp_fabric",
         "version": "1.0.0",
         "endpoints": {
-            "manifest": "/mcp/{org_id}/{env_id}/.well-known/mcp/manifest.json",
-            "tools": "/mcp/{org_id}/{env_id}/.well-known/mcp/tools",
-            "run": "/mcp/{org_id}/{env_id}/.well-known/mcp/run",
-            "resources": "/mcp/{org_id}/{env_id}/.well-known/mcp/resources",
-            "prompts": "/mcp/{org_id}/{env_id}/.well-known/mcp/prompts",
+            "manifest": "/.well-known/mcp/manifest.json",
+            "tools": "/.well-known/mcp/tools",
+            "run": "/.well-known/mcp/run",
+            "resources": "/.well-known/mcp/resources",
+            "prompts": "/.well-known/mcp/prompts",
         },
         "authentication": {
             "schemes": ["Bearer"],

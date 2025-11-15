@@ -207,7 +207,14 @@ export function AgentsView() {
                       onClick={() => setSelectedAgent(agent)}
                     >
                       <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-medium">
-                        {agent.name}
+                        <div className="flex items-center gap-2">
+                          <span>{agent.name}</span>
+                          {(agent.is_axcore || agent.tags?.includes("axcore")) && (
+                            <span className="px-2 py-1 text-xs font-semibold bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-300 border border-purple-500/30 rounded">
+                              AxCore
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-slate-300">
                         {agent.environment?.name || "-"}
@@ -319,7 +326,14 @@ export function AgentsView() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h3 className="text-base font-medium text-slate-300 mb-1">{agent.name}</h3>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-base font-medium text-slate-300">{agent.name}</h3>
+                      {(agent.is_axcore || agent.tags?.includes("axcore")) && (
+                        <span className="px-2 py-1 text-xs font-semibold bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-300 border border-purple-500/30 rounded">
+                          AxCore
+                        </span>
+                      )}
+                    </div>
                     <div className="space-y-1 text-sm text-slate-400">
                       <div>
                         <span className="font-medium">{t("agents.environment")}:</span> {agent.environment?.name || "-"}

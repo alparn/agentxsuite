@@ -31,10 +31,12 @@
     "optional": "Optional",
     "add": "Hinzufügen",
     "enabled": "Aktiviert",
-    "disabled": "Deaktiviert"
+    "disabled": "Deaktiviert",
+    "refresh": "Aktualisieren"
   },
   "nav": {
     "overview": "Übersicht",
+    "axcore": "AxCore",
     "agents": "Agents",
     "connections": "Verbindungen",
     "tools": "Tools",
@@ -45,7 +47,8 @@
     "audit": "Audit & Logs",
     "settings": "Einstellungen",
     "resources": "Resources",
-    "prompts": "Prompts"
+    "prompts": "Prompts",
+    "agentDesigner": "Agent Designer"
   },
   "auth": {
     "loginTitle": "Willkommen zurück",
@@ -80,7 +83,9 @@
     "confirmDelete": "Verbindung löschen?",
     "deleteConfirmMessage": "Möchten Sie die Verbindung '{name}' wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
     "deleteSuccess": "Verbindung erfolgreich gelöscht",
-    "deleteError": "Fehler beim Löschen der Verbindung"
+    "deleteError": "Fehler beim Löschen der Verbindung",
+    "deleteTitle": "Verbindung löschen",
+    "deleteMessage": "Sind Sie sicher, dass Sie diese Verbindung löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden."
   },
   "agents": {
     "title": "Agents",
@@ -110,7 +115,9 @@
     "disable": "Deaktivieren",
     "createServiceAccount": "ServiceAccount erstellen",
     "createServiceAccountTooltip": "ServiceAccount für diesen Agent erstellen, um Tokens generieren zu können",
-    "serviceAccountExists": "ServiceAccount vorhanden - Agent kann Tokens generieren"
+    "serviceAccountExists": "ServiceAccount vorhanden - Agent kann Tokens generieren",
+    "deleteTitle": "Agent löschen",
+    "deleteMessage": "Sind Sie sicher, dass Sie diesen Agent löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden."
   },
   "tools": {
     "title": "Tools",
@@ -120,7 +127,9 @@
     "connection": "Verbindung",
     "testRun": "Testlauf",
     "input": "Eingabe",
-    "output": "Ausgabe"
+    "output": "Ausgabe",
+    "deleteTitle": "Tool löschen",
+    "deleteMessage": "Sind Sie sicher, dass Sie dieses Tool löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden."
   },
   "runs": {
     "title": "Ausführungen",
@@ -141,7 +150,9 @@
     "allow": "Erlauben",
     "deny": "Verweigern",
     "toolNames": "Tool-Namen",
-    "enterToolName": "Tool-Namen eingeben"
+    "enterToolName": "Tool-Namen eingeben",
+    "deleteTitle": "Richtlinie löschen",
+    "deleteMessage": "Sind Sie sicher, dass Sie diese Richtlinie löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden."
   },
   "audit": {
     "title": "Audit & Logs",
@@ -155,7 +166,9 @@
   "environments": {
     "newEnvironment": "Neue Umgebung",
     "type": "Typ",
-    "confirmDelete": "Möchten Sie die Umgebung \"{name}\" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+    "confirmDelete": "Möchten Sie die Umgebung \"{name}\" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "deleteTitle": "Umgebung löschen",
+    "deleteMessage": "Sind Sie sicher, dass Sie diese Umgebung löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden."
   },
   "resources": {
     "title": "Resources",
@@ -178,7 +191,13 @@
     "typeHttp": "HTTP",
     "typeSql": "SQL",
     "typeS3": "S3",
-    "typeFile": "File"
+    "typeFile": "File",
+    "deleteTitle": "Resource löschen",
+    "deleteMessage": "Sind Sie sicher, dass Sie diese Resource löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden."
+  },
+  "organizations": {
+    "deleteTitle": "Organisation löschen",
+    "deleteMessage": "Sind Sie sicher, dass Sie diese Organisation löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden."
   },
   "prompts": {
     "title": "Prompts",

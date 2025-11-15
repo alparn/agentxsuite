@@ -6,6 +6,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { Plus, Play, CheckCircle2, XCircle, Edit } from "lucide-react";
+import { mcpFabric } from "@/lib/mcpFabric";
+import { tokensApi } from "@/lib/api";
 import { ToolDialog } from "./ToolDialog";
 import { MCPToolsView } from "./MCPToolsView";
 import { ToolRunDialog } from "./ToolRunDialog";
@@ -20,6 +22,8 @@ export function ToolsView() {
   const [runResult, setRunResult] = useState<any>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"registry" | "mcp">("registry");
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const { currentEnvId: envId } = useAppStore();
 
   // Fetch organizations and auto-select first one if none selected
   const { data: orgsResponse } = useQuery({
@@ -60,20 +64,96 @@ export function ToolsView() {
 
   const tools = Array.isArray(toolsData) ? toolsData : [];
 
+  // Fetch agents for the selected organization/environment
+  const { data: agentsData } = useQuery({
+    queryKey: ["agents", orgId],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const response = await api.get(`/orgs/${orgId}/agents/`);
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else if (response.data?.results && Array.isArray(response.data.results)) {
+        return response.data.results;
+      }
+      return [];
+    },
+    enabled: !!orgId,
+  });
+
+  const agents = Array.isArray(agentsData) ? agentsData : [];
+
+  // Fetch system tools (for AxCore agents) from MCP Fabric
+  const selectedAgent = agents.find((a: any) => a.id === selectedAgentId);
+  const isAxCoreAgent = selectedAgent && (selectedAgent.is_axcore || selectedAgent.tags?.includes("axcore"));
+  
+  // Get agent token for system tools
+  // IMPORTANT: Include envId in queryKey so token is regenerated when environment changes
+  const selectedAgentForToken = selectedAgent || agents.find((a: any) => a.id === selectedAgentId);
+  const { data: agentTokenData, error: agentTokenError } = useQuery({
+    queryKey: ["agent-token-for-tools", orgId, envId, selectedAgentForToken?.id],
+    queryFn: async () => {
+      if (!orgId || !envId || !selectedAgentForToken?.id) return null;
+      try {
+        const response = await tokensApi.generate(orgId, selectedAgentForToken.id, {
+          ttl_minutes: 60,
+          scopes: ["mcp:run", "mcp:tools", "mcp:manifest"],
+        });
+        return response.data?.token || null;
+      } catch (error: any) {
+        console.error("Failed to generate agent token:", error);
+        const errorMessage = error.response?.data?.message || 
+                           error.response?.data?.error || 
+                           "Failed to generate agent token. Please ensure the agent has a ServiceAccount configured.";
+        throw new Error(errorMessage);
+      }
+    },
+    enabled: !!orgId && !!envId && !!selectedAgentForToken?.id && isAxCoreAgent,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes (reduced from 30 for better security)
+    retry: 1, // Retry once on failure
+  });
+
+  const { data: systemToolsData } = useQuery({
+    queryKey: ["system-tools", orgId, envId, agentTokenData],
+    queryFn: async () => {
+      if (!orgId || !envId) return [];
+      try {
+        const { mcpFabric } = await import("@/lib/mcpFabric");
+        const response = await mcpFabric.getTools(orgId, envId, agentTokenData || undefined);
+        const allTools = Array.isArray(response) ? response : (Array.isArray(response?.tools) ? response.tools : []);
+        // Filter for system tools (agentxsuite_*)
+        return allTools.filter((tool: any) => tool.name?.startsWith("agentxsuite_"));
+      } catch (error) {
+        console.error("Failed to fetch system tools:", error);
+        return [];
+      }
+    },
+    enabled: !!orgId && !!envId && isAxCoreAgent && !!agentTokenData,
+  });
+
+  const systemTools = Array.isArray(systemToolsData) ? systemToolsData : [];
+
   const runToolMutation = useMutation({
-    mutationFn: async ({ toolId, inputJson }: { toolId: string; inputJson: Record<string, any> }) => {
+    mutationFn: async ({ toolId, inputJson, agentId }: { toolId: string; inputJson: Record<string, any>; agentId?: string }) => {
       // Use Tool Registry API
       const url = orgId 
         ? `/orgs/${orgId}/tools/${toolId}/run/`
         : `/tools/${toolId}/run/`;
-      const response = await api.post(url, {
+      const payload: any = {
         input_json: inputJson,
-      });
+      };
+      if (agentId) {
+        payload.agent_id = agentId;
+      }
+      const response = await api.post(url, payload);
       return response.data;
     },
     onSuccess: (data) => {
       setRunResult(data);
       setRunError(null);
+      // Extract run ID from response if available
+      if (data?.id) {
+        // Run ID is already in the result
+      }
     },
     onError: (error: any) => {
       // Handle different error formats
@@ -119,14 +199,36 @@ export function ToolsView() {
     },
   });
 
-  const handleRunTool = (inputJson: Record<string, any>) => {
+  const handleRunTool = async (inputJson: Record<string, any>, agentId?: string) => {
     if (!runningTool) return;
     setRunError(null);
     setRunResult(null);
+    
+    // Check if this is a system tool (starts with agentxsuite_)
+    const isSystemTool = runningTool.name?.startsWith("agentxsuite_");
+    
+    if (isSystemTool && orgId && envId) {
+      // Use MCP Fabric API for system tools
+      try {
+        const response = await mcpFabric.runTool(orgId, envId, runningTool.name, inputJson);
+        if (response.isError) {
+          const errorText = response.content?.map((item) => item.text || "").filter(Boolean).join("\n") || "Unknown error";
+          setRunError(errorText);
+        } else {
+          const resultText = response.content?.map((item) => item.text || "").filter(Boolean).join("\n") || "Success";
+          setRunResult({ status: "succeeded", output_json: { result: resultText } });
+        }
+      } catch (error: any) {
+        setRunError(error.response?.data?.detail || error.message || "Failed to execute system tool");
+      }
+    } else {
+      // Use Tool Registry API for regular tools
     runToolMutation.mutate({
       toolId: runningTool.id,
       inputJson,
+        agentId: agentId || selectedAgentId || undefined,
     });
+    }
   };
 
   return (
@@ -186,6 +288,84 @@ export function ToolsView() {
               <p className="text-sm text-red-400">Error loading tools: {toolsError.message}</p>
             </div>
           )}
+          
+          {/* System Tools Section (only shown when AxCore agent is selected) */}
+          {isAxCoreAgent && systemTools.length > 0 && (
+            <div className="mb-6">
+              <div className="mb-3">
+                <h3 className="text-lg font-semibold text-white mb-1">System Tools (für AxCore)</h3>
+                <p className="text-sm text-slate-400">
+                  Diese Tools können von AxCore-Agents verwendet werden
+                </p>
+              </div>
+              <div className="bg-slate-900 border border-purple-500/30 rounded-lg overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-800">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                          Name
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                          Beschreibung
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                          Typ
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                          Aktionen
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      {systemTools.map((tool: any) => (
+                        <tr key={tool.name} className="hover:bg-slate-800/50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300 font-medium">
+                            <div className="flex items-center gap-2">
+                              {tool.name}
+                              <span className="px-2 py-1 text-xs font-semibold bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-300 border border-purple-500/30 rounded">
+                                System
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-300">
+                            {tool.description || tool.inputSchema?.description || "-"}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
+                            <span className="px-2 py-1 text-xs rounded-full bg-purple-500/20 text-purple-400">
+                              MCP Tool
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // Convert system tool to format compatible with ToolRunDialog
+                                const systemToolForRun = {
+                                  id: tool.name, // Use name as ID for system tools
+                                  name: tool.name,
+                                  schema_json: tool.inputSchema || {},
+                                  environment_id: envId,
+                                };
+                                setRunningTool(systemToolForRun);
+                                setRunResult(null);
+                                setRunError(null);
+                              }}
+                              className="p-2 text-slate-400 hover:text-green-400 hover:bg-green-500/10 rounded transition-colors"
+                              title="System Tool ausführen"
+                            >
+                              <Play className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
           {isLoading ? (
             <div className="text-center py-12 text-slate-400">{t("common.loading")}</div>
           ) : (
@@ -294,10 +474,18 @@ export function ToolsView() {
             setRunningTool(null);
             setRunResult(null);
             setRunError(null);
+            setSelectedAgentId(null);
           }}
           running={runToolMutation.isPending}
           result={runResult}
           error={runError}
+          agents={agents.filter((agent: any) => 
+            agent.enabled && 
+            agent.environment?.id === runningTool.environment?.id || 
+            agent.environment_id === runningTool.environment_id
+          )}
+          selectedAgentId={selectedAgentId}
+          onAgentChange={setSelectedAgentId}
         />
       )}
 
