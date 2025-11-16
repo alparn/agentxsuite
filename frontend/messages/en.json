@@ -13,6 +13,7 @@
     "cancel": "Cancel",
     "save": "Save",
     "delete": "Delete",
+    "deleting": "Deleting...",
     "edit": "Edit",
     "create": "Create",
     "search": "Search",
@@ -59,7 +60,13 @@
     "alreadyHaveAccount": "Already have an account?",
     "dontHaveAccount": "Don't have an account?",
     "signIn": "Sign in",
-    "signUp": "Sign up"
+    "signUp": "Sign up",
+    "organization": "Organization",
+    "noOrganization": "No organization (can be added later)",
+    "createOrganization": "Create new organization",
+    "joinOrganization": "Join existing organization",
+    "organizationNamePlaceholder": "Organization name",
+    "organizationIdPlaceholder": "Organization ID (UUID)"
   },
   "dashboard": {
     "title": "Dashboard",

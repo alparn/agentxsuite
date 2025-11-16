@@ -13,6 +13,7 @@ interface ResourceDialogProps {
   orgId: string;
   environments: any[];
   onSuccess?: (resource: any) => void;
+  preselectedEnvironmentId?: string;
 }
 
 export function ResourceDialog({
@@ -21,6 +22,7 @@ export function ResourceDialog({
   orgId,
   environments,
   onSuccess,
+  preselectedEnvironmentId,
 }: ResourceDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -51,7 +53,7 @@ export function ResourceDialog({
     } else {
       setFormData({
         name: "",
-        environment_id: "",
+        environment_id: preselectedEnvironmentId || "",
         type: "static",
         config_json: "{}",
         mime_type: "application/json",
@@ -61,7 +63,7 @@ export function ResourceDialog({
       });
     }
     setErrors({});
-  }, [resource]);
+  }, [resource, preselectedEnvironmentId]);
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {

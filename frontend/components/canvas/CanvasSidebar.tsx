@@ -3,28 +3,58 @@
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Node } from "@xyflow/react";
-import { X, Save, Trash2 } from "lucide-react";
+import { Node, Edge } from "@xyflow/react";
+import { X, Save, Trash2, Plus, Link as LinkIcon, Trash } from "lucide-react";
 import { api, agentsApi, policiesApi } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
-import type { CanvasNodeData } from "@/lib/canvasTypes";
+import type { CanvasNodeData, CanvasEdgeData } from "@/lib/canvasTypes";
 import { DeleteConfirmModal } from "./DeleteConfirmModal";
+import { getValidTargetTypes } from "@/lib/canvasEdgeValidation";
+import { cn } from "@/lib/utils";
 
 interface CanvasSidebarProps {
   node: Node<CanvasNodeData>;
   onClose: () => void;
   onUpdate: (data: Partial<CanvasNodeData>) => void;
   onDelete?: (nodeId: string) => void;
+  connectedEdges?: Edge<CanvasEdgeData>[];
+  availableNodes?: Node<CanvasNodeData>[];
+  onCreateConnection?: (sourceId: string, targetId: string) => void;
+  onDeleteConnection?: (edgeId: string) => void;
 }
 
-export function CanvasSidebar({ node, onClose, onUpdate, onDelete }: CanvasSidebarProps) {
+export function CanvasSidebar({ 
+  node, 
+  onClose, 
+  onUpdate, 
+  onDelete, 
+  connectedEdges = [], 
+  availableNodes = [],
+  onCreateConnection,
+  onDeleteConnection 
+}: CanvasSidebarProps) {
   const t = useTranslations();
   const { currentOrgId: orgId } = useAppStore();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showAddConnection, setShowAddConnection] = useState(false);
 
   const nodeData = node.data;
+
+  // Get incoming and outgoing edges
+  const incomingEdges = connectedEdges.filter((e) => e.target === node.id);
+  const outgoingEdges = connectedEdges.filter((e) => e.source === node.id);
+
+  // Get valid target node types for this node
+  const validTargetTypes = getValidTargetTypes(nodeData.type);
+
+  // Filter available nodes that can be connected
+  const connectableNodes = availableNodes.filter((n) => 
+    n.id !== node.id && 
+    validTargetTypes.includes(n.data.type) &&
+    !outgoingEdges.some((e) => e.target === n.id)
+  );
 
   const handleSave = async () => {
     // Update the entity based on node type
@@ -62,6 +92,8 @@ export function CanvasSidebar({ node, onClose, onUpdate, onDelete }: CanvasSideb
         return api.delete(`/orgs/${orgId}/connections/${nodeData.connectionId}/`);
       } else if (nodeData.type === "environment" && nodeData.environmentId) {
         return api.delete(`/orgs/${orgId}/environments/${nodeData.environmentId}/`);
+      } else if (nodeData.type === "prompt" && nodeData.promptId) {
+        return api.delete(`/orgs/${orgId}/prompts/${nodeData.promptId}/`);
       } else if (nodeData.type === "organization" && nodeData.organizationId) {
         // Organizations might not be deletable via API, or require special permissions
         // For now, we'll just remove the node from canvas without backend deletion
@@ -79,6 +111,7 @@ export function CanvasSidebar({ node, onClose, onUpdate, onDelete }: CanvasSideb
       queryClient.invalidateQueries({ queryKey: ["tools", orgId] });
       queryClient.invalidateQueries({ queryKey: ["policies", orgId] });
       queryClient.invalidateQueries({ queryKey: ["resources", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["prompts", orgId] });
       queryClient.invalidateQueries({ queryKey: ["connections", orgId] });
       queryClient.invalidateQueries({ queryKey: ["environments", orgId] });
       
@@ -102,26 +135,28 @@ export function CanvasSidebar({ node, onClose, onUpdate, onDelete }: CanvasSideb
 
   const getDeleteTitle = () => {
     const typeLabels: Record<string, string> = {
-      agent: t("agents.deleteTitle") || "Delete Agent",
-      tool: t("tools.deleteTitle") || "Delete Tool",
-      policy: t("policies.deleteTitle") || "Delete Policy",
-      resource: t("resources.deleteTitle") || "Delete Resource",
-      server: t("connections.deleteTitle") || "Delete Connection",
-      environment: t("environments.deleteTitle") || "Delete Environment",
-      organization: t("organizations.deleteTitle") || "Delete Organization",
+      agent: "Delete Agent",
+      tool: "Delete Tool",
+      policy: "Delete Policy",
+      resource: "Delete Resource",
+      prompt: "Delete Prompt",
+      server: "Delete Connection",
+      environment: "Delete Environment",
+      organization: "Delete Organization",
     };
     return typeLabels[nodeData.type] || "Delete Item";
   };
 
   const getDeleteMessage = () => {
     const typeMessages: Record<string, string> = {
-      agent: t("agents.deleteMessage") || "Are you sure you want to delete this agent? This action cannot be undone.",
-      tool: t("tools.deleteMessage") || "Are you sure you want to delete this tool? This action cannot be undone.",
-      policy: t("policies.deleteMessage") || "Are you sure you want to delete this policy? This action cannot be undone.",
-      resource: t("resources.deleteMessage") || "Are you sure you want to delete this resource? This action cannot be undone.",
-      server: t("connections.deleteMessage") || "Are you sure you want to delete this connection? This action cannot be undone.",
-      environment: t("environments.deleteMessage") || "Are you sure you want to delete this environment? This action cannot be undone.",
-      organization: t("organizations.deleteMessage") || "Are you sure you want to delete this organization? This action cannot be undone.",
+      agent: "Are you sure you want to delete this agent? This action cannot be undone.",
+      tool: "Are you sure you want to delete this tool? This action cannot be undone.",
+      policy: "Are you sure you want to delete this policy? This action cannot be undone.",
+      resource: "Are you sure you want to delete this resource? This action cannot be undone.",
+      prompt: "Are you sure you want to delete this prompt? This action cannot be undone.",
+      server: "Are you sure you want to delete this connection? This action cannot be undone.",
+      environment: "Are you sure you want to delete this environment? This action cannot be undone.",
+      organization: "Are you sure you want to delete this organization? This action cannot be undone.",
     };
     return typeMessages[nodeData.type] || "Are you sure you want to delete this item? This action cannot be undone.";
   };
@@ -239,6 +274,210 @@ export function CanvasSidebar({ node, onClose, onUpdate, onDelete }: CanvasSideb
             </div>
           </div>
         )}
+
+        {nodeData.type === "prompt" && nodeData.prompt && (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2">Prompt ID</label>
+              <div className="px-3 py-2 bg-slate-800 rounded-lg text-slate-300 font-mono text-sm">
+                {nodeData.prompt.id}
+              </div>
+            </div>
+            {nodeData.prompt.description && (
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-2">Description</label>
+                <div className="px-3 py-2 bg-slate-800 rounded-lg text-white text-sm">
+                  {nodeData.prompt.description}
+                </div>
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2">Uses Resources</label>
+              <div className="px-3 py-2 bg-slate-800 rounded-lg text-white text-sm">
+                {nodeData.prompt.uses_resources && nodeData.prompt.uses_resources.length > 0 ? (
+                  <div className="space-y-1">
+                    {nodeData.prompt.uses_resources.map((resourceName: string, idx: number) => (
+                      <div key={idx} className="px-2 py-1 bg-slate-700 rounded text-xs text-amber-400">
+                        {resourceName}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-slate-500 text-xs">No resources</span>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-400 mb-2">Enabled</label>
+              <div className="px-3 py-2 bg-slate-800 rounded-lg text-white">
+                {nodeData.prompt.enabled ? "Yes" : "No"}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Connections Section */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium text-slate-400">Connections</label>
+            {onCreateConnection && connectableNodes.length > 0 && (
+              <button
+                onClick={() => setShowAddConnection(!showAddConnection)}
+                className="p-1 text-purple-400 hover:text-purple-300 rounded hover:bg-slate-800 transition-colors"
+                title="Add Connection"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Outgoing Connections (this node → other nodes) */}
+          {outgoingEdges.length > 0 && (
+            <div>
+              <div className="text-xs text-slate-500 mb-2">Outgoing ({outgoingEdges.length})</div>
+              <div className="space-y-2">
+                {outgoingEdges.map((edge) => {
+                  const targetNode = availableNodes.find((n) => n.id === edge.target);
+                  const isPolicyGoverned = edge.data?.metadata?.policyGoverned;
+                  const policyName = edge.data?.metadata?.policyName;
+                  
+                  return (
+                    <div
+                      key={edge.id}
+                      className={cn(
+                        "flex items-center justify-between px-3 py-2 rounded-lg text-sm",
+                        isPolicyGoverned ? "bg-yellow-500/10 border border-yellow-500/30" : "bg-slate-800"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <LinkIcon className={cn(
+                          "w-4 h-4 flex-shrink-0",
+                          isPolicyGoverned ? "text-yellow-400" : "text-purple-400"
+                        )} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-white truncate">{targetNode?.data.label || edge.target}</div>
+                          <div className="text-xs text-slate-500 capitalize">{edge.data?.type?.replace('-', ' → ')}</div>
+                          {isPolicyGoverned && policyName && (
+                            <div className="text-xs text-yellow-400 mt-1 flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse"></div>
+                              via {policyName}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {onDeleteConnection && !isPolicyGoverned && (
+                        <button
+                          onClick={() => onDeleteConnection(edge.id)}
+                          className="p-1 text-red-400 hover:text-red-300 rounded hover:bg-slate-700 transition-colors flex-shrink-0 ml-2"
+                          title="Remove Connection"
+                        >
+                          <Trash className="w-3 h-3" />
+                        </button>
+                      )}
+                      {isPolicyGoverned && (
+                        <div className="text-xs text-slate-500 flex-shrink-0 ml-2" title="Cannot delete policy-governed connection">
+                          🔒
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Incoming Connections (other nodes → this node) */}
+          {incomingEdges.length > 0 && (
+            <div>
+              <div className="text-xs text-slate-500 mb-2">Incoming ({incomingEdges.length})</div>
+              <div className="space-y-2">
+                {incomingEdges.map((edge) => {
+                  const sourceNode = availableNodes.find((n) => n.id === edge.source);
+                  const isPolicyGoverned = edge.data?.metadata?.policyGoverned;
+                  const policyName = edge.data?.metadata?.policyName;
+                  
+                  return (
+                    <div
+                      key={edge.id}
+                      className={cn(
+                        "flex items-center justify-between px-3 py-2 rounded-lg text-sm",
+                        isPolicyGoverned ? "bg-yellow-500/10 border border-yellow-500/30" : "bg-slate-800/50"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <LinkIcon className={cn(
+                          "w-4 h-4 flex-shrink-0",
+                          isPolicyGoverned ? "text-yellow-400" : "text-blue-400"
+                        )} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-white truncate">{sourceNode?.data.label || edge.source}</div>
+                          <div className="text-xs text-slate-500 capitalize">{edge.data?.type?.replace('-', ' → ')}</div>
+                          {isPolicyGoverned && policyName && (
+                            <div className="text-xs text-yellow-400 mt-1 flex items-center gap-1">
+                              <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse"></div>
+                              via {policyName}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {onDeleteConnection && !isPolicyGoverned && (
+                        <button
+                          onClick={() => onDeleteConnection(edge.id)}
+                          className="p-1 text-red-400 hover:text-red-300 rounded hover:bg-slate-700 transition-colors flex-shrink-0 ml-2"
+                          title="Remove Connection"
+                        >
+                          <Trash className="w-3 h-3" />
+                        </button>
+                      )}
+                      {isPolicyGoverned && (
+                        <div className="text-xs text-slate-500 flex-shrink-0 ml-2" title="Cannot delete policy-governed connection">
+                          🔒
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Add Connection Menu */}
+          {showAddConnection && onCreateConnection && (
+            <div className="border border-slate-700 rounded-lg p-3 space-y-2">
+              <div className="text-xs text-slate-400 mb-2">Available Nodes to Connect:</div>
+              {connectableNodes.length > 0 ? (
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {connectableNodes.map((targetNode) => (
+                    <button
+                      key={targetNode.id}
+                      onClick={() => {
+                        onCreateConnection(node.id, targetNode.id);
+                        setShowAddConnection(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm bg-slate-800 hover:bg-slate-700 rounded transition-colors flex items-center gap-2"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white truncate">{targetNode.data.label}</div>
+                        <div className="text-xs text-slate-500 capitalize">{targetNode.data.type}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500 text-center py-2">
+                  No available nodes to connect
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* No Connections Message */}
+          {outgoingEdges.length === 0 && incomingEdges.length === 0 && (
+            <div className="px-3 py-2 bg-slate-800/50 rounded-lg text-sm text-slate-500 text-center">
+              No connections
+            </div>
+          )}
+        </div>
 
         {/* Metadata */}
         {nodeData.metadata && Object.keys(nodeData.metadata).length > 0 && (

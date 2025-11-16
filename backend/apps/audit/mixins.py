@@ -94,27 +94,25 @@ class AuditLoggingMixin:
         # Log before deletion (so we have the data)
         self._log_api_event("delete", instance, old_data)
         
-        # Find the actual ViewSet class in MRO (skip AuditLoggingMixin and ModelViewSet)
-        # We want to find the first class that has perform_destroy and is not AuditLoggingMixin or ModelViewSet
+        # Find the actual ViewSet class in MRO (skip AuditLoggingMixin)
+        # Check if ViewSet has its own perform_destroy (defined directly in its class, not inherited)
         viewset_class = None
         for cls in self.__class__.__mro__:
-            if cls not in (AuditLoggingMixin, ModelViewSet) and hasattr(cls, "perform_destroy"):
-                viewset_class = cls
-                break
+            if cls != AuditLoggingMixin and cls != ModelViewSet:
+                # Check if this class DEFINES perform_destroy (not just inherits it)
+                if "perform_destroy" in cls.__dict__:
+                    viewset_class = cls
+                    break
         
-        # Call ViewSet's perform_destroy if it exists and is different from ModelViewSet's
+        # Call ViewSet's perform_destroy if it exists
         if viewset_class:
-            viewset_method = getattr(viewset_class, "perform_destroy", None)
-            if viewset_method and viewset_method != ModelViewSet.perform_destroy:
-                # Call the ViewSet's perform_destroy
-                # IMPORTANT: The ViewSet's perform_destroy should call ModelViewSet.perform_destroy
-                # directly, NOT super().perform_destroy(), to avoid recursion
-                viewset_method(self, instance)
-            else:
-                # No custom method, use ModelViewSet's default
-                ModelViewSet.perform_destroy(self, instance)
+            viewset_method = viewset_class.perform_destroy
+            # Call the ViewSet's perform_destroy
+            # IMPORTANT: The ViewSet's perform_destroy should call ModelViewSet.perform_destroy
+            # directly, NOT super().perform_destroy(), to avoid recursion
+            viewset_method(self, instance)
         else:
-            # Fallback to ModelViewSet's default
+            # No custom method, use ModelViewSet's default
             ModelViewSet.perform_destroy(self, instance)
 
     def _get_serialized_data(self, instance):

@@ -3,7 +3,7 @@
  */
 
 import type { Node, Edge } from "@xyflow/react";
-import type { Agent, Tool, Resource, Policy, Connection, Environment, Organization } from "./types";
+import type { Agent, Tool, Resource, Policy, Connection, Environment, Organization, Prompt } from "./types";
 
 // Node types in the canvas
 export type CanvasNodeType = 
@@ -13,7 +13,8 @@ export type CanvasNodeType =
   | "policy" 
   | "server" 
   | "environment"
-  | "organization";
+  | "organization"
+  | "prompt";
 
 // Node data structure
 export interface CanvasNodeData extends Record<string, unknown> {
@@ -26,6 +27,7 @@ export interface CanvasNodeData extends Record<string, unknown> {
   connectionId?: string;
   environmentId?: string;
   organizationId?: string;
+  promptId?: string;
   // Entity data (full objects)
   agent?: Agent;
   tool?: Tool;
@@ -34,6 +36,7 @@ export interface CanvasNodeData extends Record<string, unknown> {
   connection?: Connection;
   environment?: Environment;
   organization?: Organization;
+  prompt?: Prompt;
   // Visual properties
   label: string;
   status?: "connected" | "error" | "unauthorized" | "disabled" | "unknown";
@@ -43,23 +46,35 @@ export interface CanvasNodeData extends Record<string, unknown> {
   metadata?: Record<string, any>;
   // Callback for creating new nodes
   onCreateNode?: (type: CanvasNodeType, position: { x: number; y: number }, side: "left" | "right", sourceNodeId?: string) => void;
+  // Callback for node actions (test, sync, run, etc.)
+  onAction?: (action: string, entityId?: string) => void;
   // Edge information for showing buttons
   hasConnections?: boolean;
 }
 
 // Edge types
 export type CanvasEdgeType = 
-  | "agent-tool"        // Agent uses Tool
+  | "agent-tool"        // Agent uses Tool (only allowed)
   | "agent-resource"    // Agent accesses Resource
   | "agent-server"      // Agent hosted on Server
-  | "agent-environment" // Agent in Environment
-  | "tool-server"       // Tool from Server
-  | "resource-server"   // Resource from Server
+  | "agent-environment" // Agent in Environment (deprecated - not shown by default)
+  | "tool-server"       // Tool from Server (deprecated - use server-tool)
+  | "tool-environment"  // Tool belongs to Environment (deprecated - not shown by default)
+  | "resource-environment" // Resource belongs to Environment (deprecated - not shown by default)
+  | "environment-resource" // Environment contains Resource (reversed from Resource.environment FK)
   | "policy-agent"      // Policy applies to Agent
   | "policy-tool"        // Policy applies to Tool
   | "policy-server"     // Policy applies to Server
   | "policy-resource"    // Policy applies to Resource
-  | "environment-server" // Environment on Server
+  | "policy-environment" // Policy belongs to Environment (deprecated - not shown by default)
+  | "environment-policy" // Environment contains Policy (reversed from Policy.environment FK)
+  | "agent-environment" // Agent in Environment (deprecated - not shown by default)
+  | "environment-agent" // Environment contains Agent (reversed from Agent.environment FK)
+  | "environment-prompt" // Environment contains Prompt (reversed from Prompt.environment FK)
+  | "prompt-resource"    // Prompt uses Resource (from Prompt.uses_resources)
+  | "server-environment" // Server belongs to Environment (deprecated - use environment-server)
+  | "environment-server" // Environment contains Server/Connection
+  | "server-tool"        // Server/Connection provides Tool
   | "organization-environment"; // Organization contains Environment
 
 // Edge data structure

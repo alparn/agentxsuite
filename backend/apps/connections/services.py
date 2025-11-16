@@ -18,7 +18,13 @@ logger = logging.getLogger(__name__)
 
 def test_connection(conn: Connection) -> Connection:
     """
-    Test a connection by making a health check request.
+    Test a connection with comprehensive MCP validation.
+
+    This performs a full MCP server verification including:
+    - Health endpoint check
+    - Tools endpoint validation
+    - MCP format verification
+    - Authentication check (if configured)
 
     Args:
         conn: Connection instance to test
@@ -27,26 +33,16 @@ def test_connection(conn: Connection) -> Connection:
         Updated Connection instance
     """
     try:
-        # Health check endpoint
-        health_url = urljoin(conn.endpoint.rstrip("/") + "/", "health")
+        # Use comprehensive MCP verification instead of simple health check
+        is_valid = verify_mcp_server(conn)
         
-        # Make request with timeout
-        with httpx.Client(timeout=5.0) as client:
-            response = client.get(health_url)
-            
-            if response.status_code == 200:
-                conn.status = "ok"
-                logger.info(f"Connection {conn.name} test successful")
-            else:
-                conn.status = "fail"
-                logger.warning(f"Connection {conn.name} test failed: HTTP {response.status_code}")
+        if is_valid:
+            conn.status = "ok"
+            logger.info(f"Connection {conn.name} MCP validation successful")
+        else:
+            conn.status = "fail"
+            logger.warning(f"Connection {conn.name} MCP validation failed")
                 
-    except httpx.TimeoutException:
-        conn.status = "fail"
-        logger.error(f"Connection {conn.name} test timeout")
-    except httpx.RequestError as e:
-        conn.status = "fail"
-        logger.error(f"Connection {conn.name} test error: {e}")
     except Exception as e:
         conn.status = "fail"
         logger.error(f"Connection {conn.name} test unexpected error: {e}")
@@ -73,7 +69,7 @@ def sync_connection(conn: Connection) -> tuple[list[Tool], list[Tool]]:
         ValidationError: If endpoint is not a valid MCP server or sync fails
     """
     # 1. Verify MCP server before syncing
-    if not _verify_mcp_server(conn):
+    if not verify_mcp_server(conn):
         raise ValidationError(
             f"Endpoint {conn.endpoint} is not a valid MCP server. "
             "Health check or tools endpoint validation failed."
@@ -252,7 +248,7 @@ def _get_endpoints_from_manifest(manifest: dict, base_endpoint: str) -> dict[str
     return endpoints
 
 
-def _verify_mcp_server(conn: Connection) -> bool:
+def verify_mcp_server(conn: Connection) -> bool:
     """
     Verify that endpoint is a valid MCP server.
 
@@ -267,18 +263,30 @@ def _verify_mcp_server(conn: Connection) -> bool:
     Returns:
         True if valid MCP server, False otherwise
     """
+    # Normalize endpoint: remove trailing /mcp if present (MCP Fabric uses /.well-known/mcp prefix)
+    base_endpoint = conn.endpoint.rstrip("/")
+    if base_endpoint.endswith("/mcp"):
+        base_endpoint = base_endpoint[:-4]  # Remove /mcp suffix
+        logger.debug(f"Normalized endpoint from {conn.endpoint} to {base_endpoint}")
+    
     # 1. Try to fetch manifest (optional - improves verification)
-    manifest = _fetch_mcp_manifest(conn)
-    endpoints = {}
-    if manifest:
-        endpoints = _get_endpoints_from_manifest(manifest, conn.endpoint)
-        logger.info(f"Using endpoints from manifest: {list(endpoints.keys())}")
+    # Temporarily use normalized endpoint for manifest fetch
+    original_endpoint = conn.endpoint
+    conn.endpoint = base_endpoint
+    try:
+        manifest = _fetch_mcp_manifest(conn)
+        endpoints = {}
+        if manifest:
+            endpoints = _get_endpoints_from_manifest(manifest, base_endpoint)
+            logger.info(f"Using endpoints from manifest: {list(endpoints.keys())}")
+    finally:
+        conn.endpoint = original_endpoint  # Restore original
 
     # 2. Health check (use manifest endpoint or default)
     health_urls = []
     if "health" in endpoints:
         health_urls.append(endpoints["health"])
-    health_urls.append(urljoin(conn.endpoint.rstrip("/") + "/", "health"))
+    health_urls.append(urljoin(base_endpoint.rstrip("/") + "/", "health"))
 
     health_ok = False
     for health_url in health_urls:
@@ -301,11 +309,11 @@ def _verify_mcp_server(conn: Connection) -> bool:
     if "tools" in endpoints:
         tools_urls.append(endpoints["tools"])
     
-    # Add standard MCP tool endpoint variants
+    # Add standard MCP tool endpoint variants (use normalized base_endpoint)
     tools_urls.extend([
-        urljoin(conn.endpoint.rstrip("/") + "/", ".well-known/mcp/tools"),
-        urljoin(conn.endpoint.rstrip("/") + "/", "mcp/tools"),
-        urljoin(conn.endpoint.rstrip("/") + "/", "tools"),
+        urljoin(base_endpoint.rstrip("/") + "/", ".well-known/mcp/tools"),
+        urljoin(base_endpoint.rstrip("/") + "/", "mcp/tools"),
+        urljoin(base_endpoint.rstrip("/") + "/", "tools"),
     ])
 
     # Prepare headers from connection auth_method
@@ -318,6 +326,9 @@ def _verify_mcp_server(conn: Connection) -> bool:
             headers["Authorization"] = f"Bearer {token}"
         except Exception as e:
             logger.warning(f"Could not retrieve auth token for connection: {e}")
+
+    # Track if we got 401 responses (server exists but needs auth)
+    got_auth_required = False
 
     for tools_url in tools_urls:
         try:
@@ -353,6 +364,8 @@ def _verify_mcp_server(conn: Connection) -> bool:
                         logger.debug(f"Invalid JSON response from {tools_url}")
                         continue
                 elif response.status_code == 401:
+                    # 401 means server exists and responds, but needs authentication
+                    got_auth_required = True
                     logger.debug(f"Authentication required for {tools_url}")
                     continue
                 elif response.status_code == 404:
@@ -367,6 +380,12 @@ def _verify_mcp_server(conn: Connection) -> bool:
         except Exception as e:
             logger.debug(f"Unexpected error checking {tools_url}: {e}")
             continue
+
+    # If health passed AND we got 401 responses, the server likely exists but needs auth
+    # This is acceptable for MCP servers with authentication requirements
+    if got_auth_required:
+        logger.info(f"MCP server detected at {conn.endpoint} (authentication required)")
+        return True
 
     logger.warning(f"No valid tools endpoint found for {conn.endpoint}")
     return False
@@ -384,21 +403,32 @@ def _fetch_tools_with_validation(conn: Connection) -> dict | None:
     Returns:
         Tools data dictionary if valid, None otherwise
     """
+    # Normalize endpoint: remove trailing /mcp if present (MCP Fabric uses /.well-known/mcp prefix)
+    base_endpoint = conn.endpoint.rstrip("/")
+    if base_endpoint.endswith("/mcp"):
+        base_endpoint = base_endpoint[:-4]  # Remove /mcp suffix
+        logger.debug(f"Normalized endpoint from {conn.endpoint} to {base_endpoint}")
+    
     # Try to get endpoints from manifest first
-    manifest = _fetch_mcp_manifest(conn)
-    tools_urls = []
+    original_endpoint = conn.endpoint
+    conn.endpoint = base_endpoint
+    try:
+        manifest = _fetch_mcp_manifest(conn)
+        tools_urls = []
+        
+        if manifest:
+            endpoints = _get_endpoints_from_manifest(manifest, base_endpoint)
+            if "tools" in endpoints:
+                tools_urls.append(endpoints["tools"])
+                logger.info(f"Using tools endpoint from manifest: {endpoints['tools']}")
+    finally:
+        conn.endpoint = original_endpoint  # Restore original
     
-    if manifest:
-        endpoints = _get_endpoints_from_manifest(manifest, conn.endpoint)
-        if "tools" in endpoints:
-            tools_urls.append(endpoints["tools"])
-            logger.info(f"Using tools endpoint from manifest: {endpoints['tools']}")
-    
-    # Add standard MCP tool endpoint variants
+    # Add standard MCP tool endpoint variants (use normalized base_endpoint)
     tools_urls.extend([
-        urljoin(conn.endpoint.rstrip("/") + "/", ".well-known/mcp/tools"),
-        urljoin(conn.endpoint.rstrip("/") + "/", "mcp/tools"),
-        urljoin(conn.endpoint.rstrip("/") + "/", "tools"),
+        urljoin(base_endpoint.rstrip("/") + "/", ".well-known/mcp/tools"),
+        urljoin(base_endpoint.rstrip("/") + "/", "mcp/tools"),
+        urljoin(base_endpoint.rstrip("/") + "/", "tools"),
     ])
 
     # Prepare headers from connection auth_method

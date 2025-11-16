@@ -23,9 +23,12 @@ export default function RegisterPage() {
     password_confirm: "",
     first_name: "",
     last_name: "",
+    organization_name: "",
+    organization_id: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [orgOption, setOrgOption] = useState<"new" | "existing" | "none">("none");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +42,21 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const response = await api.post("/auth/register/", formData);
+      const payload: any = {
+        email: formData.email,
+        password: formData.password,
+        password_confirm: formData.password_confirm,
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+      };
+      
+      if (orgOption === "new" && formData.organization_name) {
+        payload.organization_name = formData.organization_name;
+      } else if (orgOption === "existing" && formData.organization_id) {
+        payload.organization_id = formData.organization_id;
+      }
+      
+      const response = await api.post("/auth/register/", payload);
       setAuth(response.data.user, response.data.token);
       router.push(`/${locale}/dashboard`);
     } catch (err: any) {
@@ -179,6 +196,89 @@ export default function RegisterPage() {
                   placeholder="••••••••"
                 />
               </div>
+            </div>
+
+            {/* Organization Selection */}
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                {t("auth.organization")} ({t("common.optional")})
+              </label>
+              <div className="space-y-2">
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="orgOption"
+                      value="none"
+                      checked={orgOption === "none"}
+                      onChange={(e) => {
+                        setOrgOption("none");
+                        setFormData({ ...formData, organization_name: "", organization_id: "" });
+                      }}
+                      className="w-4 h-4 text-purple-500 bg-white/5 border-white/10 focus:ring-purple-500"
+                    />
+                    <span className="text-slate-300 text-sm">{t("auth.noOrganization")}</span>
+                  </label>
+                </div>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="orgOption"
+                      value="new"
+                      checked={orgOption === "new"}
+                      onChange={(e) => {
+                        setOrgOption("new");
+                        setFormData({ ...formData, organization_id: "" });
+                      }}
+                      className="w-4 h-4 text-purple-500 bg-white/5 border-white/10 focus:ring-purple-500"
+                    />
+                    <span className="text-slate-300 text-sm">{t("auth.createOrganization")}</span>
+                  </label>
+                </div>
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="orgOption"
+                      value="existing"
+                      checked={orgOption === "existing"}
+                      onChange={(e) => {
+                        setOrgOption("existing");
+                        setFormData({ ...formData, organization_name: "" });
+                      }}
+                      className="w-4 h-4 text-purple-500 bg-white/5 border-white/10 focus:ring-purple-500"
+                    />
+                    <span className="text-slate-300 text-sm">{t("auth.joinOrganization")}</span>
+                  </label>
+                </div>
+              </div>
+              {orgOption === "new" && (
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.organization_name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, organization_name: e.target.value })
+                    }
+                    className="w-full pl-4 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    placeholder={t("auth.organizationNamePlaceholder")}
+                  />
+                </div>
+              )}
+              {orgOption === "existing" && (
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={formData.organization_id}
+                    onChange={(e) =>
+                      setFormData({ ...formData, organization_id: e.target.value })
+                    }
+                    className="w-full pl-4 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    placeholder={t("auth.organizationIdPlaceholder")}
+                  />
+                </div>
+              )}
             </div>
 
             <button

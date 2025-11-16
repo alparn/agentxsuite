@@ -22,11 +22,18 @@ import { CanvasNode } from "./CanvasNode";
 import { CanvasSidebar } from "./CanvasSidebar";
 import { CanvasEdgeSidebar } from "./CanvasEdgeSidebar";
 import { CanvasToolbar } from "./CanvasToolbar";
+import { TestConnectionModal } from "./TestConnectionModal";
+import { SyncToolsModal } from "./SyncToolsModal";
+import { RunToolModal } from "./RunToolModal";
+import { PingAgentModal } from "./PingAgentModal";
 import { AgentDialog } from "../AgentDialog";
 import { ToolDialog } from "../ToolDialog";
 import { ResourceDialog } from "../ResourceDialog";
 import { ConnectionDialog } from "../ConnectionDialog";
-import { api, agentsApi, canvasApi } from "@/lib/api";
+import { EnvironmentDialog } from "../EnvironmentDialog";
+import { PolicyDialog } from "../PolicyDialog";
+import { PromptDialog } from "../PromptDialog";
+import { api, agentsApi, canvasApi, policyRulesApi, policyBindingsApi } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import type { CanvasNodeData, CanvasEdgeData, CanvasState, CanvasNodeType } from "@/lib/canvasTypes";
 import { isValidEdgeConnection, getDefaultEdgeType, getValidEdgeTypes } from "@/lib/canvasEdgeValidation";
@@ -50,10 +57,23 @@ export function CanvasView() {
   const [showToolDialog, setShowToolDialog] = useState(false);
   const [showResourceDialog, setShowResourceDialog] = useState(false);
   const [showConnectionDialog, setShowConnectionDialog] = useState(false);
+  const [showEnvironmentDialog, setShowEnvironmentDialog] = useState(false);
+  const [showPolicyDialog, setShowPolicyDialog] = useState(false);
+  const [showPromptDialog, setShowPromptDialog] = useState(false);
   const [pendingNodeType, setPendingNodeType] = useState<CanvasNodeType | null>(null);
   const [pendingPosition, setPendingPosition] = useState<{ x: number; y: number } | null>(null);
   const [pendingSourceNodeId, setPendingSourceNodeId] = useState<string | undefined>(undefined);
   const [pendingSide, setPendingSide] = useState<"left" | "right" | undefined>(undefined);
+  const [preselectedEnvironmentId, setPreselectedEnvironmentId] = useState<string | undefined>(undefined);
+  const [preselectedConnectionId, setPreselectedConnectionId] = useState<string | undefined>(undefined);
+  
+  // Action modal states
+  const [showTestModal, setShowTestModal] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showRunModal, setShowRunModal] = useState(false);
+  const [showPingModal, setShowPingModal] = useState(false);
+  const [selectedActionEntityId, setSelectedActionEntityId] = useState<string>("");
+  const [selectedActionEntityName, setSelectedActionEntityName] = useState<string>("");
   
   // Filter state
   const [showFilter, setShowFilter] = useState(false);
@@ -61,90 +81,120 @@ export function CanvasView() {
   const [filteredEdgeTypes, setFilteredEdgeTypes] = useState<Set<string>>(new Set());
   const [filteredStatuses, setFilteredStatuses] = useState<Set<string>>(new Set());
   const filterMenuRef = useRef<HTMLDivElement>(null);
+  
+  // Track viewport for saving
+  const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+  
+  // Ref for managing edge creation timeouts to prevent memory leaks
+  const edgeTimeoutsRef = useRef<Set<NodeJS.Timeout>>(new Set());
 
-  // Fetch organizations and auto-select first one if none selected
-  const { data: orgsResponse } = useQuery({
-    queryKey: ["my-organizations"],
+  // Fetch current organization from backend
+  const { data: currentOrgData } = useQuery({
+    queryKey: ["current-organization"],
     queryFn: async () => {
-      const response = await api.get("/auth/me/orgs/");
-      return Array.isArray(response.data) 
-        ? response.data 
-        : response.data?.organizations || [];
+      const response = await api.get("/auth/me/");
+      // Backend should return current organization info
+      return response.data;
     },
   });
 
-  const organizations = Array.isArray(orgsResponse) ? orgsResponse : (orgsResponse?.organizations || []);
-
+  // Extract orgId from backend response
+  const backendOrgId = currentOrgData?.organization_id || currentOrgData?.organization?.id || null;
+  
+  // Use backend orgId if available, otherwise fall back to store
+  const effectiveOrgId = backendOrgId || orgId;
+  
+  // Update store if backend provides different orgId
   useEffect(() => {
-    if (!orgId && organizations && organizations.length > 0) {
-      setCurrentOrg(organizations[0].id);
+    if (backendOrgId && backendOrgId !== orgId) {
+      setCurrentOrg(backendOrgId);
     }
-  }, [organizations, orgId, setCurrentOrg]);
+  }, [backendOrgId, orgId, setCurrentOrg]);
+  
+  // Cleanup all edge timeouts on unmount
+  useEffect(() => {
+    return () => {
+      edgeTimeoutsRef.current.forEach(clearTimeout);
+      edgeTimeoutsRef.current.clear();
+    };
+  }, []);
 
-  // Fetch all entities
+  // Fetch all entities (only when effectiveOrgId is available)
   const { data: agentsData } = useQuery({
-    queryKey: ["agents", orgId],
+    queryKey: ["agents", effectiveOrgId],
     queryFn: async () => {
-      if (!orgId) return [];
-      const response = await api.get(`/orgs/${orgId}/agents/`);
+      if (!effectiveOrgId) {
+        throw new Error("Organization ID is required");
+      }
+      const response = await api.get(`/orgs/${effectiveOrgId}/agents/`);
       return Array.isArray(response.data) ? response.data : response.data?.results || [];
     },
-    enabled: !!orgId,
+    enabled: !!effectiveOrgId, // Only fetch when orgId is available
   });
 
   const { data: toolsData } = useQuery({
-    queryKey: ["tools", orgId],
+    queryKey: ["tools", effectiveOrgId],
     queryFn: async () => {
-      if (!orgId) return [];
-      const response = await api.get(`/orgs/${orgId}/tools/`);
+      if (!effectiveOrgId) {
+        throw new Error("Organization ID is required");
+      }
+      const response = await api.get(`/orgs/${effectiveOrgId}/tools/`);
       return Array.isArray(response.data) ? response.data : response.data?.results || [];
     },
-    enabled: !!orgId,
+    enabled: !!effectiveOrgId,
   });
 
   const { data: resourcesData } = useQuery({
-    queryKey: ["resources", orgId],
+    queryKey: ["resources", effectiveOrgId],
     queryFn: async () => {
-      if (!orgId) return [];
-      const response = await api.get(`/orgs/${orgId}/resources/`);
+      if (!effectiveOrgId) {
+        throw new Error("Organization ID is required");
+      }
+      const response = await api.get(`/orgs/${effectiveOrgId}/resources/`);
       return Array.isArray(response.data) ? response.data : response.data?.results || [];
     },
-    enabled: !!orgId,
+    enabled: !!effectiveOrgId,
   });
 
   const { data: policiesData } = useQuery({
-    queryKey: ["policies", orgId],
+    queryKey: ["policies", effectiveOrgId],
     queryFn: async () => {
-      if (!orgId) return [];
-      const response = await api.get(`/orgs/${orgId}/policies/`);
+      if (!effectiveOrgId) {
+        throw new Error("Organization ID is required");
+      }
+      const response = await api.get(`/orgs/${effectiveOrgId}/policies/`);
       return Array.isArray(response.data) ? response.data : response.data?.results || [];
     },
-    enabled: !!orgId,
+    enabled: !!effectiveOrgId,
   });
 
   const { data: connectionsData } = useQuery({
-    queryKey: ["connections", orgId],
+    queryKey: ["connections", effectiveOrgId],
     queryFn: async () => {
-      if (!orgId) return [];
-      const response = await api.get(`/orgs/${orgId}/connections/`);
+      if (!effectiveOrgId) {
+        throw new Error("Organization ID is required");
+      }
+      const response = await api.get(`/orgs/${effectiveOrgId}/connections/`);
       return Array.isArray(response.data) ? response.data : response.data?.results || [];
     },
-    enabled: !!orgId,
+    enabled: !!effectiveOrgId,
   });
 
   const { data: environmentsData, isLoading: environmentsLoading } = useQuery({
-    queryKey: ["environments", orgId],
+    queryKey: ["environments", effectiveOrgId],
     queryFn: async () => {
-      if (!orgId) return [];
+      if (!effectiveOrgId) {
+        throw new Error("Organization ID is required");
+      }
       try {
         // Try organization-specific endpoint first
-        const response = await api.get(`/orgs/${orgId}/environments/`);
+        const response = await api.get(`/orgs/${effectiveOrgId}/environments/`);
         return Array.isArray(response.data) ? response.data : response.data?.results || [];
       } catch (error: any) {
         // Fallback: try direct environments endpoint with org filter
         if (error.response?.status === 404) {
           try {
-            const response = await api.get(`/environments/`, { params: { organization: orgId } });
+            const response = await api.get(`/environments/`, { params: { organization: effectiveOrgId } });
             return Array.isArray(response.data) ? response.data : response.data?.results || [];
           } catch (e) {
             console.error("Failed to fetch environments:", e);
@@ -155,7 +205,64 @@ export function CanvasView() {
         return [];
       }
     },
-    enabled: !!orgId,
+    enabled: !!effectiveOrgId,
+  });
+
+  // Fetch Prompts
+  const { data: promptsData } = useQuery({
+    queryKey: ["prompts", effectiveOrgId],
+    queryFn: async () => {
+      if (!effectiveOrgId) return [];
+      try {
+        const response = await api.get(`/orgs/${effectiveOrgId}/prompts/`);
+        if (Array.isArray(response.data)) {
+          return response.data;
+        }
+        return response.data?.results || [];
+      } catch (error) {
+        console.error("Failed to fetch prompts:", error);
+        return [];
+      }
+    },
+    enabled: !!effectiveOrgId,
+  });
+
+  // Fetch PolicyRules for checking allowed Agent → Tool connections
+  const { data: policyRulesData } = useQuery({
+    queryKey: ["policy-rules", effectiveOrgId],
+    queryFn: async () => {
+      if (!effectiveOrgId) return [];
+      try {
+        const response = await policyRulesApi.list();
+        if (Array.isArray(response.data)) {
+          return response.data;
+        }
+        return response.data?.results || [];
+      } catch (error) {
+        console.error("Failed to fetch policy rules:", error);
+        return [];
+      }
+    },
+    enabled: !!effectiveOrgId,
+  });
+
+  // Fetch PolicyBindings for checking which policies apply to agents
+  const { data: policyBindingsData } = useQuery({
+    queryKey: ["policy-bindings", effectiveOrgId],
+    queryFn: async () => {
+      if (!effectiveOrgId) return [];
+      try {
+        const response = await policyBindingsApi.list();
+        if (Array.isArray(response.data)) {
+          return response.data;
+        }
+        return response.data?.results || [];
+      } catch (error) {
+        console.error("Failed to fetch policy bindings:", error);
+        return [];
+      }
+    },
+    enabled: !!effectiveOrgId,
   });
 
   // Layout helper: Calculate positions to avoid overlaps
@@ -223,6 +330,7 @@ export function CanvasView() {
           environment: env,
           label: env.name,
           status: "connected",
+          hasConnections: false, // Will be updated by useEffect based on edges
         },
       });
       nodesByEnv.set(env.id, []);
@@ -248,11 +356,35 @@ export function CanvasView() {
           agent,
           label: agent.name,
           status: agent.enabled ? "connected" : "disabled",
+          hasConnections: false, // Will be updated by useEffect based on edges
+        },
+      });
+    });
+
+    // Add resources (positioned early for visibility)
+    const resourceStartY = currentY;
+    const resourcePositions = calculateLayout(resourcesData || [], currentX, resourceStartY, nodeWidth, nodeHeight, spacing);
+    (resourcesData || []).forEach((resource: any, idx: number) => {
+      const fallbackPos = { x: currentX + (idx % 3) * (nodeWidth + spacing), y: resourceStartY + Math.floor(idx / 3) * (nodeHeight + spacing) };
+      const pos = ensureValidPosition(resourcePositions[idx], fallbackPos);
+      nodes.push({
+        id: `resource-${resource.id}`,
+        type: "canvasNode",
+        position: pos,
+        data: {
+          type: "resource",
+          resourceId: resource.id,
+          resource,
+          label: resource.name,
+          status: resource.enabled ? "connected" : "disabled",
+          hasConnections: false, // Will be updated by useEffect based on edges
         },
       });
     });
 
     // Add tools - position near their connections
+    const maxResourceY = resourcePositions.length > 0 ? Math.max(...resourcePositions.map(p => p.y)) : resourceStartY;
+    const toolStartY = maxResourceY + sectionSpacing;
     const toolsWithPositions = (toolsData || []).map((tool: any, idx: number) => {
       // Try to position tools near their connection/server
       const connectionId = tool.connection?.id || tool.connection_id;
@@ -269,8 +401,6 @@ export function CanvasView() {
       return tool;
     });
 
-    const maxAgentY = agentPositions.length > 0 ? Math.max(...agentPositions.map(p => p.y)) : currentY;
-    const toolStartY = maxAgentY + sectionSpacing;
     const toolPositions = calculateLayout(toolsWithPositions, currentX, toolStartY, nodeWidth, nodeHeight, spacing);
     toolsWithPositions.forEach((tool: any, idx: number) => {
       const fallbackPos = toolPositions[idx] || { x: currentX + (idx % 3) * (nodeWidth + spacing), y: toolStartY + Math.floor(idx / 3) * (nodeHeight + spacing) };
@@ -289,34 +419,14 @@ export function CanvasView() {
           tool,
           label: tool.name,
           status: tool.enabled ? "connected" : "disabled",
-        },
-      });
-    });
-
-    // Add resources
-    const maxToolY = toolPositions.length > 0 ? Math.max(...toolPositions.map(p => p.y)) : toolStartY;
-    const resourceStartY = maxToolY + sectionSpacing;
-    const resourcePositions = calculateLayout(resourcesData || [], currentX, resourceStartY, nodeWidth, nodeHeight, spacing);
-    (resourcesData || []).forEach((resource: any, idx: number) => {
-      const fallbackPos = { x: currentX + (idx % 3) * (nodeWidth + spacing), y: resourceStartY + Math.floor(idx / 3) * (nodeHeight + spacing) };
-      const pos = ensureValidPosition(resourcePositions[idx], fallbackPos);
-      nodes.push({
-        id: `resource-${resource.id}`,
-        type: "canvasNode",
-        position: pos,
-        data: {
-          type: "resource",
-          resourceId: resource.id,
-          resource,
-          label: resource.name,
-          status: resource.enabled ? "connected" : "disabled",
+          hasConnections: false, // Will be updated by useEffect based on edges
         },
       });
     });
 
     // Add policies
-    const maxResourceY = resourcePositions.length > 0 ? Math.max(...resourcePositions.map(p => p.y)) : resourceStartY;
-    const policyStartY = maxResourceY + sectionSpacing;
+    const maxToolY = toolPositions.length > 0 ? Math.max(...toolPositions.map(p => p.y)) : toolStartY;
+    const policyStartY = maxToolY + sectionSpacing;
     const policyPositions = calculateLayout(policiesData || [], currentX, policyStartY, nodeWidth, nodeHeight, spacing);
     (policiesData || []).forEach((policy: any, idx: number) => {
       const fallbackPos = { x: currentX + (idx % 3) * (nodeWidth + spacing), y: policyStartY + Math.floor(idx / 3) * (nodeHeight + spacing) };
@@ -331,13 +441,36 @@ export function CanvasView() {
           policy,
           label: policy.name,
           status: policy.is_active ? "connected" : "disabled",
+          hasConnections: false, // Will be updated by useEffect based on edges
+        },
+      });
+    });
+
+    // Add prompts
+    const maxPolicyY = policyPositions.length > 0 ? Math.max(...policyPositions.map(p => p.y)) : policyStartY;
+    const promptStartY = maxPolicyY + sectionSpacing;
+    const promptPositions = calculateLayout(promptsData || [], currentX, promptStartY, nodeWidth, nodeHeight, spacing);
+    (promptsData || []).forEach((prompt: any, idx: number) => {
+      const fallbackPos = { x: currentX + (idx % 3) * (nodeWidth + spacing), y: promptStartY + Math.floor(idx / 3) * (nodeHeight + spacing) };
+      const pos = ensureValidPosition(promptPositions[idx], fallbackPos);
+      nodes.push({
+        id: `prompt-${prompt.id}`,
+        type: "canvasNode",
+        position: pos,
+        data: {
+          type: "prompt",
+          promptId: prompt.id,
+          prompt,
+          label: prompt.name,
+          status: prompt.enabled ? "connected" : "disabled",
+          hasConnections: false, // Will be updated by useEffect based on edges
         },
       });
     });
 
     // Add servers/connections
-    const maxPolicyY = policyPositions.length > 0 ? Math.max(...policyPositions.map(p => p.y)) : policyStartY;
-    const connectionStartY = maxPolicyY + sectionSpacing;
+    const maxPromptY = promptPositions.length > 0 ? Math.max(...promptPositions.map(p => p.y)) : promptStartY;
+    const connectionStartY = maxPromptY + sectionSpacing;
     const connectionPositions = calculateLayout(connectionsData || [], currentX, connectionStartY, nodeWidth, nodeHeight, spacing);
     (connectionsData || []).forEach((connection: any, idx: number) => {
       const fallbackPos = { x: currentX + (idx % 3) * (nodeWidth + spacing), y: connectionStartY + Math.floor(idx / 3) * (nodeHeight + spacing) };
@@ -352,18 +485,222 @@ export function CanvasView() {
           connection,
           label: connection.name,
           status: connection.status === "ok" ? "connected" : connection.status === "fail" ? "error" : "unknown",
+          hasConnections: false, // Will be updated by useEffect based on edges
         },
       });
     });
 
     return nodes;
-  }, [agentsData, toolsData, resourcesData, policiesData, connectionsData, environmentsData, calculateLayout, ensureValidPosition]);
+  }, [agentsData, toolsData, resourcesData, policiesData, connectionsData, environmentsData, promptsData, calculateLayout, ensureValidPosition]);
+
+  // Helper function to check if a resource is allowed for an agent via PolicyRules
+  const getAllowedResourcesForAgent = useCallback((agentId: string, agentEnvId: string | null): Map<string, { policyId: string; policyName: string; action: string }> => {
+    const allowedResources = new Map<string, { policyId: string; policyName: string; action: string }>();
+    
+    if (!policyRulesData || !policyBindingsData || !policiesData) {
+      return allowedResources;
+    }
+
+    // Find all policy bindings for this agent
+    const agentBindings = (policyBindingsData || []).filter(
+      (binding: any) => binding.scope_type === "agent" && binding.scope_id === agentId
+    );
+
+    // Get all policies that are bound to this agent
+    const boundPolicyIds = new Set(agentBindings.map((b: any) => b.policy_id));
+    
+    // Also include policies that match the agent's environment
+    (policiesData || []).forEach((policy: any) => {
+      if (
+        boundPolicyIds.has(policy.id) ||
+        !policy.environment_id ||
+        policy.environment_id === agentEnvId
+      ) {
+        boundPolicyIds.add(policy.id);
+      }
+    });
+
+    // Find all "resource.read" and "resource.write" rules with effect="allow" from bound policies
+    (policyRulesData || []).forEach((rule: any) => {
+      if (
+        (rule.action === "resource.read" || rule.action === "resource.write") &&
+        rule.effect === "allow" &&
+        boundPolicyIds.has(rule.policy_id)
+      ) {
+        // Get policy info
+        const policy = (policiesData || []).find((p: any) => p.id === rule.policy_id);
+        const policyName = policy?.name || "Unknown Policy";
+        
+        // Parse target pattern (e.g., "resource:name" or "resource:*")
+        const targetPattern = rule.target.replace(/^resource:/, "");
+        
+        // Match resources against pattern
+        (resourcesData || []).forEach((resource: any) => {
+          const resourceName = resource.name || "";
+          
+          // Pattern matching with wildcard support
+          let isMatch = false;
+          if (targetPattern === "*") {
+            isMatch = true;
+          } else if (targetPattern.endsWith("/*")) {
+            // Pattern like "DB/*" - matches "DB" or "DB/anything"
+            const prefix = targetPattern.slice(0, -2);
+            isMatch = resourceName === prefix || resourceName.startsWith(prefix + "/");
+          } else if (targetPattern.includes("*")) {
+            // Pattern with * in middle or start - convert to regex
+            const regexPattern = targetPattern
+              .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+              .replace(/\*/g, '.*');
+            const regex = new RegExp(`^${regexPattern}$`);
+            isMatch = regex.test(resourceName);
+          } else {
+            // Exact match
+            isMatch = resourceName === targetPattern;
+          }
+          
+          if (isMatch) {
+            // Store action type (read/write)
+            const action = rule.action.replace("resource.", "");
+            const existing = allowedResources.get(resource.id);
+            if (existing) {
+              // Combine actions if multiple rules allow different actions
+              allowedResources.set(resource.id, { 
+                ...existing, 
+                action: existing.action === action ? action : `${existing.action},${action}`,
+              });
+            } else {
+              allowedResources.set(resource.id, { policyId: rule.policy_id, policyName, action });
+            }
+          }
+        });
+      }
+    });
+
+    return allowedResources;
+  }, [policyRulesData, policyBindingsData, policiesData, resourcesData]);
+
+  // Helper function to check if a tool is allowed for an agent via PolicyRules
+  const getAllowedToolsForAgent = useCallback((agentId: string, agentEnvId: string | null): Map<string, { policyId: string; policyName: string }> => {
+    const allowedTools = new Map<string, { policyId: string; policyName: string }>();
+    
+    if (!policyRulesData || !policyBindingsData || !policiesData) {
+      return allowedTools;
+    }
+
+    // Find all policy bindings for this agent
+    const agentBindings = (policyBindingsData || []).filter(
+      (binding: any) => binding.scope_type === "agent" && binding.scope_id === agentId
+    );
+
+    // Get all policies that are bound to this agent
+    const boundPolicyIds = new Set(agentBindings.map((b: any) => b.policy_id));
+    
+    // Also include policies that match the agent's environment (if policy has environment)
+    (policiesData || []).forEach((policy: any) => {
+      // Policy applies if:
+      // 1. It's bound to this agent, OR
+      // 2. It has no environment (applies to all), OR
+      // 3. It matches the agent's environment
+      if (
+        boundPolicyIds.has(policy.id) ||
+        !policy.environment_id ||
+        policy.environment_id === agentEnvId
+      ) {
+        boundPolicyIds.add(policy.id);
+      }
+    });
+
+    // Find all "tool.invoke" rules with effect="allow" from bound policies
+    (policyRulesData || []).forEach((rule: any) => {
+      if (
+        rule.action === "tool.invoke" &&
+        rule.effect === "allow" &&
+        boundPolicyIds.has(rule.policy_id)
+      ) {
+        // Get policy info
+        const policy = (policiesData || []).find((p: any) => p.id === rule.policy_id);
+        const policyName = policy?.name || "Unknown Policy";
+        
+        // Parse target pattern (e.g., "tool:namespace/name" or "tool:*")
+        const targetPattern = rule.target.replace(/^tool:/, "");
+        
+        // Match tools against pattern
+        (toolsData || []).forEach((tool: any) => {
+          // Get tool identifier (namespace/name format)
+          const toolNamespace = tool.connection?.name || "default";
+          const toolName = tool.name || "";
+          const toolIdentifier = `${toolNamespace}/${toolName}`;
+          
+          // Pattern matching with wildcard support
+          let isMatch = false;
+          if (targetPattern === "*") {
+            isMatch = true;
+          } else if (targetPattern.endsWith("/*")) {
+            // Pattern like "namespace/*" - matches "namespace/anything"
+            const prefix = targetPattern.slice(0, -2);
+            isMatch = toolIdentifier.startsWith(prefix + "/") || toolIdentifier === prefix;
+          } else if (targetPattern.includes("*")) {
+            // Pattern with * in middle or start - convert to regex
+            const regexPattern = targetPattern
+              .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+              .replace(/\*/g, '.*');
+            const regex = new RegExp(`^${regexPattern}$`);
+            isMatch = regex.test(toolIdentifier);
+          } else {
+            // Exact match
+            isMatch = toolIdentifier === targetPattern;
+          }
+          
+          if (isMatch) {
+            allowedTools.set(tool.id, { policyId: rule.policy_id, policyName });
+          }
+        });
+      }
+    });
+
+    return allowedTools;
+  }, [policyRulesData, policyBindingsData, policiesData, toolsData]);
 
   // Generate initial edges from backend relationships
+  // Only show necessary connections: Environment → Connection, Connection → Tool, Agent → Connection, Agent → Tool (only allowed)
   const initialEdges = useMemo(() => {
     const edges: Edge<CanvasEdgeData>[] = [];
 
-    // Agent → Connection (server)
+    // 1. Environment → Connection (reversed from Connection.environment FK)
+    (connectionsData || []).forEach((connection: any) => {
+      const envId = connection.environment?.id || connection.environment_id;
+      if (envId) {
+        edges.push({
+          id: `env-${envId}-server-${connection.id}`,
+          source: `env-${envId}`,
+          target: `server-${connection.id}`,
+          type: "smoothstep",
+          data: {
+            type: "environment-server",
+            config: { allowed: true },
+          },
+        });
+      }
+    });
+
+    // 2. Connection → Tool (reversed from Tool.connection FK)
+    (toolsData || []).forEach((tool: any) => {
+      const connectionId = tool.connection?.id || tool.connection_id;
+      if (connectionId) {
+        edges.push({
+          id: `server-${connectionId}-tool-${tool.id}`,
+          source: `server-${connectionId}`,
+          target: `tool-${tool.id}`,
+          type: "smoothstep",
+          data: {
+            type: "server-tool",
+            config: { allowed: true },
+          },
+        });
+      }
+    });
+
+    // 3. Agent → Connection (server) - unchanged
     (agentsData || []).forEach((agent: any) => {
       const connectionId = agent.connection?.id || agent.connection_id;
       if (connectionId) {
@@ -380,84 +717,198 @@ export function CanvasView() {
       }
     });
 
-    // Agent → Environment
+    // 4. Agent → Tool (only allowed via PolicyRules)
     (agentsData || []).forEach((agent: any) => {
-      const envId = agent.environment?.id || agent.environment_id;
-      if (envId) {
+      const agentEnvId = agent.environment?.id || agent.environment_id;
+      const allowedTools = getAllowedToolsForAgent(agent.id, agentEnvId);
+      
+      allowedTools.forEach((policyInfo, toolId) => {
         edges.push({
-          id: `agent-${agent.id}-env-${envId}`,
+          id: `agent-${agent.id}-tool-${toolId}`,
           source: `agent-${agent.id}`,
-          target: `env-${envId}`,
+          target: `tool-${toolId}`,
           type: "smoothstep",
+          animated: true, // Animate policy-governed edges
+          style: { 
+            stroke: "#eab308", // Yellow for policy-governed
+            strokeWidth: 2,
+            strokeDasharray: "5,5", // Dashed line
+          },
+          label: policyInfo.policyName, // Show policy name as label
+          labelStyle: { 
+            fill: "#eab308", 
+            fontSize: 10,
+            fontWeight: 600,
+          },
+          labelBgStyle: {
+            fill: "#1e293b",
+            fillOpacity: 0.8,
+          },
           data: {
-            type: "agent-environment",
-            config: { allowed: true },
+            type: "agent-tool",
+            config: { 
+              allowed: true,
+            },
+            metadata: {
+              policyId: policyInfo.policyId,
+              policyName: policyInfo.policyName,
+              policyGoverned: true,
+            },
           },
         });
-      }
+      });
     });
 
-    // Tool → Connection (server)
-    (toolsData || []).forEach((tool: any) => {
-      const connectionId = tool.connection?.id || tool.connection_id;
-      if (connectionId) {
-        edges.push({
-          id: `tool-${tool.id}-server-${connectionId}`,
-          source: `tool-${tool.id}`,
-          target: `server-${connectionId}`,
-          type: "smoothstep",
-          data: {
-            type: "tool-server",
-            config: { allowed: true },
-          },
-        });
-      }
-    });
-
-    // Tool → Environment
-    (toolsData || []).forEach((tool: any) => {
-      const envId = tool.environment?.id || tool.environment_id;
+    // 5. Environment → Policy (reversed from Policy.environment FK)
+    (policiesData || []).forEach((policy: any) => {
+      const envId = policy.environment?.id || policy.environment_id;
       if (envId) {
         edges.push({
-          id: `tool-${tool.id}-env-${envId}`,
-          source: `tool-${tool.id}`,
-          target: `env-${envId}`,
+          id: `env-${envId}-policy-${policy.id}`,
+          source: `env-${envId}`,
+          target: `policy-${policy.id}`,
           type: "smoothstep",
           data: {
-            type: "environment-server",
+            type: "environment-policy",
             config: { allowed: true },
           },
         });
       }
     });
 
-    // Resource → Environment
+    // Note: Environment → Agent edge is NOT created
+    // Agent can be created from Environment (via plus button), but the hierarchical edge is not shown
+    // Agent relationships are shown via:
+    // - Agent → Connection (server)
+    // - Agent → Tool (if allowed by policy)
+
+    // 6. Agent → Resource (only allowed via PolicyRules)
+    (agentsData || []).forEach((agent: any) => {
+      const agentEnvId = agent.environment?.id || agent.environment_id;
+      const allowedResources = getAllowedResourcesForAgent(agent.id, agentEnvId);
+      
+      allowedResources.forEach((policyInfo, resourceId) => {
+        edges.push({
+          id: `agent-${agent.id}-resource-${resourceId}`,
+          source: `agent-${agent.id}`,
+          target: `resource-${resourceId}`,
+          type: "smoothstep",
+          animated: true, // Animate policy-governed edges
+          style: { 
+            stroke: "#f59e0b", // Amber for resource access
+            strokeWidth: 2,
+            strokeDasharray: "5,5", // Dashed line
+          },
+          label: `${policyInfo.policyName} (${policyInfo.action})`, // Show policy name and action
+          labelStyle: { 
+            fill: "#f59e0b", 
+            fontSize: 10,
+            fontWeight: 600,
+          },
+          labelBgStyle: {
+            fill: "#1e293b",
+            fillOpacity: 0.8,
+          },
+          data: {
+            type: "agent-resource",
+            config: { 
+              allowed: true,
+              permissions: policyInfo.action.split(','), // e.g., ["read", "write"]
+            },
+            metadata: {
+              policyId: policyInfo.policyId,
+              policyName: policyInfo.policyName,
+              policyGoverned: true,
+            },
+          },
+        });
+      });
+    });
+
+    // 7. Environment → Resource (reversed from Resource.environment FK)
     (resourcesData || []).forEach((resource: any) => {
       const envId = resource.environment?.id || resource.environment_id;
       if (envId) {
         edges.push({
-          id: `resource-${resource.id}-env-${envId}`,
-          source: `resource-${resource.id}`,
-          target: `env-${envId}`,
+          id: `env-${envId}-resource-${resource.id}`,
+          source: `env-${envId}`,
+          target: `resource-${resource.id}`,
           type: "smoothstep",
           data: {
-            type: "environment-server",
+            type: "environment-resource",
             config: { allowed: true },
           },
         });
       }
     });
 
+    // 8. Environment → Prompt (reversed from Prompt.environment FK)
+    (promptsData || []).forEach((prompt: any) => {
+      const envId = prompt.environment?.id || prompt.environment_id;
+      if (envId) {
+        edges.push({
+          id: `env-${envId}-prompt-${prompt.id}`,
+          source: `env-${envId}`,
+          target: `prompt-${prompt.id}`,
+          type: "smoothstep",
+          data: {
+            type: "environment-prompt",
+            config: { allowed: true },
+          },
+        });
+      }
+    });
+
+    // 9. Prompt → Resource (from Prompt.uses_resources, dashed line)
+    (promptsData || []).forEach((prompt: any) => {
+      const usesResources = prompt.uses_resources || [];
+      // uses_resources is an array of resource names, need to find matching resources
+      usesResources.forEach((resourceName: string) => {
+        const matchingResource = (resourcesData || []).find((r: any) => r.name === resourceName);
+        if (matchingResource) {
+          edges.push({
+            id: `prompt-${prompt.id}-resource-${matchingResource.id}`,
+            source: `prompt-${prompt.id}`,
+            target: `resource-${matchingResource.id}`,
+            type: "smoothstep",
+            animated: true,
+            style: {
+              stroke: "#f59e0b", // Amber for resource usage
+              strokeWidth: 2,
+              strokeDasharray: "5,5", // Dashed line
+            },
+            label: "uses",
+            labelStyle: {
+              fill: "#f59e0b",
+              fontSize: 10,
+              fontWeight: 600,
+            },
+            labelBgStyle: {
+              fill: "#1e293b",
+              fillOpacity: 0.8,
+            },
+            data: {
+              type: "prompt-resource",
+              config: { allowed: true },
+              metadata: {
+                resourceName,
+              },
+            },
+          });
+        }
+      });
+    });
+
     return edges;
-  }, [agentsData, toolsData, resourcesData, policiesData, connectionsData, environmentsData]);
+  }, [agentsData, toolsData, connectionsData, environmentsData, policiesData, resourcesData, promptsData, getAllowedToolsForAgent, getAllowedResourcesForAgent]);
 
   // Load saved canvas state from backend
   const { data: savedCanvasState } = useQuery({
-    queryKey: ["canvas-state", orgId],
+    queryKey: ["canvas-state", effectiveOrgId],
     queryFn: async () => {
-      if (!orgId) return null;
+      if (!effectiveOrgId) return null;
       try {
-        const response = await canvasApi.getDefault(orgId);
+        const response = await canvasApi.getDefault(effectiveOrgId);
         return response.data?.state_json || null;
       } catch (error: any) {
         // 404 is ok - no saved state yet
@@ -467,7 +918,7 @@ export function CanvasView() {
         console.error("Failed to load canvas state from backend:", error);
         // Fallback to localStorage
         try {
-          const saved = localStorage.getItem(`canvas-state-${orgId}`);
+          const saved = localStorage.getItem(`canvas-state-${effectiveOrgId}`);
           if (saved) {
             return JSON.parse(saved);
           }
@@ -477,7 +928,7 @@ export function CanvasView() {
         return null;
       }
     },
-    enabled: !!orgId,
+    enabled: !!effectiveOrgId,
     staleTime: 30000, // Cache for 30 seconds
   });
 
@@ -489,9 +940,9 @@ export function CanvasView() {
     }
     
     // Fallback to localStorage
-    if (!orgId) return null;
+    if (!effectiveOrgId) return null;
     try {
-      const saved = localStorage.getItem(`canvas-state-${orgId}`);
+      const saved = localStorage.getItem(`canvas-state-${effectiveOrgId}`);
       if (saved) {
         const state = JSON.parse(saved);
         return state;
@@ -500,23 +951,31 @@ export function CanvasView() {
       console.error("Failed to load canvas state:", error);
     }
     return null;
-  }, [orgId, savedCanvasState]);
+  }, [effectiveOrgId, savedCanvasState]);
+  
+  // Restore viewport when canvas state loads
+  useEffect(() => {
+    const savedState = loadCanvasState();
+    if (savedState?.viewport) {
+      setViewport(savedState.viewport);
+    }
+  }, [loadCanvasState]);
 
   // Save canvas state mutation
   const saveCanvasStateMutation = useMutation({
     mutationFn: async (state: any) => {
-      if (!orgId) throw new Error("Organization ID is required");
-      return canvasApi.saveDefault(orgId, state);
+      if (!effectiveOrgId) throw new Error("Organization ID is required");
+      return canvasApi.saveDefault(effectiveOrgId, state);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["canvas-state", orgId] });
+      queryClient.invalidateQueries({ queryKey: ["canvas-state", effectiveOrgId] });
     },
     onError: (error: any, state: any) => {
       console.error("Failed to save canvas state to backend:", error);
       // Fallback to localStorage
-      if (orgId && state) {
+      if (effectiveOrgId && state) {
         try {
-          localStorage.setItem(`canvas-state-${orgId}`, JSON.stringify(state));
+          localStorage.setItem(`canvas-state-${effectiveOrgId}`, JSON.stringify(state));
         } catch (e) {
           console.error("Failed to save canvas state to localStorage:", e);
         }
@@ -526,7 +985,7 @@ export function CanvasView() {
 
   // Save canvas state to backend (with localStorage fallback)
   const saveCanvasState = useCallback((nodesToSave: Node<CanvasNodeData>[], edgesToSave: Edge<CanvasEdgeData>[]) => {
-    if (!orgId) return;
+    if (!effectiveOrgId) return;
     
     const state = {
       nodes: nodesToSave.map((n) => ({
@@ -538,6 +997,7 @@ export function CanvasView() {
           toolId: n.data.toolId,
           resourceId: n.data.resourceId,
           policyId: n.data.policyId,
+          promptId: n.data.promptId,
           connectionId: n.data.connectionId,
           environmentId: n.data.environmentId,
           organizationId: n.data.organizationId,
@@ -547,9 +1007,10 @@ export function CanvasView() {
         id: e.id,
         source: e.source,
         target: e.target,
+        type: e.type || "smoothstep", // Save edge type for ReactFlow rendering
         data: e.data,
       })),
-      viewport: { x: 0, y: 0, zoom: 1 },
+      viewport: viewport, // Save current viewport instead of hardcoded
       groups: {},
       savedAt: new Date().toISOString(),
     };
@@ -559,11 +1020,11 @@ export function CanvasView() {
     
     // Also save to localStorage as backup
     try {
-      localStorage.setItem(`canvas-state-${orgId}`, JSON.stringify(state));
+      localStorage.setItem(`canvas-state-${effectiveOrgId}`, JSON.stringify(state));
     } catch (error) {
       console.error("Failed to save canvas state to localStorage:", error);
     }
-  }, [orgId, saveCanvasStateMutation]);
+  }, [effectiveOrgId, viewport, saveCanvasStateMutation]);
 
   // Merge saved positions with current data
   const mergedNodes = useMemo(() => {
@@ -575,7 +1036,8 @@ export function CanvasView() {
     savedState.nodes.forEach((savedNode: any) => {
       const entityId = savedNode.data.agentId || savedNode.data.toolId || 
                        savedNode.data.resourceId || savedNode.data.policyId ||
-                       savedNode.data.connectionId || savedNode.data.environmentId;
+                       savedNode.data.promptId || savedNode.data.connectionId || 
+                       savedNode.data.environmentId;
       if (entityId && savedNode.position) {
         const pos = savedNode.position;
         // Validate saved position
@@ -637,7 +1099,12 @@ export function CanvasView() {
         const key = `${e.source}-${e.target}`;
         // Only add if not already present or if it's a different edge ID
         if (!edgeIdMap.has(key) || edgeIdMap.get(key)?.id !== e.id) {
-          edgeIdMap.set(key, e as Edge<CanvasEdgeData>);
+          // Ensure saved edge has type attribute (required for ReactFlow rendering)
+          const edgeWithType = {
+            ...e,
+            type: e.type || "smoothstep", // Add default type if missing
+          } as Edge<CanvasEdgeData>;
+          edgeIdMap.set(key, edgeWithType);
         }
       });
       
@@ -694,10 +1161,45 @@ export function CanvasView() {
     });
   }, [edges, filteredEdgeTypes, filteredNodes, nodes]);
 
+  // Use ref to access nodes without causing re-renders
+  const nodesRef = useRef(nodes);
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
   // Handle creating new nodes (defined after setNodes is available)
   const handleCreateNode = useCallback((type: CanvasNodeType, position?: { x: number; y: number }, side?: "left" | "right", sourceNodeId?: string) => {
     // Use provided position or center of viewport
     const nodePosition = position || { x: 400, y: 300 };
+    
+    // If creating from a source node, try to get the environment and connection from it
+    let environmentIdToPreselect: string | undefined = undefined;
+    let connectionIdToPreselect: string | undefined = undefined;
+    if (sourceNodeId) {
+      const sourceNode = nodesRef.current.find((n) => n.id === sourceNodeId);
+      if (sourceNode) {
+        // Get environment from source node based on its type
+        if (sourceNode.data.type === "environment") {
+          // If source is an environment node, use its ID as preselected environment
+          environmentIdToPreselect = sourceNode.data.environmentId || sourceNode.data.environment?.id;
+        } else if (sourceNode.data.type === "server" && sourceNode.data.connection?.environment?.id) {
+          environmentIdToPreselect = sourceNode.data.connection.environment.id;
+          connectionIdToPreselect = sourceNode.data.connectionId; // Get the server's connection ID
+        } else if (sourceNode.data.environmentId) {
+          // For agents, tools, resources that have environmentId
+          environmentIdToPreselect = sourceNode.data.environmentId;
+        } else if (sourceNode.data.environment?.id) {
+          environmentIdToPreselect = sourceNode.data.environment.id;
+        }
+        
+        // Also get connection from tool/agent if creating from them
+        if (sourceNode.data.type === "tool" && sourceNode.data.tool?.connection?.id) {
+          connectionIdToPreselect = sourceNode.data.tool.connection.id;
+        } else if (sourceNode.data.type === "agent" && sourceNode.data.agent?.connection?.id) {
+          connectionIdToPreselect = sourceNode.data.agent.connection.id;
+        }
+      }
+    }
     
     if (type === "agent") {
       // Open agent dialog
@@ -705,6 +1207,8 @@ export function CanvasView() {
       setPendingPosition(nodePosition);
       setPendingSourceNodeId(sourceNodeId); // Store source node ID for connection
       setPendingSide(side); // Store side for connection
+      setPreselectedEnvironmentId(environmentIdToPreselect);
+      setPreselectedConnectionId(connectionIdToPreselect);
       setShowAgentDialog(true);
     } else if (type === "tool") {
       // Open tool dialog
@@ -712,6 +1216,8 @@ export function CanvasView() {
       setPendingPosition(nodePosition);
       setPendingSourceNodeId(sourceNodeId); // Store source node ID for connection
       setPendingSide(side); // Store side for connection
+      setPreselectedEnvironmentId(environmentIdToPreselect);
+      setPreselectedConnectionId(connectionIdToPreselect);
       setShowToolDialog(true);
     } else if (type === "resource") {
       // Open resource dialog
@@ -719,6 +1225,7 @@ export function CanvasView() {
       setPendingPosition(nodePosition);
       setPendingSourceNodeId(sourceNodeId); // Store source node ID for connection
       setPendingSide(side); // Store side for connection
+      setPreselectedEnvironmentId(environmentIdToPreselect);
       setShowResourceDialog(true);
     } else if (type === "server") {
       // Open connection/server dialog
@@ -726,7 +1233,31 @@ export function CanvasView() {
       setPendingPosition(nodePosition);
       setPendingSourceNodeId(sourceNodeId); // Store source node ID for connection
       setPendingSide(side); // Store side for connection
+      setPreselectedEnvironmentId(environmentIdToPreselect);
       setShowConnectionDialog(true);
+    } else if (type === "policy") {
+      // Open policy dialog
+      setPendingNodeType(type);
+      setPendingPosition(nodePosition);
+      setPendingSourceNodeId(sourceNodeId); // Store source node ID for connection
+      setPendingSide(side); // Store side for connection
+      setPreselectedEnvironmentId(environmentIdToPreselect);
+      setShowPolicyDialog(true);
+    } else if (type === "prompt") {
+      // Open prompt dialog
+      setPendingNodeType(type);
+      setPendingPosition(nodePosition);
+      setPendingSourceNodeId(sourceNodeId); // Store source node ID for connection
+      setPendingSide(side); // Store side for connection
+      setPreselectedEnvironmentId(environmentIdToPreselect);
+      setShowPromptDialog(true);
+    } else if (type === "environment") {
+      // Open environment dialog
+      setPendingNodeType(type);
+      setPendingPosition(nodePosition);
+      setPendingSourceNodeId(sourceNodeId); // Store source node ID for connection
+      setPendingSide(side); // Store side for connection
+      setShowEnvironmentDialog(true);
     } else {
       // For other types, create a placeholder node
       // TODO: Implement dialogs for other types
@@ -740,6 +1271,7 @@ export function CanvasView() {
           label: `New ${type}`,
           status: "unknown",
           onCreateNode: handleCreateNode,
+          hasConnections: false, // Newly created node has no connections yet
         },
       };
       
@@ -793,7 +1325,8 @@ export function CanvasView() {
             };
             
             // Create edge after nodes are updated - use a small delay to ensure nodes exist
-            setTimeout(() => {
+            const timeoutId = setTimeout(() => {
+              edgeTimeoutsRef.current.delete(timeoutId);
               setEdges((eds) => {
                 // Check if edge already exists
                 const edgeExists = eds.some((e) => e.id === newEdge.id);
@@ -812,6 +1345,7 @@ export function CanvasView() {
                 return addEdge(newEdge, eds);
               });
             }, 50);
+            edgeTimeoutsRef.current.add(timeoutId);
           }
         }
         
@@ -831,47 +1365,114 @@ export function CanvasView() {
     return set;
   }, [edges]);
 
-  // Use a ref to track the last handleCreateNode reference to prevent infinite loops
+  // Node action handler (test, sync, run, ping) - MUST be defined before useEffect
+  const handleNodeAction = useCallback(async (action: string, entityId?: string) => {
+    if (!effectiveOrgId || !entityId) return;
+
+    // Find the entity name from nodes using ref
+    const node = nodesRef.current.find((n) => 
+      n.data.connectionId === entityId || 
+      n.data.toolId === entityId ||
+      n.data.agentId === entityId
+    );
+    const entityName = node?.data.label || "Unknown";
+
+    if (action === "test") {
+      // Open test connection modal
+      setSelectedActionEntityId(entityId);
+      setSelectedActionEntityName(entityName);
+      setShowTestModal(true);
+    } else if (action === "sync") {
+      // Open sync tools modal
+      setSelectedActionEntityId(entityId);
+      setSelectedActionEntityName(entityName);
+      setShowSyncModal(true);
+    } else if (action === "run") {
+      // Open run tool modal
+      setSelectedActionEntityId(entityId);
+      setSelectedActionEntityName(entityName);
+      setShowRunModal(true);
+    } else if (action === "ping") {
+      // Open ping agent modal
+      setSelectedActionEntityId(entityId);
+      setSelectedActionEntityName(entityName);
+      setShowPingModal(true);
+    }
+  }, [effectiveOrgId, queryClient]);
+
+  // Serialize edges to detect actual changes (not reference changes)
+  const edgesSerialized = useMemo(() => {
+    const connectionsSet = new Set<string>();
+    edges.forEach((edge) => {
+      connectionsSet.add(edge.source);
+      connectionsSet.add(edge.target);
+    });
+    return {
+      length: edges.length,
+      connectionsStr: Array.from(connectionsSet).sort().join(","),
+    };
+  }, [edges]);
+
+  // Use refs to track changes and prevent infinite loops
   const lastHandleCreateNodeRef = useRef(handleCreateNode);
-  const lastEdgesLengthRef = useRef(edges.length);
+  const lastHandleNodeActionRef = useRef(handleNodeAction);
+  const lastEdgesSerializedRef = useRef<{ length: number; connectionsStr: string }>({ length: 0, connectionsStr: "" });
   
   useEffect(() => {
-    // Only update if handleCreateNode reference actually changed or edges length changed
+    // Check if anything actually changed
     const handleCreateNodeChanged = lastHandleCreateNodeRef.current !== handleCreateNode;
-    const edgesLengthChanged = lastEdgesLengthRef.current !== edges.length;
+    const handleNodeActionChanged = lastHandleNodeActionRef.current !== handleNodeAction;
+    const edgesChanged = 
+      lastEdgesSerializedRef.current.length !== edgesSerialized.length ||
+      lastEdgesSerializedRef.current.connectionsStr !== edgesSerialized.connectionsStr;
     
-    if (!handleCreateNodeChanged && !edgesLengthChanged) {
+    // Only update if something actually changed
+    if (!handleCreateNodeChanged && !handleNodeActionChanged && !edgesChanged) {
       return; // Nothing changed, skip update
     }
     
     // Update refs
     lastHandleCreateNodeRef.current = handleCreateNode;
-    lastEdgesLengthRef.current = edges.length;
+    lastHandleNodeActionRef.current = handleNodeAction;
+    lastEdgesSerializedRef.current = edgesSerialized;
+    
+    // Recalculate nodesWithConnectionsSet from edgesSerialized
+    // We can reconstruct the set from the serialized string
+    const currentConnectionsSet = new Set<string>();
+    if (edgesSerialized.connectionsStr) {
+      edgesSerialized.connectionsStr.split(",").forEach((nodeId) => {
+        if (nodeId) currentConnectionsSet.add(nodeId);
+      });
+    }
     
     setNodes((currentNodes) => {
-      // Only update if something actually changed
+      // Check if any node needs updating
       const needsUpdate = currentNodes.some((node) => {
-        const hasConnections = nodesWithConnectionsSet.has(node.id);
-        // Compare function references and connection status
+        const hasConnections = currentConnectionsSet.has(node.id);
         const onCreateNodeChanged = node.data.onCreateNode !== handleCreateNode;
+        const onActionChanged = node.data.onAction !== handleNodeAction;
         const hasConnectionsChanged = node.data.hasConnections !== hasConnections;
-        return onCreateNodeChanged || hasConnectionsChanged;
+        return onCreateNodeChanged || onActionChanged || hasConnectionsChanged;
       });
 
       if (!needsUpdate) {
         return currentNodes; // Return same reference to prevent re-render
       }
 
-      return currentNodes.map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          onCreateNode: handleCreateNode,
-          hasConnections: nodesWithConnectionsSet.has(node.id),
-        },
-      }));
+      return currentNodes.map((node) => {
+        const hasConnections = currentConnectionsSet.has(node.id);
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            onCreateNode: handleCreateNode,
+            onAction: handleNodeAction,
+            hasConnections,
+          },
+        };
+      });
     });
-  }, [setNodes, handleCreateNode, nodesWithConnectionsSet, edges.length]);
+  }, [setNodes, handleCreateNode, handleNodeAction, edgesSerialized]);
 
 
   // Save state when nodes or edges change (debounced)
@@ -971,7 +1572,7 @@ export function CanvasView() {
     const sourceNode = nodes.find((n) => n.id === edge.source);
     const targetNode = nodes.find((n) => n.id === edge.target);
 
-    if (!sourceNode || !targetNode || !orgId) return;
+    if (!sourceNode || !targetNode || !effectiveOrgId) return;
 
     try {
       // Handle different edge types
@@ -992,21 +1593,83 @@ export function CanvasView() {
         const connectionId = targetNode.data.connectionId;
         
         if (agentId && connectionId) {
-          await api.patch(`/orgs/${orgId}/agents/${agentId}/`, {
+          await api.patch(`/orgs/${effectiveOrgId}/agents/${agentId}/`, {
             connection_id: connectionId,
           });
-          queryClient.invalidateQueries({ queryKey: ["agents", orgId] });
+          queryClient.invalidateQueries({ queryKey: ["agents", effectiveOrgId] });
         }
-      } else if (edge.data?.type === "agent-environment" && sourceNode.data.type === "agent" && targetNode.data.type === "environment") {
-        // Update agent's environment
-        const agentId = sourceNode.data.agentId;
-        const environmentId = targetNode.data.environmentId;
+      } else if (edge.data?.type === "environment-server" && sourceNode.data.type === "environment" && targetNode.data.type === "server") {
+        // Update connection's environment (reversed: Environment → Connection)
+        const connectionId = targetNode.data.connectionId;
+        const environmentId = sourceNode.data.environmentId;
         
-        if (agentId && environmentId) {
-          await api.patch(`/orgs/${orgId}/agents/${agentId}/`, {
+        if (connectionId && environmentId) {
+          await api.patch(`/orgs/${effectiveOrgId}/connections/${connectionId}/`, {
             environment_id: environmentId,
           });
-          queryClient.invalidateQueries({ queryKey: ["agents", orgId] });
+          queryClient.invalidateQueries({ queryKey: ["connections", effectiveOrgId] });
+        }
+      } else if (edge.data?.type === "server-tool" && sourceNode.data.type === "server" && targetNode.data.type === "tool") {
+        // Update tool's connection (reversed: Connection → Tool)
+        const toolId = targetNode.data.toolId;
+        const connectionId = sourceNode.data.connectionId;
+        
+        if (toolId && connectionId) {
+          await api.patch(`/orgs/${effectiveOrgId}/tools/${toolId}/`, {
+            connection_id: connectionId,
+          });
+          queryClient.invalidateQueries({ queryKey: ["tools", effectiveOrgId] });
+        }
+      } else if (edge.data?.type === "environment-policy" && sourceNode.data.type === "environment" && targetNode.data.type === "policy") {
+        // Update policy's environment (reversed: Environment → Policy)
+        const policyId = targetNode.data.policyId;
+        const environmentId = sourceNode.data.environmentId;
+        
+        if (policyId && environmentId) {
+          await api.patch(`/orgs/${effectiveOrgId}/policies/${policyId}/`, {
+            environment_id: environmentId,
+          });
+          queryClient.invalidateQueries({ queryKey: ["policies", effectiveOrgId] });
+        }
+      } else if (edge.data?.type === "environment-resource" && sourceNode.data.type === "environment" && targetNode.data.type === "resource") {
+        // Update resource's environment (reversed: Environment → Resource)
+        const resourceId = targetNode.data.resourceId;
+        const environmentId = sourceNode.data.environmentId;
+        
+        if (resourceId && environmentId) {
+          await api.patch(`/orgs/${effectiveOrgId}/resources/${resourceId}/`, {
+            environment_id: environmentId,
+          });
+          queryClient.invalidateQueries({ queryKey: ["resources", effectiveOrgId] });
+        }
+      } else if (edge.data?.type === "environment-prompt" && sourceNode.data.type === "environment" && targetNode.data.type === "prompt") {
+        // Update prompt's environment (reversed: Environment → Prompt)
+        const promptId = targetNode.data.promptId;
+        const environmentId = sourceNode.data.environmentId;
+        
+        if (promptId && environmentId) {
+          await api.patch(`/orgs/${effectiveOrgId}/prompts/${promptId}/`, {
+            environment_id: environmentId,
+          });
+          queryClient.invalidateQueries({ queryKey: ["prompts", effectiveOrgId] });
+        }
+      } else if (edge.data?.type === "prompt-resource" && sourceNode.data.type === "prompt" && targetNode.data.type === "resource") {
+        // Update prompt's uses_resources (add resource name to array)
+        const promptId = sourceNode.data.promptId;
+        const resourceName = targetNode.data.resource?.name || targetNode.data.label;
+        
+        if (promptId && resourceName) {
+          // Get current prompt data to update uses_resources
+          const promptData = sourceNode.data.prompt;
+          const currentUsesResources = promptData?.uses_resources || [];
+          
+          // Add resource name if not already in list
+          if (!currentUsesResources.includes(resourceName)) {
+            await api.patch(`/orgs/${effectiveOrgId}/prompts/${promptId}/`, {
+              uses_resources: [...currentUsesResources, resourceName],
+            });
+            queryClient.invalidateQueries({ queryKey: ["prompts", effectiveOrgId] });
+          }
         }
       } else if (edge.data?.type === "policy-agent" && sourceNode.data.type === "policy" && targetNode.data.type === "agent") {
         // Create policy binding
@@ -1021,7 +1684,7 @@ export function CanvasView() {
     } catch (error) {
       console.error("Failed to save edge to backend:", error);
     }
-  }, [nodes, orgId, queryClient]);
+  }, [nodes, effectiveOrgId, queryClient]);
 
   const onConnect = useCallback(
     async (params: Connection) => {
@@ -1096,13 +1759,14 @@ export function CanvasView() {
   }, []);
 
   const handleRefresh = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["agents", orgId] });
-    queryClient.invalidateQueries({ queryKey: ["tools", orgId] });
-    queryClient.invalidateQueries({ queryKey: ["resources", orgId] });
-    queryClient.invalidateQueries({ queryKey: ["policies", orgId] });
-    queryClient.invalidateQueries({ queryKey: ["connections", orgId] });
-    queryClient.invalidateQueries({ queryKey: ["environments", orgId] });
-  }, [queryClient, orgId]);
+    queryClient.invalidateQueries({ queryKey: ["agents", effectiveOrgId] });
+    queryClient.invalidateQueries({ queryKey: ["tools", effectiveOrgId] });
+    queryClient.invalidateQueries({ queryKey: ["resources", effectiveOrgId] });
+    queryClient.invalidateQueries({ queryKey: ["policies", effectiveOrgId] });
+    queryClient.invalidateQueries({ queryKey: ["prompts", effectiveOrgId] });
+    queryClient.invalidateQueries({ queryKey: ["connections", effectiveOrgId] });
+    queryClient.invalidateQueries({ queryKey: ["environments", effectiveOrgId] });
+  }, [queryClient, effectiveOrgId]);
 
   const handleExport = useCallback(() => {
     const canvasState: CanvasState = {
@@ -1121,7 +1785,7 @@ export function CanvasView() {
     const exportData = {
       version: "1.0.0",
       exportedAt: new Date().toISOString(),
-      organizationId: orgId || "",
+      organizationId: effectiveOrgId || "",
       canvas: canvasState,
     };
 
@@ -1149,6 +1813,7 @@ export function CanvasView() {
           label: resource.name,
           status: resource.enabled ? "connected" : "disabled",
           onCreateNode: handleCreateNode,
+          hasConnections: false, // Newly created node has no connections yet
         },
       };
       setNodes((nds) => {
@@ -1201,7 +1866,8 @@ export function CanvasView() {
             };
             
             // Create edge after nodes are updated
-            setTimeout(() => {
+            const timeoutId = setTimeout(() => {
+              edgeTimeoutsRef.current.delete(timeoutId);
               setEdges((eds) => {
                 // Check if edge already exists
                 const edgeExists = eds.some((e) => e.id === newEdge.id);
@@ -1220,6 +1886,7 @@ export function CanvasView() {
                 return addEdge(newEdge, eds);
               });
             }, 50);
+            edgeTimeoutsRef.current.add(timeoutId);
           }
         }
         
@@ -1231,6 +1898,192 @@ export function CanvasView() {
       setPendingPosition(null);
       setPendingSourceNodeId(undefined);
       setPendingSide(undefined);
+      setPreselectedEnvironmentId(undefined);
+      setPreselectedConnectionId(undefined);
+    }
+  }, [pendingPosition, pendingNodeType, pendingSourceNodeId, pendingSide, setNodes, nodes, setEdges, handleCreateNode]);
+
+  const handlePromptCreated = useCallback((prompt: any) => {
+    if (pendingPosition && pendingNodeType === "prompt") {
+      const newNodeId = `prompt-${prompt.id}`;
+      const newNode: Node<CanvasNodeData> = {
+        id: newNodeId,
+        type: "canvasNode",
+        position: pendingPosition,
+        data: {
+          type: "prompt",
+          promptId: prompt.id,
+          prompt,
+          label: prompt.name,
+          status: prompt.enabled ? "connected" : "disabled",
+          onCreateNode: handleCreateNode,
+          hasConnections: false, // Newly created node has no connections yet
+        },
+      };
+      setNodes((nds) => {
+        const updatedNodes = [...nds, newNode];
+          
+        // Create connection if source node is provided
+        if (pendingSourceNodeId && pendingSide) {
+          const sourceNode = nds.find((n) => n.id === pendingSourceNodeId);
+          if (sourceNode) {
+            // Determine edge direction based on side
+            const sourceId = pendingSide === "left" ? newNodeId : pendingSourceNodeId;
+            const targetId = pendingSide === "left" ? pendingSourceNodeId : newNodeId;
+            
+            // Determine edge type based on node types
+            const sourceType = pendingSide === "left" ? "prompt" : sourceNode.data.type;
+            const targetType = pendingSide === "left" ? sourceNode.data.type : "prompt";
+            
+            // Validate connection is logically valid
+            if (!isValidEdgeConnection(sourceType, targetType)) {
+              console.warn(`Invalid edge connection: ${sourceType} -> ${targetType}`);
+              return updatedNodes;
+            }
+
+            // Get default edge type for this connection
+            const defaultEdgeType = getDefaultEdgeType(sourceType, targetType);
+            if (!defaultEdgeType) {
+              console.warn(`No valid edge type for: ${sourceType} -> ${targetType}`);
+              return updatedNodes;
+            }
+
+            const edgeType: CanvasEdgeData["type"] = defaultEdgeType;
+            
+            // Generate consistent edge ID based on source and target node IDs
+            const edgeId = `${sourceId}-${targetId}`;
+            
+            const newEdge: Edge<CanvasEdgeData> = {
+              id: edgeId,
+              source: sourceId,
+              target: targetId,
+              type: "smoothstep",
+              animated: false,
+              style: { stroke: "#a855f7", strokeWidth: 2 },
+              data: {
+                type: edgeType,
+                config: {
+                  allowed: true,
+                },
+              },
+            };
+            
+            // Create edge after nodes are updated
+            const timeoutId = setTimeout(() => {
+              edgeTimeoutsRef.current.delete(timeoutId);
+              setEdges((eds) => {
+                // Check if edge already exists
+                const edgeExists = eds.some((e) => e.id === newEdge.id);
+                if (edgeExists) {
+                  console.warn("Edge already exists:", newEdge.id);
+                  return eds;
+                }
+                console.log("Creating new edge from handlePromptCreated:", {
+                  id: newEdge.id,
+                  source: newEdge.source,
+                  target: newEdge.target,
+                  type: newEdge.data?.type,
+                  sourceType,
+                  targetType,
+                });
+                return addEdge(newEdge, eds);
+              });
+            }, 50);
+            edgeTimeoutsRef.current.add(timeoutId);
+          }
+        }
+        
+        return updatedNodes;
+      });
+      
+      // Clear pending state
+      setPendingNodeType(null);
+      setPendingPosition(null);
+      setPendingSourceNodeId(undefined);
+      setPendingSide(undefined);
+      setPreselectedEnvironmentId(undefined);
+      setPreselectedConnectionId(undefined);
+    }
+  }, [pendingPosition, pendingNodeType, pendingSourceNodeId, pendingSide, setNodes, nodes, setEdges, handleCreateNode]);
+
+  const handlePolicyCreated = useCallback((policy: any) => {
+    if (pendingPosition && pendingNodeType === "policy") {
+      const newNodeId = `policy-${policy.id}`;
+      const newNode: Node<CanvasNodeData> = {
+        id: newNodeId,
+        type: "canvasNode",
+        position: pendingPosition,
+        data: {
+          type: "policy",
+          policyId: policy.id,
+          policy,
+          label: policy.name,
+          status: policy.is_active ? "connected" : "disabled",
+          onCreateNode: handleCreateNode,
+          hasConnections: false,
+        },
+      };
+      setNodes((nds) => {
+        const updatedNodes = [...nds, newNode];
+        
+        // Create connection if source node is provided
+        if (pendingSourceNodeId && pendingSide) {
+          const sourceNode = nds.find((n) => n.id === pendingSourceNodeId);
+          if (sourceNode) {
+            const sourceId = pendingSide === "left" ? newNodeId : pendingSourceNodeId;
+            const targetId = pendingSide === "left" ? pendingSourceNodeId : newNodeId;
+            const sourceType = pendingSide === "left" ? "policy" : sourceNode.data.type;
+            const targetType = pendingSide === "left" ? sourceNode.data.type : "policy";
+            
+            if (!isValidEdgeConnection(sourceType, targetType)) {
+              console.warn(`Invalid edge connection: ${sourceType} -> ${targetType}`);
+              return updatedNodes;
+            }
+
+            const defaultEdgeType = getDefaultEdgeType(sourceType, targetType);
+            if (!defaultEdgeType) {
+              console.warn(`No valid edge type for: ${sourceType} -> ${targetType}`);
+              return updatedNodes;
+            }
+
+            const edgeType: CanvasEdgeData["type"] = defaultEdgeType;
+            const edgeId = `${sourceId}-${targetId}`;
+            
+            const newEdge: Edge<CanvasEdgeData> = {
+              id: edgeId,
+              source: sourceId,
+              target: targetId,
+              type: "smoothstep",
+              animated: false,
+              style: { stroke: "#a855f7", strokeWidth: 2 },
+              data: { type: edgeType, config: { allowed: true } },
+            };
+            
+            const timeoutId = setTimeout(() => {
+              edgeTimeoutsRef.current.delete(timeoutId);
+              setEdges((eds) => {
+                const edgeExists = eds.some((e) => e.id === newEdge.id);
+                if (edgeExists) {
+                  console.warn("Edge already exists:", newEdge.id);
+                  return eds;
+                }
+                return addEdge(newEdge, eds);
+              });
+            }, 50);
+            edgeTimeoutsRef.current.add(timeoutId);
+          }
+        }
+        
+        return updatedNodes;
+      });
+      
+      // Clear pending state
+      setPendingNodeType(null);
+      setPendingPosition(null);
+      setPendingSourceNodeId(undefined);
+      setPendingSide(undefined);
+      setPreselectedEnvironmentId(undefined);
+      setPreselectedConnectionId(undefined);
     }
   }, [pendingPosition, pendingNodeType, pendingSourceNodeId, pendingSide, setNodes, nodes, setEdges, handleCreateNode]);
 
@@ -1248,6 +2101,7 @@ export function CanvasView() {
           label: connection.name,
           status: connection.status === "ok" ? "connected" : connection.status === "fail" ? "error" : "unknown",
           onCreateNode: handleCreateNode,
+          hasConnections: false, // Newly created node has no connections yet
         },
       };
       setNodes((nds) => {
@@ -1300,7 +2154,8 @@ export function CanvasView() {
             };
             
             // Create edge after nodes are updated
-            setTimeout(() => {
+            const timeoutId = setTimeout(() => {
+              edgeTimeoutsRef.current.delete(timeoutId);
               setEdges((eds) => {
                 // Check if edge already exists
                 const edgeExists = eds.some((e) => e.id === newEdge.id);
@@ -1319,6 +2174,7 @@ export function CanvasView() {
                 return addEdge(newEdge, eds);
               });
             }, 50);
+            edgeTimeoutsRef.current.add(timeoutId);
           }
         }
         
@@ -1330,8 +2186,145 @@ export function CanvasView() {
       setPendingPosition(null);
       setPendingSourceNodeId(undefined);
       setPendingSide(undefined);
+      setPreselectedEnvironmentId(undefined);
+      setPreselectedConnectionId(undefined);
     }
   }, [pendingPosition, pendingNodeType, pendingSourceNodeId, pendingSide, setNodes, nodes, setEdges, handleCreateNode]);
+
+  const handleEnvironmentCreated = useCallback(async (createdEnv: any) => {
+    if (!pendingPosition || pendingNodeType !== "environment" || !createdEnv) {
+      // Clear pending state if conditions not met
+      setPendingNodeType(null);
+      setPendingPosition(null);
+      setPendingSourceNodeId(undefined);
+      setPendingSide(undefined);
+      setPreselectedEnvironmentId(undefined);
+      setPreselectedConnectionId(undefined);
+      return;
+    }
+
+    // Use the created environment directly
+    const newNodeId = `env-${createdEnv.id}`;
+    
+    // Check if node already exists
+    const nodeExists = nodes.some((n) => n.id === newNodeId);
+    if (nodeExists) {
+      console.warn("Environment node already exists:", newNodeId);
+      // Invalidate queries to refresh data
+      await queryClient.invalidateQueries({ queryKey: ["environments", effectiveOrgId] });
+      // Clear pending state
+      setPendingNodeType(null);
+      setPendingPosition(null);
+      setPendingSourceNodeId(undefined);
+      setPendingSide(undefined);
+      setPreselectedEnvironmentId(undefined);
+      setPreselectedConnectionId(undefined);
+      return;
+    }
+    
+    const newNode: Node<CanvasNodeData> = {
+      id: newNodeId,
+      type: "canvasNode",
+      position: pendingPosition,
+      data: {
+        type: "environment",
+        environmentId: createdEnv.id,
+        environment: createdEnv,
+        label: createdEnv.name,
+        status: "connected",
+        onCreateNode: handleCreateNode,
+        hasConnections: false, // Newly created node has no connections yet
+      },
+    };
+    
+    setNodes((nds) => {
+      const updatedNodes = [...nds, newNode];
+        
+      // Create connection if source node is provided - use callback to get current nodes
+      if (pendingSourceNodeId && pendingSide) {
+        const sourceNode = nds.find((n) => n.id === pendingSourceNodeId);
+        if (sourceNode) {
+          // Determine edge direction based on side
+          const sourceId = pendingSide === "left" ? newNodeId : pendingSourceNodeId;
+          const targetId = pendingSide === "left" ? pendingSourceNodeId : newNodeId;
+          
+          // Determine edge type based on node types
+          const sourceType = pendingSide === "left" ? "environment" : sourceNode.data.type;
+          const targetType = pendingSide === "left" ? sourceNode.data.type : "environment";
+          
+          // Validate connection is logically valid
+          if (!isValidEdgeConnection(sourceType, targetType)) {
+            console.warn(`Invalid edge connection: ${sourceType} -> ${targetType}`);
+            // Skip creating edge for invalid connections
+            return updatedNodes;
+          }
+
+          // Get default edge type for this connection
+          const defaultEdgeType = getDefaultEdgeType(sourceType, targetType);
+          if (!defaultEdgeType) {
+            console.warn(`No valid edge type for: ${sourceType} -> ${targetType}`);
+            return updatedNodes;
+          }
+
+          const edgeType: CanvasEdgeData["type"] = defaultEdgeType;
+          
+          // Generate consistent edge ID based on source and target node IDs
+          const edgeId = `${sourceId}-${targetId}`;
+          
+          const newEdge: Edge<CanvasEdgeData> = {
+            id: edgeId,
+            source: sourceId,
+            target: targetId,
+            type: "smoothstep",
+            animated: false,
+            style: { stroke: "#a855f7", strokeWidth: 2 },
+            data: {
+              type: edgeType,
+              config: {
+                allowed: true,
+              },
+            },
+          };
+          
+          // Create edge after nodes are updated
+          const timeoutId = setTimeout(() => {
+            edgeTimeoutsRef.current.delete(timeoutId);
+            setEdges((eds) => {
+              // Check if edge already exists
+              const edgeExists = eds.some((e) => e.id === newEdge.id);
+              if (edgeExists) {
+                console.warn("Edge already exists:", newEdge.id);
+                return eds;
+              }
+              console.log("Creating new edge from handleEnvironmentCreated:", {
+                id: newEdge.id,
+                source: newEdge.source,
+                target: newEdge.target,
+                type: newEdge.data?.type,
+                sourceType,
+                targetType,
+              });
+              return addEdge(newEdge, eds);
+            });
+          }, 50);
+          edgeTimeoutsRef.current.add(timeoutId);
+        }
+      }
+      
+      return updatedNodes;
+    });
+    
+    // Invalidate queries in the background to refresh data (don't await)
+    queryClient.invalidateQueries({ queryKey: ["environments", effectiveOrgId] });
+    
+    // Clear pending state
+    setPendingNodeType(null);
+    setPendingPosition(null);
+    setPendingSourceNodeId(undefined);
+    setPendingSide(undefined);
+    setPreselectedEnvironmentId(undefined);
+    setPreselectedConnectionId(undefined);
+  }, [pendingPosition, pendingNodeType, pendingSourceNodeId, pendingSide, setNodes, nodes, setEdges, handleCreateNode, effectiveOrgId, queryClient]);
 
   const handleToolCreated = useCallback((tool: any) => {
     if (pendingPosition && pendingNodeType === "tool") {
@@ -1347,6 +2340,7 @@ export function CanvasView() {
           label: tool.name,
           status: tool.enabled ? "connected" : "disabled",
           onCreateNode: handleCreateNode,
+          hasConnections: false, // Newly created node has no connections yet
         },
       };
       setNodes((nds) => {
@@ -1399,7 +2393,8 @@ export function CanvasView() {
             };
             
             // Create edge after nodes are updated
-            setTimeout(() => {
+            const timeoutId = setTimeout(() => {
+              edgeTimeoutsRef.current.delete(timeoutId);
               setEdges((eds) => {
                 // Check if edge already exists
                 const edgeExists = eds.some((e) => e.id === newEdge.id);
@@ -1418,6 +2413,7 @@ export function CanvasView() {
                 return addEdge(newEdge, eds);
               });
             }, 50);
+            edgeTimeoutsRef.current.add(timeoutId);
           }
         }
         
@@ -1429,6 +2425,8 @@ export function CanvasView() {
       setPendingPosition(null);
       setPendingSourceNodeId(undefined);
       setPendingSide(undefined);
+      setPreselectedEnvironmentId(undefined);
+      setPreselectedConnectionId(undefined);
     }
   }, [pendingPosition, pendingNodeType, pendingSourceNodeId, pendingSide, setNodes, nodes, setEdges, handleCreateNode]);
 
@@ -1446,6 +2444,7 @@ export function CanvasView() {
           label: agent.name,
           status: agent.enabled ? "connected" : "disabled",
           onCreateNode: handleCreateNode,
+          hasConnections: false, // Newly created node has no connections yet
         },
       };
       setNodes((nds) => {
@@ -1498,7 +2497,8 @@ export function CanvasView() {
             };
             
             // Create edge after nodes are updated
-            setTimeout(() => {
+            const timeoutId = setTimeout(() => {
+              edgeTimeoutsRef.current.delete(timeoutId);
               setEdges((eds) => {
                 // Check if edge already exists
                 const edgeExists = eds.some((e) => e.id === newEdge.id);
@@ -1517,6 +2517,7 @@ export function CanvasView() {
                 return addEdge(newEdge, eds);
               });
             }, 50);
+            edgeTimeoutsRef.current.add(timeoutId);
           }
         }
         
@@ -1527,9 +2528,11 @@ export function CanvasView() {
       setPendingPosition(null);
       setPendingSourceNodeId(undefined);
       setPendingSide(undefined);
+      setPreselectedEnvironmentId(undefined);
+      setPreselectedConnectionId(undefined);
     }
-    queryClient.invalidateQueries({ queryKey: ["agents", orgId] });
-  }, [pendingPosition, pendingNodeType, pendingSourceNodeId, pendingSide, setNodes, nodes, setEdges, handleCreateNode, queryClient, orgId]);
+    queryClient.invalidateQueries({ queryKey: ["agents", effectiveOrgId] });
+  }, [pendingPosition, pendingNodeType, pendingSourceNodeId, pendingSide, setNodes, nodes, setEdges, handleCreateNode, queryClient, effectiveOrgId]);
 
   const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge<CanvasEdgeData>) => {
     setSelectedEdge(edge);
@@ -1571,6 +2574,98 @@ export function CanvasView() {
     setEdgeSidebarOpen(false);
     setSelectedEdge(null);
   }, [setEdges]);
+
+  const handleEdgeUpdateSourceTarget = useCallback(async (edgeId: string, newSource: string, newTarget: string) => {
+    const edge = edges.find((e) => e.id === edgeId);
+    if (!edge) return;
+
+    const sourceNode = nodes.find((n) => n.id === newSource);
+    const targetNode = nodes.find((n) => n.id === newTarget);
+    
+    if (!sourceNode || !targetNode) {
+      console.warn("Source or target node not found");
+      return;
+    }
+
+    // Validate edge type is still valid for new source/target
+    const sourceType = sourceNode.data.type;
+    const targetType = targetNode.data.type;
+    const currentEdgeType = edge.data?.type;
+    
+    let finalEdgeType = currentEdgeType;
+    if (currentEdgeType) {
+      const validTypes = getValidEdgeTypes(sourceType, targetType);
+      if (!validTypes.includes(currentEdgeType)) {
+        // If current type is invalid, use default type or first valid type
+        finalEdgeType = validTypes.length > 0 ? validTypes[0] : currentEdgeType;
+        console.warn(`Edge type ${currentEdgeType} invalid for ${sourceType} → ${targetType}, changing to ${finalEdgeType}`);
+      }
+    }
+
+    // Update edge with new source and target
+    const newEdgeId = `${newSource}-${newTarget}`;
+    setEdges((eds) => {
+      return eds.map((e) =>
+        e.id === edgeId
+          ? {
+              ...e,
+              id: newEdgeId,
+              source: newSource,
+              target: newTarget,
+              data: {
+                ...(e.data || {}),
+                type: finalEdgeType,
+              } as CanvasEdgeData,
+            }
+          : e
+      );
+    });
+    
+    // Update selected edge if it's the one being modified
+    if (selectedEdge?.id === edgeId) {
+      const updatedEdge: Edge<CanvasEdgeData> = {
+        ...selectedEdge,
+        id: newEdgeId,
+        source: newSource,
+        target: newTarget,
+        data: {
+          ...(selectedEdge.data || {}),
+          type: finalEdgeType,
+        } as CanvasEdgeData,
+      };
+      setSelectedEdge(updatedEdge);
+      
+      // Sync to backend if needed
+      if (effectiveOrgId) {
+        try {
+          // Delete old edge from backend if it exists
+          try {
+            await api.delete(`/orgs/${effectiveOrgId}/canvas/edges/${edgeId}/`);
+          } catch (error: any) {
+            // Ignore 404 errors (edge might not exist in backend)
+            if (error.response?.status !== 404) {
+              console.warn("Failed to delete old edge from backend:", error);
+            }
+          }
+          
+          // Create new edge in backend
+          await api.post(`/orgs/${effectiveOrgId}/canvas/edges/`, {
+            id: newEdgeId,
+            source: newSource,
+            target: newTarget,
+            type: finalEdgeType,
+            config: updatedEdge.data?.config,
+            metadata: updatedEdge.data?.metadata,
+          });
+          
+          // Also sync to backend models if needed
+          await saveEdgeToBackend(updatedEdge);
+        } catch (error) {
+          console.error("Failed to sync edge source/target change to backend:", error);
+        }
+      }
+    }
+  }, [setEdges, nodes, selectedEdge, edges, effectiveOrgId, saveEdgeToBackend]);
 
   // Close filter menu when clicking outside
   useEffect(() => {
@@ -1630,7 +2725,9 @@ export function CanvasView() {
             onEdgeClick={onEdgeClick}
             onPaneClick={onPaneClick}
             nodeTypes={nodeTypes}
-            fitView
+            defaultViewport={viewport}
+            onViewportChange={(newViewport) => setViewport(newViewport)}
+            fitView={false}
             className="bg-slate-950"
             deleteKeyCode={["Backspace", "Delete"]}
           >
@@ -1675,7 +2772,8 @@ export function CanvasView() {
                 <CanvasToolbar onCreateNode={handleCreateNode} />
                 <button
                   onClick={handleRefresh}
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!effectiveOrgId}
                 >
                   <RefreshCw className="w-4 h-4" />
                   Refresh
@@ -1727,7 +2825,7 @@ export function CanvasView() {
                             Node Types
                           </label>
                           <div className="space-y-1">
-                            {(["agent", "tool", "resource", "policy", "server", "environment", "organization"] as CanvasNodeType[]).map((type) => {
+                            {(["agent", "tool", "resource", "policy", "prompt", "server", "environment", "organization"] as CanvasNodeType[]).map((type) => {
                               const isSelected = filteredNodeTypes.has(type);
                               return (
                                 <label
@@ -1795,20 +2893,22 @@ export function CanvasView() {
                             Edge Types
                           </label>
                           <div className="space-y-1 max-h-32 overflow-y-auto">
-                            {([
-                              "agent-tool",
-                              "agent-resource",
-                              "agent-server",
-                              "agent-environment",
-                              "tool-server",
-                              "resource-server",
-                              "policy-agent",
-                              "policy-tool",
-                              "policy-server",
-                              "policy-resource",
-                              "environment-server",
-                              "organization-environment",
-                            ] as const).map((edgeType) => {
+                        {([
+                          "agent-tool",
+                          "agent-resource",
+                          "agent-server",
+                          "environment-server",
+                          "environment-policy",
+                          "environment-resource",
+                          "environment-prompt",
+                          "server-tool",
+                          "prompt-resource",
+                          "policy-agent",
+                          "policy-tool",
+                          "policy-server",
+                          "policy-resource",
+                          "organization-environment",
+                        ] as const).map((edgeType) => {
                               const isSelected = filteredEdgeTypes.has(edgeType);
                               return (
                                 <label
@@ -1900,6 +3000,59 @@ export function CanvasView() {
               setSidebarOpen(false);
               setSelectedNode(null);
             }}
+            connectedEdges={edges.filter((e) => e.source === selectedNode.id || e.target === selectedNode.id)}
+            availableNodes={nodes}
+            onCreateConnection={async (sourceId, targetId) => {
+              // Create new edge
+              const sourceNode = nodes.find((n) => n.id === sourceId);
+              const targetNode = nodes.find((n) => n.id === targetId);
+              
+              if (!sourceNode || !targetNode) {
+                console.warn("Source or target node not found");
+                return;
+              }
+              
+              const sourceType = sourceNode.data.type;
+              const targetType = targetNode.data.type;
+              
+              if (!isValidEdgeConnection(sourceType, targetType)) {
+                console.warn(`Invalid edge connection: ${sourceType} -> ${targetType}`);
+                alert(`Cannot connect ${sourceType} to ${targetType}`);
+                return;
+              }
+              
+              const defaultEdgeType = getDefaultEdgeType(sourceType, targetType);
+              if (!defaultEdgeType) {
+                console.warn(`No valid edge type for: ${sourceType} -> ${targetType}`);
+                return;
+              }
+              
+              const newEdgeId = `${sourceId}-${targetId}`;
+              const newEdge: Edge<CanvasEdgeData> = {
+                id: newEdgeId,
+                source: sourceId,
+                target: targetId,
+                type: "smoothstep",
+                data: {
+                  type: defaultEdgeType,
+                  config: { allowed: true },
+                },
+              };
+              
+              setEdges((eds) => {
+                if (eds.some((e) => e.id === newEdgeId)) {
+                  console.warn("Edge already exists");
+                  return eds;
+                }
+                return [...eds, newEdge];
+              });
+              
+              // Save to backend
+              await saveEdgeToBackend(newEdge);
+            }}
+            onDeleteConnection={(edgeId) => {
+              setEdges((eds) => eds.filter((e) => e.id !== edgeId));
+            }}
           />
         )}
 
@@ -1907,6 +3060,14 @@ export function CanvasView() {
         {edgeSidebarOpen && selectedEdge && (() => {
           const sourceNode = nodes.find((n) => n.id === selectedEdge.source);
           const targetNode = nodes.find((n) => n.id === selectedEdge.target);
+          
+          // Prepare available nodes for dropdowns
+          const availableNodes = nodes.map((node) => ({
+            id: node.id,
+            label: node.data?.label || node.id,
+            type: node.data?.type || "unknown",
+          }));
+          
           return (
             <CanvasEdgeSidebar
               edge={selectedEdge}
@@ -1915,9 +3076,11 @@ export function CanvasView() {
                 setSelectedEdge(null);
               }}
               onUpdate={handleEdgeUpdate}
+              onUpdateSourceTarget={handleEdgeUpdateSourceTarget}
               onDelete={handleEdgeDelete}
               sourceNodeType={sourceNode?.data?.type}
               targetNodeType={targetNode?.data?.type}
+              availableNodes={availableNodes}
             />
           );
         })()}
@@ -1931,9 +3094,12 @@ export function CanvasView() {
               setPendingPosition(null);
               setPendingSourceNodeId(undefined);
               setPendingSide(undefined);
+              setPreselectedEnvironmentId(undefined);
+              setPreselectedConnectionId(undefined);
             }}
-            orgId={orgId}
+            orgId={effectiveOrgId}
             onSuccess={handleAgentCreated}
+            preselectedEnvironmentId={preselectedEnvironmentId}
           />
         )}
 
@@ -1946,14 +3112,18 @@ export function CanvasView() {
               setPendingPosition(null);
               setPendingSourceNodeId(undefined);
               setPendingSide(undefined);
+              setPreselectedEnvironmentId(undefined);
+              setPreselectedConnectionId(undefined);
             }}
-            orgId={orgId}
+            orgId={effectiveOrgId}
             tool={undefined}
             onSuccess={handleToolCreated}
+            preselectedEnvironmentId={preselectedEnvironmentId}
+            preselectedConnectionId={preselectedConnectionId}
           />
         )}
 
-        {showResourceDialog && orgId && (
+        {showResourceDialog && effectiveOrgId && (
           <ResourceDialog
             resource={undefined}
             onClose={() => {
@@ -1962,10 +3132,13 @@ export function CanvasView() {
               setPendingPosition(null);
               setPendingSourceNodeId(undefined);
               setPendingSide(undefined);
+              setPreselectedEnvironmentId(undefined);
+              setPreselectedConnectionId(undefined);
             }}
-            orgId={orgId}
+            orgId={effectiveOrgId}
             environments={Array.isArray(environmentsData) ? environmentsData : (environmentsData?.results || [])}
             onSuccess={handleResourceCreated}
+            preselectedEnvironmentId={preselectedEnvironmentId}
           />
         )}
 
@@ -1978,12 +3151,118 @@ export function CanvasView() {
               setPendingPosition(null);
               setPendingSourceNodeId(undefined);
               setPendingSide(undefined);
+              setPreselectedEnvironmentId(undefined);
+              setPreselectedConnectionId(undefined);
             }}
-            orgId={orgId}
+            orgId={effectiveOrgId}
             connection={undefined}
             onSuccess={handleConnectionCreated}
+            preselectedEnvironmentId={preselectedEnvironmentId}
           />
         )}
+
+        {showEnvironmentDialog && (
+          <EnvironmentDialog
+            isOpen={showEnvironmentDialog}
+            onClose={() => {
+              setShowEnvironmentDialog(false);
+              setPendingNodeType(null);
+              setPendingPosition(null);
+              setPendingSourceNodeId(undefined);
+              setPendingSide(undefined);
+              setPreselectedEnvironmentId(undefined);
+              setPreselectedConnectionId(undefined);
+            }}
+            orgId={effectiveOrgId || undefined}
+            environment={undefined}
+            onSuccess={handleEnvironmentCreated}
+          />
+        )}
+
+        {showPolicyDialog && (
+          <PolicyDialog
+            isOpen={showPolicyDialog}
+            onClose={() => {
+              setShowPolicyDialog(false);
+              setPendingNodeType(null);
+              setPendingPosition(null);
+              setPendingSourceNodeId(undefined);
+              setPendingSide(undefined);
+              setPreselectedEnvironmentId(undefined);
+              setPreselectedConnectionId(undefined);
+            }}
+            policy={null}
+            orgId={effectiveOrgId}
+            onSuccess={handlePolicyCreated}
+            preselectedEnvironmentId={preselectedEnvironmentId}
+          />
+        )}
+
+        <PromptDialog
+          isOpen={showPromptDialog}
+          prompt={null}
+          onClose={() => {
+            setShowPromptDialog(false);
+            setPendingNodeType(null);
+            setPendingPosition(null);
+            setPendingSourceNodeId(undefined);
+            setPendingSide(undefined);
+            setPreselectedEnvironmentId(undefined);
+          }}
+          orgId={effectiveOrgId || ""}
+          environments={environmentsData || []}
+          onSuccess={handlePromptCreated}
+          preselectedEnvironmentId={preselectedEnvironmentId}
+        />
+
+        {/* Action Modals */}
+        <TestConnectionModal
+          isOpen={showTestModal}
+          onClose={() => {
+            setShowTestModal(false);
+            setSelectedActionEntityId("");
+            setSelectedActionEntityName("");
+          }}
+          connectionId={selectedActionEntityId}
+          connectionName={selectedActionEntityName}
+          orgId={effectiveOrgId || ""}
+        />
+
+        <SyncToolsModal
+          isOpen={showSyncModal}
+          onClose={() => {
+            setShowSyncModal(false);
+            setSelectedActionEntityId("");
+            setSelectedActionEntityName("");
+          }}
+          connectionId={selectedActionEntityId}
+          connectionName={selectedActionEntityName}
+          orgId={effectiveOrgId || ""}
+        />
+
+        <RunToolModal
+          isOpen={showRunModal}
+          onClose={() => {
+            setShowRunModal(false);
+            setSelectedActionEntityId("");
+            setSelectedActionEntityName("");
+          }}
+          toolId={selectedActionEntityId}
+          toolName={selectedActionEntityName}
+          orgId={effectiveOrgId || ""}
+        />
+
+        <PingAgentModal
+          isOpen={showPingModal}
+          onClose={() => {
+            setShowPingModal(false);
+            setSelectedActionEntityId("");
+            setSelectedActionEntityName("");
+          }}
+          agentId={selectedActionEntityId}
+          agentName={selectedActionEntityName}
+          orgId={effectiveOrgId || ""}
+        />
       </ReactFlowProvider>
     </div>
   );

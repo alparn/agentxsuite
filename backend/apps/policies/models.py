@@ -61,11 +61,11 @@ class PolicyRule(TimeStamped):
     )
     action = models.CharField(
         max_length=64,
-        help_text='Action type, e.g., "tool.invoke", "agent.invoke", "resource.read", "resource.write"',
+        help_text='Action type, e.g., "tool.invoke", "agent.invoke", "resource.read", "resource.write", "prompt.invoke"',
     )
     target = models.CharField(
         max_length=256,
-        help_text='Target pattern, e.g., "tool:pdf/*", "agent:ocr", "resource:minio://org/env/path/*"',
+        help_text='Target pattern, e.g., "tool:pdf/*", "agent:ocr", "resource:minio://org/env/path/*", "prompt:customer-analysis"',
     )
     effect = models.CharField(
         max_length=8,

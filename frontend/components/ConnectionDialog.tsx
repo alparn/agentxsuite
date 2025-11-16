@@ -12,6 +12,7 @@ interface ConnectionDialogProps {
   connection?: any;
   orgId: string | null;
   onSuccess?: (connection: any) => void;
+  preselectedEnvironmentId?: string;
 }
 
 export function ConnectionDialog({
@@ -20,6 +21,7 @@ export function ConnectionDialog({
   connection,
   orgId,
   onSuccess,
+  preselectedEnvironmentId,
 }: ConnectionDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -67,11 +69,11 @@ export function ConnectionDialog({
         auth_method: "none",
         secret_value: "",
         secret_ref: "",
-        environment_id: "",
+        environment_id: preselectedEnvironmentId || "",
       });
     }
     setErrors({});
-  }, [connection, isOpen]);
+  }, [connection, isOpen, preselectedEnvironmentId]);
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {

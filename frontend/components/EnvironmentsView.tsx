@@ -56,7 +56,8 @@ export function EnvironmentsView() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/environments/${id}/`);
+      if (!orgId) throw new Error("Organization ID is required");
+      await api.delete(`/orgs/${orgId}/environments/${id}/`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["environments", orgId] });

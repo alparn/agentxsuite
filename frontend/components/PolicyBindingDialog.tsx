@@ -102,13 +102,20 @@ export function PolicyBindingDialog({
     mutationFn: async (data: Partial<PolicyBinding>) => {
       const payload = {
         ...data,
-        policy_id: policyId,
+        policy_id: policyId, // For local state
       };
+      
       // If onSave callback is provided, use it instead of API call
       if (onSave) {
         onSave(payload);
         return { data: payload };
       }
+      
+      // Validate policyId before API call
+      if (!policyId || policyId === "temp") {
+        throw new Error("Cannot save binding: Policy must be created first");
+      }
+      
       // Otherwise, use API
       if (binding && (binding as PolicyBinding).id && typeof (binding as PolicyBinding).id === "number") {
         return policyBindingsApi.update((binding as PolicyBinding).id.toString(), payload);
@@ -118,8 +125,11 @@ export function PolicyBindingDialog({
     },
     onSuccess: () => {
       if (!onSave) {
+        // Invalidate all policy-related queries to refresh the UI
         queryClient.invalidateQueries({ queryKey: ["policy-bindings"] });
+        queryClient.invalidateQueries({ queryKey: ["policy-bindings", policyId] });
         queryClient.invalidateQueries({ queryKey: ["policies"] });
+        queryClient.invalidateQueries({ queryKey: ["policies", orgId] });
       }
       setErrors({});
       onClose();

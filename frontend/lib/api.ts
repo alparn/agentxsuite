@@ -192,5 +192,17 @@ export const canvasApi = {
     api.delete(`/orgs/${orgId}/canvas/${id}/`),
 };
 
+// Auth API
+export const authApi = {
+  me: () => api.get("/auth/me/"),
+  updateMe: (data: { first_name?: string; last_name?: string; email?: string }) =>
+    api.put("/auth/me/", data),
+  patchMe: (data: { first_name?: string; last_name?: string; email?: string }) =>
+    api.patch("/auth/me/", data),
+  myOrganizations: () => api.get("/auth/me/orgs/"),
+  addOrganization: (data: { organization_id?: string; organization_name?: string }) =>
+    api.post("/auth/me/orgs/", data),
+};
+
 export default api;
 

@@ -10,6 +10,8 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/auth/", include("apps.accounts.urls")),
     path("api/v1/", include("apps.tenants.urls")),
+    # Environments unter orgs (like agents, connections, etc.)
+    path("api/v1/orgs/<uuid:org_id>/", include("apps.tenants.environments_urls")),
     path("api/v1/orgs/<uuid:org_id>/", include("apps.connections.urls")),
     path("api/v1/orgs/<uuid:org_id>/", include("apps.agents.urls")),
     path("api/v1/orgs/<uuid:org_id>/", include("apps.accounts.urls")),  # ServiceAccounts unter org

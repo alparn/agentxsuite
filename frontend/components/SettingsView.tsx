@@ -3,18 +3,15 @@
 import { useTranslations } from "next-intl";
 import { Globe } from "lucide-react";
 import { TokenManagementView } from "./TokenManagementView";
+import { ProfileView } from "./ProfileView";
 
 export function SettingsView() {
   const t = useTranslations();
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white mb-2">
-          {t("nav.settings")}
-        </h1>
-        <p className="text-slate-400">Manage your settings and preferences</p>
-      </div>
+      {/* Profile Section */}
+      <ProfileView />
 
       <div className="space-y-6">
         {/* Token Management */}

@@ -4,25 +4,36 @@ import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAppStore } from "@/lib/store";
 import { X } from "lucide-react";
 
 interface EnvironmentDialogProps {
   isOpen: boolean;
   onClose: () => void;
   environment?: any;
-  orgId: string | null;
-  onSuccess?: () => void;
+  orgId?: string | null;
+  onSuccess?: (environment: any) => void;
 }
 
 export function EnvironmentDialog({
   isOpen,
   onClose,
   environment,
-  orgId,
+  orgId: propOrgId,
   onSuccess,
 }: EnvironmentDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
+  const { currentOrgId: storeOrgId } = useAppStore();
+  // Use prop orgId if provided, otherwise get from store
+  const orgId = propOrgId ?? storeOrgId;
+  
+  // Debug: Log orgId to help diagnose issues
+  useEffect(() => {
+    if (isOpen && !orgId) {
+      console.warn("EnvironmentDialog: orgId is null", { propOrgId, storeOrgId });
+    }
+  }, [isOpen, orgId, propOrgId, storeOrgId]);
   const [formData, setFormData] = useState({
     name: "",
     type: "dev" as "dev" | "stage" | "prod",
@@ -46,6 +57,13 @@ export function EnvironmentDialog({
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
+      // Get the final orgId (prop or store)
+      const finalOrgId = propOrgId ?? storeOrgId;
+      
+      if (!finalOrgId) {
+        throw new Error("Organization ID is required. Please select an organization.");
+      }
+
       const payload: any = {
         name: data.name,
         type: data.type,
@@ -55,17 +73,20 @@ export function EnvironmentDialog({
       if (environment) {
         return api.put(`/environments/${environment.id}/`, payload);
       } else {
-        return api.post(`/orgs/${orgId}/environments/`, payload);
+        return api.post(`/orgs/${finalOrgId}/environments/`, payload);
       }
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
       // Invalidate all environment queries (with and without orgId)
       queryClient.invalidateQueries({ queryKey: ["environments"] });
       if (orgId) {
         queryClient.invalidateQueries({ queryKey: ["environments", orgId] });
       }
       setErrors({});
-      onSuccess?.();
+      // Pass the created/updated environment to the callback
+      if (onSuccess) {
+        onSuccess(response.data);
+      }
       onClose();
     },
     onError: (error: any) => {
@@ -93,8 +114,20 @@ export function EnvironmentDialog({
     setErrors({});
 
     // Client-side validation
+    if (!orgId) {
+      setErrors({ general: "Organization ID is required. Please select an organization." });
+      return;
+    }
+
     if (!formData.name.trim()) {
       setErrors({ name: t("common.name") + " is required" });
+      return;
+    }
+
+    // Ensure orgId is available before submitting
+    const finalOrgId = propOrgId ?? storeOrgId;
+    if (!finalOrgId) {
+      setErrors({ general: "Organization ID is required. Please select an organization." });
       return;
     }
 

@@ -8,17 +8,23 @@ import { X } from "lucide-react";
 import type { Prompt } from "@/lib/types";
 
 interface PromptDialogProps {
+  isOpen: boolean;
   prompt?: Prompt | null;
   onClose: () => void;
   orgId: string;
   environments: any[];
+  onSuccess?: (prompt: any) => void;
+  preselectedEnvironmentId?: string;
 }
 
 export function PromptDialog({
+  isOpen,
   prompt,
   onClose,
   orgId,
   environments,
+  onSuccess,
+  preselectedEnvironmentId,
 }: PromptDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -94,7 +100,7 @@ export function PromptDialog({
     } else {
       setFormData({
         name: "",
-        environment_id: "",
+        environment_id: preselectedEnvironmentId || "",
         description: "",
         input_schema: "{}",
         template_system: "",
@@ -107,7 +113,7 @@ export function PromptDialog({
     setResourceInput("");
     setResourceDropdownOpen(false);
     setErrors({});
-  }, [prompt]);
+  }, [prompt, preselectedEnvironmentId]);
 
   const addResource = (resourceName?: string) => {
     const nameToAdd = resourceName || resourceInput.trim();
@@ -169,9 +175,13 @@ export function PromptDialog({
         return promptsApi.create(orgId, payload);
       }
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["prompts"] });
+      queryClient.invalidateQueries({ queryKey: ["prompts", orgId] });
       setErrors({});
+      if (onSuccess && response?.data) {
+        onSuccess(response.data);
+      }
       onClose();
     },
     onError: (error: any) => {
@@ -198,6 +208,8 @@ export function PromptDialog({
     e.preventDefault();
     mutation.mutate(formData);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

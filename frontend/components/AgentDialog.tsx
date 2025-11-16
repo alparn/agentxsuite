@@ -13,6 +13,7 @@ interface AgentDialogProps {
   agent?: any;
   orgId: string | null;
   onSuccess?: (agent: any) => void;
+  preselectedEnvironmentId?: string;
 }
 
 export function AgentDialog({
@@ -21,6 +22,7 @@ export function AgentDialog({
   agent,
   orgId: propOrgId,
   onSuccess,
+  preselectedEnvironmentId,
 }: AgentDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -38,6 +40,7 @@ export function AgentDialog({
     inbound_secret_ref: "",
     is_axcore: false,
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [showTokenDialog, setShowTokenDialog] = useState(false);
   const [newToken, setNewToken] = useState<string | null>(null);
 
@@ -105,7 +108,7 @@ export function AgentDialog({
         name: "",
         version: "1.0.0",
         enabled: true,
-        environment_id: "",
+        environment_id: preselectedEnvironmentId || "",
         connection_id: "",
         mode: "runner",
         inbound_auth_method: "bearer",
@@ -113,7 +116,8 @@ export function AgentDialog({
         is_axcore: false,
       });
     }
-  }, [agent]);
+    setErrors({});
+  }, [agent, preselectedEnvironmentId]);
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {

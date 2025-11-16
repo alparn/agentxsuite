@@ -380,14 +380,13 @@ export function PromptsView() {
       )}
 
       {/* Dialogs */}
-      {isDialogOpen && (
-        <PromptDialog
-          prompt={editingPrompt}
-          onClose={handleCloseDialog}
-          orgId={orgId || ""}
-          environments={environments}
-        />
-      )}
+      <PromptDialog
+        isOpen={isDialogOpen}
+        prompt={editingPrompt}
+        onClose={handleCloseDialog}
+        orgId={orgId || ""}
+        environments={environments}
+      />
 
       {invokingPrompt && (
         <PromptInvokeDialog

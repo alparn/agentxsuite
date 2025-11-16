@@ -12,6 +12,8 @@ interface ToolDialogProps {
   tool?: any;
   orgId: string | null;
   onSuccess?: (tool: any) => void;
+  preselectedEnvironmentId?: string;
+  preselectedConnectionId?: string;
 }
 
 export function ToolDialog({
@@ -20,6 +22,8 @@ export function ToolDialog({
   tool,
   orgId,
   onSuccess,
+  preselectedEnvironmentId,
+  preselectedConnectionId,
 }: ToolDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -28,6 +32,7 @@ export function ToolDialog({
     version: "1.0.0",
     enabled: true,
     environment_id: "",
+    connection_id: "",
     schema_json: "{}",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -50,6 +55,23 @@ export function ToolDialog({
 
   const environments = Array.isArray(environmentsData) ? environmentsData : [];
 
+  // Fetch connections for the organization
+  const { data: connectionsData, isLoading: isLoadingConnections } = useQuery({
+    queryKey: ["connections", orgId],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const response = await api.get(`/orgs/${orgId}/connections/`);
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      return response.data?.results || [];
+    },
+    enabled: !!orgId && isOpen,
+    staleTime: 30000,
+  });
+
+  const connections = Array.isArray(connectionsData) ? connectionsData : [];
+
   useEffect(() => {
     if (tool) {
       setFormData({
@@ -57,6 +79,7 @@ export function ToolDialog({
         version: tool.version || "1.0.0",
         enabled: tool.enabled ?? true,
         environment_id: tool.environment_id || "",
+        connection_id: tool.connection?.id || tool.connection_id || "",
         schema_json: JSON.stringify(tool.schema_json || {}, null, 2),
       });
     } else {
@@ -64,12 +87,13 @@ export function ToolDialog({
         name: "",
         version: "1.0.0",
         enabled: true,
-        environment_id: "",
+        environment_id: preselectedEnvironmentId || "",
+        connection_id: preselectedConnectionId || "",
         schema_json: "{}",
       });
     }
     setErrors({});
-  }, [tool]);
+  }, [tool, preselectedEnvironmentId, preselectedConnectionId]);
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
@@ -88,6 +112,11 @@ export function ToolDialog({
         schema_json: schemaJson,
         enabled: data.enabled,
       };
+      
+      // Only include connection_id if it's provided (to allow backend auto-creation for MCP Fabric)
+      if (data.connection_id) {
+        payload.connection_id = data.connection_id;
+      }
 
       if (tool) {
         return api.put(`/orgs/${orgId}/tools/${tool.id}/`, payload);
@@ -283,6 +312,45 @@ export function ToolDialog({
             {errors.environment_id && (
               <p className="mt-1 text-sm text-red-400">{errors.environment_id}</p>
             )}
+          </div>
+
+          {/* Connection Field */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+              {t("tools.connection")} <span className="text-slate-500 text-xs">({t("common.optional")})</span>
+            </label>
+            <select
+              value={formData.connection_id}
+              onChange={(e) => {
+                setFormData({ ...formData, connection_id: e.target.value });
+                if (errors.connection_id)
+                  setErrors({ ...errors, connection_id: "" });
+              }}
+              className={`w-full px-4 py-2 bg-white dark:bg-slate-800 border rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 ${
+                errors.connection_id
+                  ? "border-red-500"
+                  : "border-slate-300 dark:border-slate-700"
+              }`}
+            >
+              <option value="">Auto (MCP Fabric)</option>
+              {isLoadingConnections ? (
+                <option disabled>{t("common.loading")}</option>
+              ) : connections.length > 0 ? (
+                connections.map((conn: any) => (
+                  <option key={conn.id} value={conn.id}>
+                    {conn.name} ({conn.endpoint})
+                  </option>
+                ))
+              ) : (
+                <option disabled>No connections found</option>
+              )}
+            </select>
+            {errors.connection_id && (
+              <p className="mt-1 text-sm text-red-400">{errors.connection_id}</p>
+            )}
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Leave empty for automatic MCP Fabric connection
+            </p>
           </div>
 
           <div>

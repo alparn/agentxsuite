@@ -102,7 +102,7 @@ class PolicySerializer(serializers.ModelSerializer):
 class PolicyRuleSerializer(serializers.ModelSerializer):
     """Serializer for PolicyRule."""
 
-    policy_id = serializers.UUIDField(write_only=True, required=False)
+    policy_id = serializers.UUIDField(required=False, allow_null=True)
     policy_name = serializers.CharField(source="policy.name", read_only=True)
 
     class Meta:
@@ -118,11 +118,17 @@ class PolicyRuleSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "policy_name", "created_at", "updated_at"]
+    
+    def to_representation(self, instance):
+        """Add policy_id to the output."""
+        ret = super().to_representation(instance)
+        ret['policy_id'] = str(instance.policy.id)
+        return ret
 
     def validate_action(self, value):
         """Validate action format."""
-        valid_actions = ["tool.invoke", "agent.invoke", "resource.read", "resource.write"]
+        valid_actions = ["tool.invoke", "agent.invoke", "resource.read", "resource.write", "prompt.invoke"]
         if value not in valid_actions:
             # Allow custom actions but warn
             pass
@@ -144,7 +150,7 @@ class PolicyRuleSerializer(serializers.ModelSerializer):
 class PolicyBindingSerializer(serializers.ModelSerializer):
     """Serializer for PolicyBinding."""
 
-    policy_id = serializers.UUIDField(write_only=True)
+    policy_id = serializers.UUIDField(required=True)
     policy_name = serializers.CharField(source="policy.name", read_only=True)
 
     class Meta:
@@ -159,7 +165,13 @@ class PolicyBindingSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "policy_name", "created_at", "updated_at"]
+    
+    def to_representation(self, instance):
+        """Add policy_id to the output."""
+        ret = super().to_representation(instance)
+        ret['policy_id'] = str(instance.policy.id)
+        return ret
 
     def validate_scope_type(self, value):
         """Validate scope_type."""

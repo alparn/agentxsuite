@@ -114,6 +114,7 @@ def is_allowed_prompt(
     Check if agent is allowed to invoke prompt with given action.
 
     Default deny: Only allows if a matching policy explicitly permits it.
+    Checks both new PolicyRule system and legacy rules_json.
 
     Args:
         agent: Agent instance requesting access
@@ -124,6 +125,9 @@ def is_allowed_prompt(
         Tuple of (is_allowed: bool, reason: str | None)
         reason is None if allowed, otherwise contains denial reason
     """
+    from apps.policies.models import PolicyBinding, PolicyRule
+    from fnmatch import fnmatch
+    
     # Query policies matching organization and optionally environment
     policies = Policy.objects.filter(
         organization=agent.organization,
@@ -134,8 +138,36 @@ def is_allowed_prompt(
     policies = policies.filter(
         models.Q(environment__isnull=True) | models.Q(environment=agent.environment)
     )
-
-    # Check deny list first (most restrictive)
+    
+    # NEW: Check PolicyRule system first (takes precedence)
+    # Get bindings for this agent
+    agent_bindings = PolicyBinding.objects.filter(
+        scope_type="agent",
+        scope_id=str(agent.id),
+    ).select_related("policy")
+    
+    # Check all rules from bound policies
+    for binding in agent_bindings:
+        policy = binding.policy
+        if not policy.is_active:
+            continue
+            
+        # Get rules for this policy with action="prompt.invoke"
+        rules = PolicyRule.objects.filter(
+            policy=policy,
+            action=f"prompt.{action}",
+        ).order_by("-created_at")
+        
+        for rule in rules:
+            # Match target pattern (e.g., "prompt:customer-*", "prompt:*")
+            target_pattern = rule.target.replace("prompt:", "")
+            if fnmatch(prompt_name, target_pattern):
+                if rule.effect == "deny":
+                    return False, f"Prompt '{prompt_name}' denied by policy '{policy.name}' rule"
+                elif rule.effect == "allow":
+                    return True, None
+    
+    # LEGACY: Check deny list first (most restrictive)
     for policy in policies:
         deny_prompts = policy.rules_json.get("deny_prompts", [])
         if isinstance(deny_prompts, list):
@@ -145,7 +177,7 @@ def is_allowed_prompt(
                     f"Prompt '{prompt_name}' denied by policy '{policy.name}'",
                 )
 
-    # Check allow list (explicit allow)
+    # LEGACY: Check allow list (explicit allow)
     for policy in policies:
         allow_prompts = policy.rules_json.get("allow_prompts", [])
         if isinstance(allow_prompts, list):

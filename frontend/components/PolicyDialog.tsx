@@ -15,6 +15,8 @@ interface PolicyDialogProps {
   onClose: () => void;
   policy?: Policy | null;
   orgId: string | null;
+  onSuccess?: (policy: any) => void;
+  preselectedEnvironmentId?: string;
 }
 
 export function PolicyDialog({
@@ -22,6 +24,8 @@ export function PolicyDialog({
   onClose,
   policy,
   orgId,
+  onSuccess,
+  preselectedEnvironmentId,
 }: PolicyDialogProps) {
   const t = useTranslations();
   const queryClient = useQueryClient();
@@ -151,13 +155,13 @@ export function PolicyDialog({
     } else {
       setFormData({
         name: "",
-        environment_id: "",
+        environment_id: preselectedEnvironmentId || "",
         is_active: true,
       });
     }
     setErrors({});
     setEvaluateResult(null);
-  }, [currentPolicy, isOpen]);
+  }, [currentPolicy, isOpen, preselectedEnvironmentId]);
 
   const createMutation = useMutation({
     mutationFn: async (data: Partial<Policy>) => {
@@ -171,7 +175,7 @@ export function PolicyDialog({
           localRules.map((rule) =>
             policyRulesApi.create({
               ...rule,
-              policy_id: createdPolicy.id,
+              policy_id: createdPolicy.id, // Backend expects 'policy_id' per OpenAPI/DRF convention
             })
           )
         );
@@ -205,6 +209,10 @@ export function PolicyDialog({
         environment_id: "",
         is_active: true,
       });
+      // Call onSuccess callback if provided
+      if (onSuccess) {
+        onSuccess(response.data);
+      }
       // Close dialog and let parent refresh
       onClose();
     },
@@ -895,9 +903,9 @@ export function PolicyDialog({
         rule={editingRule}
         policyId={currentPolicy?.id || "temp"}
         orgId={orgId}
-        onSave={(ruleData) => {
-          if (!currentPolicy) {
-            // Save to local state
+        onSave={!currentPolicy ? (ruleData) => {
+          // Only use onSave for new policies (before they're created)
+          // For existing policies, PolicyRuleDialog will call API directly
             if (editingRule && typeof (editingRule as any).id === "number" && (editingRule as any).id < 0) {
               // Editing local rule
               const index = Math.abs((editingRule as any).id);
@@ -906,8 +914,7 @@ export function PolicyDialog({
               // New local rule
               setLocalRules([...localRules, ruleData]);
             }
-          }
-        }}
+        } : undefined}
       />
 
       {/* Binding Dialog */}
@@ -920,9 +927,9 @@ export function PolicyDialog({
         binding={editingBinding}
         policyId={currentPolicy?.id || "temp"}
         orgId={orgId}
-        onSave={(bindingData) => {
-          if (!currentPolicy) {
-            // Save to local state
+        onSave={!currentPolicy ? (bindingData) => {
+          // Only use onSave for new policies (before they're created)
+          // For existing policies, PolicyBindingDialog will call API directly
             if (editingBinding && typeof (editingBinding as any).id === "number" && (editingBinding as any).id < 0) {
               // Editing local binding
               const index = Math.abs((editingBinding as any).id);
@@ -931,8 +938,7 @@ export function PolicyDialog({
               // New local binding
               setLocalBindings([...localBindings, bindingData]);
             }
-          }
-        }}
+        } : undefined}
       />
     </div>
   );

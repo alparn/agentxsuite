@@ -85,9 +85,24 @@ export function PolicyRuleDialog({
     enabled: !!orgId && isOpen && formData.action.startsWith("resource."),
   });
 
+  // Fetch prompts for autocomplete
+  const { data: promptsData } = useQuery({
+    queryKey: ["prompts", orgId],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const response = await api.get(`/orgs/${orgId}/prompts/`);
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      return response.data?.results || [];
+    },
+    enabled: !!orgId && isOpen && formData.action === "prompt.invoke",
+  });
+
   const tools = Array.isArray(toolsData) ? toolsData : [];
   const agents = Array.isArray(agentsData) ? agentsData : [];
   const resources = Array.isArray(resourcesData) ? resourcesData : [];
+  const prompts = Array.isArray(promptsData) ? promptsData : [];
 
   // Extract namespace from various sources
   const getToolNamespace = (tool: any): string => {
@@ -186,6 +201,23 @@ export function PolicyRuleDialog({
         // Add wildcard option
         if (prefix === "" || prefix === "*") {
           suggestions.push("resource:*");
+        }
+      }
+    } else if (formData.action === "prompt.invoke") {
+      // Format: prompt:{name} or prompt:*
+      if (input === "" || input.startsWith("prompt:")) {
+        const prefix = input.startsWith("prompt:") ? input.substring(7) : "";
+        
+        prompts.forEach((prompt: any) => {
+          const promptName = prompt.name || "";
+          if (!prefix || promptName.toLowerCase().includes(prefix.toLowerCase())) {
+            suggestions.push(`prompt:${promptName}`);
+          }
+        });
+        
+        // Add wildcard option
+        if (prefix === "" || prefix === "*") {
+          suggestions.push("prompt:*");
         }
       }
     }
@@ -302,14 +334,21 @@ export function PolicyRuleDialog({
     mutationFn: async (data: Partial<PolicyRule>) => {
       const payload = {
         ...data,
-        policy_id: policyId,
+        policy_id: policyId, // For local state
         conditions: data.conditions || {},
       };
+      
       // If onSave callback is provided, use it instead of API call
       if (onSave) {
         onSave(payload);
         return { data: payload };
       }
+      
+      // Validate policyId before API call
+      if (!policyId || policyId === "temp") {
+        throw new Error("Cannot save rule: Policy must be created first");
+      }
+      
       // Otherwise, use API
       if (rule && (rule as PolicyRule).id && typeof (rule as PolicyRule).id === "number") {
         return policyRulesApi.update((rule as PolicyRule).id.toString(), payload);
@@ -319,8 +358,11 @@ export function PolicyRuleDialog({
     },
     onSuccess: () => {
       if (!onSave) {
+        // Invalidate all policy-related queries to refresh the UI
         queryClient.invalidateQueries({ queryKey: ["policy-rules"] });
+        queryClient.invalidateQueries({ queryKey: ["policy-rules", policyId] });
         queryClient.invalidateQueries({ queryKey: ["policies"] });
+        queryClient.invalidateQueries({ queryKey: ["policies", orgId] });
       }
       setErrors({});
       onClose();
@@ -369,6 +411,7 @@ export function PolicyRuleDialog({
     { value: "agent.invoke", label: "Agent Invoke" },
     { value: "resource.read", label: "Resource Read" },
     { value: "resource.write", label: "Resource Write" },
+    { value: "prompt.invoke", label: "Prompt Invoke" },
   ];
 
   const getTargetPlaceholder = () => {
@@ -378,6 +421,8 @@ export function PolicyRuleDialog({
       return "agent:{slug} or agent:*";
     } else if (formData.action.startsWith("resource.")) {
       return "resource:{namespace}/*";
+    } else if (formData.action === "prompt.invoke") {
+      return "prompt:{name} or prompt:*";
     }
     return "Target pattern";
   };

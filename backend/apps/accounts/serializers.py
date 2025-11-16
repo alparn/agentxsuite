@@ -15,10 +15,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     password = serializers.CharField(write_only=True, validators=[validate_password])
     password_confirm = serializers.CharField(write_only=True)
+    organization_name = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    organization_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = User
-        fields = ["email", "password", "password_confirm", "first_name", "last_name"]
+        fields = ["email", "password", "password_confirm", "first_name", "last_name", "organization_name", "organization_id"]
         extra_kwargs = {
             "email": {"required": True},
             "password": {"required": True},
@@ -29,13 +31,51 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         """Validate that passwords match."""
         if attrs["password"] != attrs["password_confirm"]:
             raise serializers.ValidationError({"password_confirm": "Passwords do not match"})
+        
+        # Validate organization: either name (create new) or id (join existing), but not both
+        org_name = attrs.get("organization_name", "").strip()
+        org_id = attrs.get("organization_id")
+        
+        if org_name and org_id:
+            raise serializers.ValidationError({
+                "organization": "Provide either organization_name (to create new) or organization_id (to join existing), not both"
+            })
+        
         return attrs
 
     def create(self, validated_data):
-        """Create user with hashed password."""
+        """Create user with hashed password and optionally create/join organization."""
         validated_data.pop("password_confirm")
         password = validated_data.pop("password")
+        organization_name = validated_data.pop("organization_name", "").strip()
+        organization_id = validated_data.pop("organization_id", None)
+        
         user = User.objects.create_user(password=password, **validated_data)
+        
+        # Handle organization
+        if organization_name:
+            # Create new organization and add user as owner
+            from apps.tenants.models import Organization, OrganizationMembership
+            org = Organization.objects.create(name=organization_name)
+            OrganizationMembership.objects.create(
+                user=user,
+                organization=org,
+                role="owner",
+                is_active=True,
+            )
+        elif organization_id:
+            # Join existing organization as member
+            from apps.tenants.models import Organization, OrganizationMembership
+            try:
+                org = Organization.objects.get(id=organization_id)
+                OrganizationMembership.objects.get_or_create(
+                    user=user,
+                    organization=org,
+                    defaults={"role": "member", "is_active": True},
+                )
+            except Organization.DoesNotExist:
+                raise serializers.ValidationError({"organization_id": "Organization not found"})
+        
         return user
 
 

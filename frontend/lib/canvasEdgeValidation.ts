@@ -16,20 +16,20 @@ export const validEdgeConnections: Record<
 > = {
   // Agent connections
   agent: {
-    tool: ["agent-tool"], // Agent uses Tool (Run model)
+    tool: ["agent-tool"], // Agent uses Tool (only allowed via PolicyRules)
     resource: ["agent-resource"], // Agent accesses Resource (is_allowed_resource)
     server: ["agent-server"], // Agent hosted on Server/Connection (Agent.connection FK)
-    environment: ["agent-environment"], // Agent belongs to Environment (Agent.environment FK)
+    // Note: agent-environment removed - not shown by default
   },
   
   // Tool connections
   tool: {
-    server: ["tool-server"], // Tool from Server/Connection (Tool.connection FK)
+    // Note: tool-server and tool-environment removed - not shown by default
   },
   
   // Resource connections
   resource: {
-    server: ["resource-server"], // Resource from Server (via MCP)
+    // Note: resource-environment removed - not shown by default
   },
   
   // Policy connections (PolicyBinding with scope_type)
@@ -38,12 +38,21 @@ export const validEdgeConnections: Record<
     tool: ["policy-tool"], // Policy applies to Tool (PolicyBinding scope_type="tool")
     server: ["policy-server"], // Policy applies to Server/Connection
     resource: ["policy-resource"], // Policy applies to Resource (PolicyBinding scope_type="resource_ns")
+    // Note: policy-environment removed - not shown by default
   },
   
   // Environment connections
   environment: {
-    server: ["environment-server"], // Environment on Server
-    organization: ["organization-environment"], // Environment belongs to Organization (Environment.organization FK)
+    server: ["environment-server"], // Environment contains Server/Connection (reversed from Connection.environment FK)
+    policy: ["environment-policy"], // Environment contains Policy (reversed from Policy.environment FK)
+    resource: ["environment-resource"], // Environment contains Resource (reversed from Resource.environment FK)
+    prompt: ["environment-prompt"], // Environment contains Prompt (reversed from Prompt.environment FK)
+    // Note: environment-agent is not shown - Agent relationships are shown via Agent → Connection/Tool
+  },
+  
+  // Prompt connections
+  prompt: {
+    resource: ["prompt-resource"], // Prompt uses Resource (from Prompt.uses_resources)
   },
   
   // Organization connections
@@ -53,7 +62,7 @@ export const validEdgeConnections: Record<
   
   // Server connections (Connection model)
   server: {
-    // Servers can be targets but typically not sources for logical relationships
+    tool: ["server-tool"], // Server/Connection provides Tool (reversed from Tool.connection FK)
   },
 };
 
@@ -127,5 +136,55 @@ export function getValidSourceTypes(targetType: CanvasNodeType): CanvasNodeType[
     }
   }
   return validSources;
+}
+
+/**
+ * Defines which child nodes each node type can CREATE (not just connect to).
+ * This is different from edge validation - it's about creation permissions.
+ * 
+ * Based on the logical model:
+ * - Environment contains Connections and Policies
+ * - Connection (Server) provides Tools and Resources
+ * - Agent uses Tools/Resources but doesn't create them
+ * - Tool/Resource/Policy are endpoints, not containers
+ */
+export const allowedChildNodes: Record<CanvasNodeType, CanvasNodeType[]> = {
+  environment: ["server", "policy", "agent", "resource", "prompt"], // Environment kann Server, Policy, Agent, Resource & Prompt erstellen
+  server: ["tool"], // Connection kann nur Tools erstellen (Tools haben connection FK)
+  tool: [], // Tool kann nichts erstellen (optional: "run" wenn implementiert)
+  resource: [], // Resource kann nichts erstellen
+  agent: [], // Agent kann nichts erstellen (optional: "run" wenn implementiert)
+  policy: [], // Policy kann nichts erstellen (Rules werden intern verwaltet)
+  prompt: [], // Prompt kann nichts ERSTELLEN - nur existierende Resources verknüpfen (über Node-Sidebar)
+  organization: ["environment"], // Organization kann Environments erstellen
+};
+
+/**
+ * Get allowed child node types that a parent node can CREATE.
+ * This is for the plus button menu - what can this node create?
+ */
+export function getAllowedChildNodes(parentType: CanvasNodeType): CanvasNodeType[] {
+  return allowedChildNodes[parentType] || [];
+}
+
+/**
+ * Check if a parent node can create a specific child node type.
+ */
+export function canCreateChildNode(parentType: CanvasNodeType, childType: CanvasNodeType): boolean {
+  return getAllowedChildNodes(parentType).includes(childType);
+}
+
+/**
+ * Get all parent node types that can create a specific child node type.
+ * Used for the "left" plus button - which nodes can create this node?
+ */
+export function getValidParentTypes(childType: CanvasNodeType): CanvasNodeType[] {
+  const validParents: CanvasNodeType[] = [];
+  for (const [parentType, children] of Object.entries(allowedChildNodes)) {
+    if (children.includes(childType)) {
+      validParents.push(parentType as CanvasNodeType);
+    }
+  }
+  return validParents;
 }
 

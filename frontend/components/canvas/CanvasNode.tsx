@@ -2,10 +2,10 @@
 
 import { memo, useState, useEffect, useRef } from "react";
 import { Handle, Position, NodeProps, Node, useReactFlow } from "@xyflow/react";
-import { Bot, Wrench, Database, Shield, Server, Globe, Building2, CheckCircle2, XCircle, AlertCircle, PowerOff, Plus } from "lucide-react";
+import { Bot, Wrench, Database, Shield, Server, Globe, Building2, CheckCircle2, XCircle, AlertCircle, PowerOff, Plus, Play, Wifi, RefreshCw, MessageSquare } from "lucide-react";
 import type { CanvasNodeData, CanvasNodeType } from "@/lib/canvasTypes";
 import { cn } from "@/lib/utils";
-import { getValidTargetTypes, getValidSourceTypes } from "@/lib/canvasEdgeValidation";
+import { getValidTargetTypes, getValidSourceTypes, getAllowedChildNodes, getValidParentTypes } from "@/lib/canvasEdgeValidation";
 
 const nodeIcons = {
   agent: Bot,
@@ -15,6 +15,7 @@ const nodeIcons = {
   server: Server,
   environment: Globe,
   organization: Building2,
+  prompt: MessageSquare,
 };
 
 const statusColors = {
@@ -41,6 +42,7 @@ const nodeTypeOptions: Array<{ type: CanvasNodeType; label: string; icon: typeof
   { type: "server", label: "Server", icon: Server },
   { type: "environment", label: "Environment", icon: Globe },
   { type: "organization", label: "Organization", icon: Building2 },
+  { type: "prompt", label: "Prompt", icon: MessageSquare },
 ];
 
 export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNodeData>>) => {
@@ -52,8 +54,8 @@ export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNod
   const [isHovered, setIsHovered] = useState(false);
   const [showMenu, setShowMenu] = useState<"left" | "right" | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  // Show buttons if selected, hovered, or if node has no connections
-  const showButtons = selected || isHovered || !data.hasConnections;
+  // Show buttons if onCreateNode is available (always show if node can create children/parents)
+  const showButtons = !!data.onCreateNode;
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -120,42 +122,62 @@ export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNod
     setShowMenu(null);
   };
 
+  // Get node type color for border
+  const getNodeBorderColor = () => {
+    if (!selected) return "border-slate-700";
+    switch (data.type) {
+      case "agent": return "border-purple-500 shadow-purple-500/20";
+      case "tool": return "border-green-500 shadow-green-500/20";
+      case "resource": return "border-amber-500 shadow-amber-500/20";
+      case "policy": return "border-yellow-600 shadow-yellow-600/20";
+      case "server": return "border-rose-500 shadow-rose-500/20";
+      case "environment": return "border-cyan-500 shadow-cyan-500/20";
+      case "organization": return "border-indigo-500 shadow-indigo-500/20";
+      case "prompt": return "border-blue-500 shadow-blue-500/20";
+      default: return "border-purple-500 shadow-purple-500/20";
+    }
+  };
+
   return (
     <div
       className={cn(
-        "px-4 py-3 rounded-lg border-2 min-w-[180px] bg-slate-900 shadow-lg transition-all relative",
-        selected ? "border-purple-500 shadow-purple-500/20" : "border-slate-700",
+        "px-4 py-3 rounded-lg border-2 min-w-[180px] bg-slate-900 shadow-lg transition-all relative group",
+        getNodeBorderColor(),
         statusColor
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       {/* Plus Button Left */}
-      {showButtons && data.onCreateNode && (
-        <div className="absolute -left-6 top-1/2 -translate-y-1/2 z-10">
+      {showButtons && data.onCreateNode && data.type !== "policy" && data.type !== "prompt" && data.type !== "environment" && data.type !== "organization" && (() => {
+        // Only show left button if there are valid parent types that can create this node
+        // Top-level nodes (environment, organization) should not have left button
+        const validParentTypes = getValidParentTypes(data.type);
+        return validParentTypes.length > 0;
+      })() ? (
+        <div className="absolute -left-6 top-1/2 -translate-y-1/2 z-50 pointer-events-auto">
           <button
             onClick={(e) => handleCreateNode("left", e)}
             className={cn(
               "w-8 h-8 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg flex items-center justify-center transition-all hover:scale-110",
-              "opacity-0 group-hover:opacity-100",
-              showButtons && "opacity-100"
+              "opacity-100"
             )}
-            title="Create node on left"
+            title="Create parent node"
           >
             <Plus className="w-4 h-4" />
           </button>
           
           {/* Menu for left side */}
           {showMenu === "left" && (() => {
-            // When creating on the left, the new node is the SOURCE, current node is TARGET
-            // So we need nodes that can connect TO the current node type
-            const validSourceTypes = getValidSourceTypes(data.type);
-            const availableOptions = nodeTypeOptions.filter((opt) => validSourceTypes.includes(opt.type));
+            // When creating on the left, we want to create a PARENT node that can CREATE this node
+            // So we need nodes that can create the current node type as a child
+            const validParentTypes = getValidParentTypes(data.type);
+            const availableOptions = nodeTypeOptions.filter((opt) => validParentTypes.includes(opt.type));
             
             return (
-              <div ref={menuRef} className="absolute left-10 top-0 bg-slate-800 border border-slate-700 rounded-lg shadow-xl min-w-[180px] py-2">
+              <div ref={menuRef} className="absolute left-10 top-0 bg-slate-800 border border-slate-700 rounded-lg shadow-xl min-w-[180px] py-2 z-50">
                 <div className="px-3 py-2 text-xs font-semibold text-slate-400 border-b border-slate-700">
-                  Create Node (connects to {data.type})
+                  Create Parent (can create {data.type})
                 </div>
                 {availableOptions.length > 0 ? (
                   availableOptions.map((option) => {
@@ -177,26 +199,27 @@ export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNod
                   })
                 ) : (
                   <div className="px-3 py-2 text-sm text-slate-500">
-                    No valid connections available
+                    No parent nodes available
                   </div>
                 )}
               </div>
             );
           })()}
         </div>
-      )}
+      ) : null}
 
       {/* Node content */}
       <div className="flex items-start gap-3">
         <div className={cn(
           "p-2 rounded-lg",
-          data.type === "agent" && "bg-purple-500/20",
-          data.type === "tool" && "bg-blue-500/20",
-          data.type === "resource" && "bg-green-500/20",
-          data.type === "policy" && "bg-yellow-500/20",
-          data.type === "server" && "bg-cyan-500/20",
-          data.type === "environment" && "bg-pink-500/20",
-          data.type === "organization" && "bg-indigo-500/20",
+          data.type === "agent" && "bg-purple-500/20 text-purple-400",
+          data.type === "tool" && "bg-green-500/20 text-green-400",
+          data.type === "resource" && "bg-amber-500/20 text-amber-400",
+          data.type === "policy" && "bg-yellow-600/20 text-yellow-500",
+          data.type === "server" && "bg-rose-500/20 text-rose-400",
+          data.type === "environment" && "bg-cyan-500/20 text-cyan-400",
+          data.type === "organization" && "bg-indigo-500/20 text-indigo-400",
+          data.type === "prompt" && "bg-blue-500/20 text-blue-400",
         )}>
           <Icon className="w-5 h-5" />
         </div>
@@ -216,32 +239,93 @@ export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNod
         </div>
       </div>
 
+      {/* Action Buttons */}
+      {data.onAction && (data.type === "server" || data.type === "tool" || data.type === "agent") && (
+        <div className="flex items-center gap-1 mt-2 pt-2 border-t border-slate-700/50">
+          {data.type === "server" && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  data.onAction?.("test", data.connectionId);
+                }}
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded transition-colors"
+                title="Test Connection"
+              >
+                <Wifi className="w-3 h-3" />
+                Test
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  data.onAction?.("sync", data.connectionId);
+                }}
+                className="flex items-center gap-1 px-2 py-1 text-xs bg-green-500/10 hover:bg-green-500/20 text-green-400 rounded transition-colors"
+                title="Sync Tools"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Sync
+              </button>
+            </>
+          )}
+          {data.type === "tool" && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                data.onAction?.("run", data.toolId);
+              }}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded transition-colors"
+              title="Run Tool"
+            >
+              <Play className="w-3 h-3" />
+              Run
+            </button>
+          )}
+          {data.type === "agent" && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                data.onAction?.("ping", data.agentId);
+              }}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded transition-colors"
+              title="Ping Agent"
+            >
+              <Wifi className="w-3 h-3" />
+              Ping
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Plus Button Right */}
-      {showButtons && data.onCreateNode && (
-        <div className="absolute -right-6 top-1/2 -translate-y-1/2 z-10">
+      {showButtons && data.onCreateNode && data.type !== "policy" && data.type !== "prompt" && (() => {
+        // Only show right button if there are valid child types that can be created
+        const allowedChildren = getAllowedChildNodes(data.type);
+        return allowedChildren.length > 0;
+      })() && (
+        <div className="absolute -right-6 top-1/2 -translate-y-1/2 z-50 pointer-events-auto">
           <button
             onClick={(e) => handleCreateNode("right", e)}
             className={cn(
               "w-8 h-8 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg flex items-center justify-center transition-all hover:scale-110",
-              "opacity-0 group-hover:opacity-100",
-              showButtons && "opacity-100"
+              "opacity-100"
             )}
-            title="Create node on right"
+            title="Create child node"
           >
             <Plus className="w-4 h-4" />
           </button>
           
           {/* Menu for right side */}
           {showMenu === "right" && (() => {
-            // When creating on the right, the current node is the SOURCE, new node is TARGET
-            // So we need nodes that the current node type can connect TO
-            const validTargetTypes = getValidTargetTypes(data.type);
-            const availableOptions = nodeTypeOptions.filter((opt) => validTargetTypes.includes(opt.type));
+            // When creating on the right, we want to create a CHILD node that this node can CREATE
+            // So we need nodes that this node type is allowed to create
+            const allowedChildren = getAllowedChildNodes(data.type);
+            const availableOptions = nodeTypeOptions.filter((opt) => allowedChildren.includes(opt.type));
             
             return (
-              <div ref={menuRef} className="absolute right-10 top-0 bg-slate-800 border border-slate-700 rounded-lg shadow-xl min-w-[180px] py-2">
+              <div ref={menuRef} className="absolute right-10 top-0 bg-slate-800 border border-slate-700 rounded-lg shadow-xl min-w-[180px] py-2 z-50">
                 <div className="px-3 py-2 text-xs font-semibold text-slate-400 border-b border-slate-700">
-                  Create Node (from {data.type})
+                  Create Child (from {data.type})
                 </div>
                 {availableOptions.length > 0 ? (
                   availableOptions.map((option) => {
@@ -263,7 +347,7 @@ export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNod
                   })
                 ) : (
                   <div className="px-3 py-2 text-sm text-slate-500">
-                    No valid connections available
+                    No child nodes available
                   </div>
                 )}
               </div>
