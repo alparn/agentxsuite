@@ -119,8 +119,46 @@ Authorization: Token <your-token>
 - `POST /api/v1/orgs/:org_id/agents/`
 - `GET  /api/v1/orgs/:org_id/tools/`
 - `POST /api/v1/orgs/:org_id/tools/`
-- `POST /api/v1/tools/:id/run/`
+- `POST /api/v1/orgs/:org_id/runs/execute/` - **Unified tool execution endpoint** (recommended)
+- `POST /api/v1/tools/:id/run/` - Legacy endpoint (deprecated, use `/runs/execute/` instead)
 - `GET  /api/v1/orgs/:org_id/runs/`
+
+#### Unified Run API
+
+The unified run endpoint (`POST /api/v1/orgs/:org_id/runs/execute/`) provides a consistent way to execute tools:
+
+**Request:**
+```json
+{
+  "tool": "uuid-or-name",      // Tool UUID or name
+  "agent": "uuid",              // Optional if Agent-Token is used
+  "input": {...},               // Input data
+  "environment": "uuid",        // Optional, derived from tool if not provided
+  "timeout_seconds": 30         // Optional timeout
+}
+```
+
+**Response (MCP-compatible format):**
+```json
+{
+  "run_id": "uuid",
+  "status": "succeeded",
+  "content": [{"type": "text", "text": "..."}],
+  "isError": false,
+  "agent": {"id": "...", "name": "..."},
+  "tool": {"id": "...", "name": "..."},
+  "execution": {
+    "started_at": "2025-01-01T12:00:00Z",
+    "ended_at": "2025-01-01T12:00:02Z",
+    "duration_ms": 2000
+  }
+}
+```
+
+**Agent Selection:**
+- If using an Agent Token: Agent is automatically extracted from token (highest priority)
+- If no Agent Token: `agent` field in request is required (no automatic fallback)
+- For security reasons, automatic agent selection is not allowed
 
 ## 🧬 MCP Fabric (FastAPI Service)
 

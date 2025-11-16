@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { X, Play, Loader2, CheckCircle, XCircle } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, runsApi } from "@/lib/api";
 
 interface RunToolModalProps {
   isOpen: boolean;
@@ -65,15 +65,16 @@ export function RunToolModal({
         throw new Error("Invalid JSON format");
       }
 
-      const payload: any = {
-        input_json: parsedInput,
-      };
-
-      if (agentId) {
-        payload.agent_id = agentId;
-      }
-
-      const response = await api.post(`/orgs/${orgId}/tools/${toolId}/run/`, payload);
+      // Use unified runs API
+      const envId = toolData?.environment?.id || toolData?.environment_id;
+      
+      const response = await runsApi.execute(orgId, {
+        tool: toolId, // Can be UUID or name
+        agent: agentId || undefined, // Optional
+        input: parsedInput,
+        environment: envId, // Optional, will be derived from tool if not provided
+      });
+      
       return response.data;
     },
     onSuccess: (data) => {
@@ -85,7 +86,7 @@ export function RunToolModal({
         setErrors({ input_json: "Invalid JSON format" });
       } else {
         setRunResult({
-          error: error.response?.data?.error || error.message || "Run failed",
+          error: error.message || error.response?.data?.error || "Run failed",
         });
       }
     },
@@ -189,20 +190,36 @@ export function RunToolModal({
                 </span>
               </div>
               
-              {!runResult.error && runResult.id && (
+              {!runResult.error && runResult.run_id && (
                 <div className="space-y-2">
                   <div className="text-sm text-slate-300">
                     <span className="text-slate-400">Run ID:</span>{" "}
-                    <span className="font-mono text-purple-400">{runResult.id}</span>
+                    <span className="font-mono text-purple-400">{runResult.run_id}</span>
                   </div>
                   <div className="text-sm text-slate-300">
                     <span className="text-slate-400">Status:</span>{" "}
                     <span className="capitalize">{runResult.status}</span>
                   </div>
-                  {runResult.created_at && (
+                  {runResult.execution?.started_at && (
                     <div className="text-sm text-slate-300">
-                      <span className="text-slate-400">Created:</span>{" "}
-                      {new Date(runResult.created_at).toLocaleString()}
+                      <span className="text-slate-400">Started:</span>{" "}
+                      {new Date(runResult.execution.started_at).toLocaleString()}
+                    </div>
+                  )}
+                  {runResult.execution?.duration_ms && (
+                    <div className="text-sm text-slate-300">
+                      <span className="text-slate-400">Duration:</span>{" "}
+                      {runResult.execution.duration_ms}ms
+                    </div>
+                  )}
+                  {runResult.content && runResult.content.length > 0 && (
+                    <div className="mt-3">
+                      <div className="text-sm text-slate-400 mb-1">Output:</div>
+                      <pre className="px-3 py-2 bg-slate-800 rounded-lg text-slate-300 text-xs overflow-x-auto max-h-48 overflow-y-auto">
+                        {runResult.content.map((item: any, idx: number) => (
+                          <div key={idx}>{item.text || JSON.stringify(item, null, 2)}</div>
+                        ))}
+                      </pre>
                     </div>
                   )}
                 </div>

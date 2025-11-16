@@ -3,7 +3,11 @@ Run services for orchestrating tool execution with security checks.
 """
 from __future__ import annotations
 
+import json
 import logging
+from dataclasses import dataclass
+from uuid import UUID
+
 from urllib.parse import urljoin
 
 import httpx
@@ -16,10 +20,306 @@ from apps.runs.models import Run, RunStep
 from apps.runs.rate_limit import check_rate_limit
 from apps.runs.timeout import execute_with_timeout, TimeoutError
 from apps.runs.validators import validate_input_json
+from apps.tenants.models import Environment, Organization
 from apps.tools.models import Tool
 from libs.logging.context import set_context_ids
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ExecutionContext:
+    """
+    Execution context for Audit & Security.
+    
+    Contains information about the execution context:
+    - User-ID (for Django Auth)
+    - Agent-ID from Token (highest priority)
+    - Audit metadata (JTI, Client-IP, Request-ID)
+    """
+    user_id: str | None = None
+    token_agent_id: str | None = None  # Agent from JWT Token
+    jti: str | None = None
+    client_ip: str | None = None
+    request_id: str | None = None
+
+    @classmethod
+    def from_django_request(cls, request) -> ExecutionContext:
+        """
+        Create from Django REST Framework Request.
+        
+        Args:
+            request: DRF Request object
+        
+        Returns:
+            ExecutionContext instance
+        """
+        return cls(
+            user_id=str(request.user.id) if request.user.is_authenticated else None,
+            client_ip=request.META.get("REMOTE_ADDR"),
+        )
+    
+    @classmethod
+    def from_token_claims(cls, claims: dict) -> ExecutionContext:
+        """
+        Create from JWT Token Claims.
+        
+        Args:
+            claims: Dictionary with Token Claims
+        
+        Returns:
+            ExecutionContext instance
+        """
+        return cls(
+            token_agent_id=claims.get("_resolved_agent_id") or claims.get("agent_id"),
+            jti=claims.get("_jti"),
+            client_ip=claims.get("_client_ip"),
+            request_id=claims.get("_request_id"),
+        )
+
+
+def resolve_agent(
+    *,
+    organization: Organization,
+    environment: Environment,
+    requested_agent_id: str | None = None,
+    context: ExecutionContext,
+) -> Agent:
+    """
+    STANDARDIZED AGENT SELECTION.
+    
+    Rules (in this order):
+    1. Agent from Token (highest priority) - Source of Truth
+    2. Agent from Request (only if no Token-Agent)
+    3. ERROR - NO Fallback!
+    
+    Args:
+        organization: Organization instance
+        environment: Environment instance
+        requested_agent_id: Agent-ID from Request Body/Query
+        context: ExecutionContext with token_agent_id
+    
+    Returns:
+        Agent instance
+    
+    Raises:
+        ValueError: If no agent found or mismatch
+    """
+    # Rule 1: Token has priority
+    if context.token_agent_id:
+        # Session-Lock: If request also has agent_id, it must match
+        if requested_agent_id and requested_agent_id != context.token_agent_id:
+            raise ValueError(
+                f"Agent mismatch: Token contains agent_id={context.token_agent_id}, "
+                f"but request specifies agent_id={requested_agent_id}. "
+                "Agent cannot be changed within a session."
+            )
+        
+        # Load agent from token
+        try:
+            agent = Agent.objects.get(
+                id=context.token_agent_id,
+                organization=organization,
+                environment=environment,
+                enabled=True,
+            )
+            logger.info(
+                f"Agent resolved from token: {agent.name}",
+                extra={"agent_id": str(agent.id), "source": "token"},
+            )
+            return agent
+        except Agent.DoesNotExist:
+            raise ValueError(
+                f"Agent {context.token_agent_id} from token not found, "
+                "disabled, or doesn't belong to this org/env"
+            )
+    
+    # Rule 2: Request-Agent (only if no Token-Agent)
+    if requested_agent_id:
+        try:
+            agent = Agent.objects.get(
+                id=requested_agent_id,
+                organization=organization,
+                environment=environment,
+                enabled=True,
+            )
+            logger.info(
+                f"Agent resolved from request: {agent.name}",
+                extra={"agent_id": str(agent.id), "source": "request"},
+            )
+            return agent
+        except Agent.DoesNotExist:
+            raise ValueError(
+                f"Agent {requested_agent_id} not found, disabled, "
+                "or doesn't belong to this org/env"
+            )
+    
+    # Rule 3: NO FALLBACK - explicitly required
+    raise ValueError(
+        "Agent selection required. "
+        "Provide 'agent' in request body or use an agent token. "
+        "For security reasons, automatic agent selection is not allowed."
+    )
+
+
+def resolve_tool(
+    *,
+    organization: Organization,
+    environment: Environment,
+    tool_identifier: str,
+) -> Tool:
+    """
+    Find tool - supports UUID and Name.
+    
+    Args:
+        organization: Organization instance
+        environment: Environment instance
+        tool_identifier: Tool UUID or Name
+    
+    Returns:
+        Tool instance
+    
+    Raises:
+        ValueError: If tool not found
+    """
+    # Check if UUID
+    try:
+        UUID(tool_identifier)
+        is_uuid = True
+    except ValueError:
+        is_uuid = False
+    
+    try:
+        if is_uuid:
+            return Tool.objects.get(
+                id=tool_identifier,
+                organization=organization,
+                environment=environment,
+                enabled=True,
+            )
+        else:
+            return Tool.objects.get(
+                name=tool_identifier,
+                organization=organization,
+                environment=environment,
+                enabled=True,
+            )
+    except Tool.DoesNotExist:
+        identifier_type = "ID" if is_uuid else "name"
+        raise ValueError(
+            f"Tool with {identifier_type} '{tool_identifier}' not found "
+            "or not enabled in this org/env"
+        )
+
+
+def format_run_response(run: Run) -> dict:
+    """
+    Format Run as MCP-compatible Response.
+    
+    Unified format for Tool Registry and MCP Fabric.
+    
+    Args:
+        run: Run instance
+    
+    Returns:
+        Dictionary with MCP-compatible format
+    """
+    # Format output as MCP Content
+    content = []
+    if run.status == "succeeded" and run.output_json:
+        if isinstance(run.output_json, str):
+            content.append({"type": "text", "text": run.output_json})
+        else:
+            # Format JSON as text
+            content.append({
+                "type": "text",
+                "text": json.dumps(run.output_json, indent=2)
+            })
+    elif run.status == "failed" and run.error_text:
+        content.append({"type": "text", "text": run.error_text})
+    
+    duration_ms = None
+    if run.ended_at and run.started_at:
+        duration_ms = int((run.ended_at - run.started_at).total_seconds() * 1000)
+    
+    return {
+        "run_id": str(run.id),
+        "status": run.status,
+        "content": content,
+        "isError": run.status == "failed",
+        "agent": {
+            "id": str(run.agent.id),
+            "name": run.agent.name,
+        },
+        "tool": {
+            "id": str(run.tool.id),
+            "name": run.tool.name,
+        },
+        "execution": {
+            "started_at": run.started_at.isoformat() if run.started_at else None,
+            "ended_at": run.ended_at.isoformat() if run.ended_at else None,
+            "duration_ms": duration_ms,
+        },
+    }
+
+
+def execute_tool_run(
+    *,
+    organization: Organization,
+    environment: Environment,
+    tool_identifier: str,
+    agent_identifier: str | None,
+    input_data: dict,
+    context: ExecutionContext,
+    timeout_seconds: int = 30,
+) -> dict:
+    """
+    UNIFIED TOOL EXECUTION.
+    
+    Used by both APIs:
+    - Tool Registry API (legacy)
+    - MCP Fabric API (standard)
+    
+    Args:
+        organization: Organization instance
+        environment: Environment instance
+        tool_identifier: Tool UUID or Name
+        agent_identifier: Agent UUID (optional, can come from Token)
+        input_data: Input data as Dictionary
+        context: ExecutionContext with Token info
+        timeout_seconds: Timeout in seconds
+    
+    Returns:
+        Unified response dictionary (MCP-compatible)
+    
+    Raises:
+        ValueError: On Validation/Security Errors
+    """
+    # 1. Resolve Tool
+    tool = resolve_tool(
+        organization=organization,
+        environment=environment,
+        tool_identifier=tool_identifier,
+    )
+    
+    # 2. Resolve Agent (standardisiert!)
+    agent = resolve_agent(
+        organization=organization,
+        environment=environment,
+        requested_agent_id=agent_identifier,
+        context=context,
+    )
+    
+    # 3. Execute via start_run (existing security checks)
+    run = start_run(
+        agent=agent,
+        tool=tool,
+        input_json=input_data,
+        timeout_seconds=timeout_seconds,
+    )
+    
+    # 4. Format Response (MCP-compatible)
+    return format_run_response(run)
 
 
 def _add_run_step(

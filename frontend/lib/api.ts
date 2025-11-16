@@ -172,6 +172,16 @@ export const runsApi = {
   },
   get: (orgId: string, id: string) => api.get<RunDetail>(`/orgs/${orgId}/runs/${id}/`),
   steps: (orgId: string, id: string) => api.get(`/orgs/${orgId}/runs/${id}/steps/`),
+  execute: (
+    orgId: string,
+    data: {
+      tool: string; // Tool UUID or name
+      agent?: string; // Optional agent UUID
+      input: Record<string, any>; // Input data
+      environment?: string; // Optional environment UUID
+      timeout_seconds?: number; // Optional timeout
+    }
+  ) => api.post(`/orgs/${orgId}/runs/execute/`, data),
 };
 
 // Canvas API

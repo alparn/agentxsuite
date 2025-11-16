@@ -33,7 +33,7 @@ export function PingAgentModal({
     onError: (error: any) => {
       setPingResult({
         status: "error",
-        error: error.response?.data?.error || error.message || "Ping failed",
+        message: error.response?.data?.message || error.response?.data?.error || error.message || "Ping failed",
       });
     },
   });
@@ -79,53 +79,98 @@ export function PingAgentModal({
           {/* Ping Result */}
           {pingResult && (
             <div className={`p-4 rounded-lg border ${
-              pingResult.status === "ok" || pingResult.status === "alive"
+              pingResult.status === "success"
                 ? "bg-green-500/10 border-green-500/30" 
+                : pingResult.status === "warning"
+                ? "bg-yellow-500/10 border-yellow-500/30"
                 : "bg-red-500/10 border-red-500/30"
             }`}>
               <div className="flex items-center gap-2 mb-3">
-                {pingResult.status === "ok" || pingResult.status === "alive" ? (
+                {pingResult.status === "success" ? (
                   <CheckCircle className="w-5 h-5 text-green-400" />
+                ) : pingResult.status === "warning" ? (
+                  <XCircle className="w-5 h-5 text-yellow-400" />
                 ) : (
                   <XCircle className="w-5 h-5 text-red-400" />
                 )}
                 <span className={`font-medium ${
-                  pingResult.status === "ok" || pingResult.status === "alive" ? "text-green-400" : "text-red-400"
+                  pingResult.status === "success" 
+                    ? "text-green-400" 
+                    : pingResult.status === "warning"
+                    ? "text-yellow-400"
+                    : "text-red-400"
                 }`}>
-                  {pingResult.status === "ok" || pingResult.status === "alive" ? "Agent is Online" : "Agent Unreachable"}
+                  {pingResult.status === "success" 
+                    ? "Agent is Online" 
+                    : pingResult.status === "warning"
+                    ? "Agent Warning"
+                    : "Agent Unreachable"}
                 </span>
               </div>
               
-              {(pingResult.status === "ok" || pingResult.status === "alive") && (
-                <div className="space-y-2">
-                  {pingResult.latency_ms !== undefined && (
-                    <div className="flex items-center gap-2 text-sm text-slate-300">
-                      <Activity className="w-4 h-4 text-cyan-400" />
-                      <span>Latency: <strong className="text-cyan-400">{pingResult.latency_ms}ms</strong></span>
+              {/* Message */}
+              {pingResult.message && (
+                <p className={`text-sm mt-2 ${
+                  pingResult.status === "success" 
+                    ? "text-green-300" 
+                    : pingResult.status === "warning"
+                    ? "text-yellow-300"
+                    : "text-red-300"
+                }`}>
+                  {pingResult.message}
+                </p>
+              )}
+              
+              {/* Success Details */}
+              {pingResult.status === "success" && (
+                <div className="space-y-2 mt-3">
+                  {pingResult.connection_status && (
+                    <div className="text-sm text-slate-300">
+                      <span className="text-slate-400">Connection:</span>{" "}
+                      <span className="capitalize">{pingResult.connection_status}</span>
+                      {pingResult.connection_name && (
+                        <span className="text-slate-400"> ({pingResult.connection_name})</span>
+                      )}
                     </div>
                   )}
-                  {pingResult.last_seen_at && (
+                  {pingResult.connection_endpoint && (
                     <div className="text-sm text-slate-300">
-                      Last seen: {new Date(pingResult.last_seen_at).toLocaleString()}
+                      <span className="text-slate-400">Endpoint:</span> {pingResult.connection_endpoint}
                     </div>
                   )}
-                  {pingResult.version && (
+                  {pingResult.agent_mode && (
                     <div className="text-sm text-slate-300">
-                      Version: {pingResult.version}
+                      <span className="text-slate-400">Mode:</span> <span className="capitalize">{pingResult.agent_mode}</span>
                     </div>
                   )}
-                  {pingResult.mode && (
+                  {pingResult.inbound_auth_method && (
                     <div className="text-sm text-slate-300">
-                      Mode: <span className="capitalize">{pingResult.mode}</span>
+                      <span className="text-slate-400">Auth Method:</span> <span className="capitalize">{pingResult.inbound_auth_method}</span>
                     </div>
                   )}
                 </div>
               )}
               
-              {pingResult.error && (
-                <p className="text-sm text-red-400 mt-2">
-                  Error: {pingResult.error}
-                </p>
+              {/* Warning/Error Details */}
+              {(pingResult.status === "warning" || pingResult.status === "error") && (
+                <div className="space-y-2 mt-3">
+                  {pingResult.connection_status && (
+                    <div className="text-sm text-slate-300">
+                      <span className="text-slate-400">Connection Status:</span>{" "}
+                      <span className="capitalize">{pingResult.connection_status}</span>
+                    </div>
+                  )}
+                  {pingResult.connection_endpoint && (
+                    <div className="text-sm text-slate-300">
+                      <span className="text-slate-400">Endpoint:</span> {pingResult.connection_endpoint}
+                    </div>
+                  )}
+                  {pingResult.note && (
+                    <div className="text-sm text-slate-400 italic">
+                      {pingResult.note}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}

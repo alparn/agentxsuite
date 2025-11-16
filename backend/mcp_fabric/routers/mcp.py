@@ -151,7 +151,7 @@ async def run(
     ),
 ) -> dict:
     """
-    Execute a tool via MCP run endpoint.
+    Execute a tool via MCP run endpoint - uses unified execution service.
 
     Requires scope: mcp:run
     org_id/env_id are extracted from token claims (secure multi-tenant).
@@ -163,7 +163,7 @@ async def run(
         }
 
     Returns:
-        Tool execution result dictionary
+        MCP-compatible response dictionary
 
     Raises:
         HTTPException: 400 if tool name missing, 404 if tool not found
@@ -184,80 +184,49 @@ async def run(
 
     org, env = await sync_to_async(_resolve_org_env)(str(org_id), str(env_id))
 
-    # P0: Extract resolved agent_id from token claims (set by deps via subject/issuer mapping)
-    # This is the source of truth - resolved via (subject, issuer) → Agent mapping
-    token_agent_id = token_claims.get("_resolved_agent_id") or token_claims.get("agent_id")
-
-    if not token_agent_id:
-        raise raise_mcp_http_exception(
-            ErrorCodes.AGENT_NOT_FOUND,
-            "Agent not resolved from token claims. Token must have valid (subject, issuer) mapping.",
-            status.HTTP_403_FORBIDDEN,
-        )
-
-    mcp = MCPServer(name=f"AgentxSuite MCP - {org.name}/{env.name}")
-    await sync_to_async(register_tools_for_org_env)(mcp, org=org, env=env)
-
-    # Support both formats: {"tool": "...", "input": {...}} and {"name": "...", "arguments": {...}}
-    tool_name = payload.get("tool") or payload.get("name")
-    input_args = payload.get("input") or payload.get("arguments") or {}
+    # Tool identifier - flexible from both formats
+    tool_identifier = payload.get("name") or payload.get("tool")
     
-    # P0: Pass resolved agent_id and audit metadata to tool handlers via input_args
-    # This allows the adapter to validate Session-Lock and log audit events
-    input_args["_token_agent_id"] = token_agent_id
-    input_args["_jti"] = token_claims.get("_jti")
-    input_args["_client_ip"] = token_claims.get("_client_ip")
-    input_args["_request_id"] = token_claims.get("_request_id")
-
-    if not tool_name:
+    # Input data - flexible from both formats
+    input_data = payload.get("arguments") or payload.get("input", {})
+    
+    if not tool_identifier:
         raise raise_mcp_http_exception(
             ErrorCodes.MISSING_TOOL_NAME,
             "Missing tool name in payload",
             400,
         )
 
+    # Create context (with Token-Agent!)
+    from apps.runs.services import ExecutionContext, execute_tool_run
+    
+    context = ExecutionContext.from_token_claims(token_claims)
+    
+    # IMPORTANT: No agent_identifier from Payload - Agent comes only from Token!
+    
     try:
-        # FastMCP doesn't have run_tool() - we need to get the tool and call its function
-        tools_dict = await mcp.get_tools()
-
-        if tool_name not in tools_dict:
-            raise raise_mcp_http_exception(
-                ErrorCodes.TOOL_NOT_FOUND,
-                f"Tool '{tool_name}' not found",
-                404,
-            )
-
-        tool_obj = tools_dict[tool_name]
-
-        # Get the function from the tool object
-        if not hasattr(tool_obj, "fn"):
-            raise raise_mcp_http_exception(
-                ErrorCodes.EXECUTION_FAILED,
-                f"Tool '{tool_name}' has no executable function",
-                500,
-            )
-
-        # Call the tool function with input arguments
-        # Tool functions are synchronous (they use Django ORM), so we wrap them
-        tool_function = tool_obj.fn
-
-        # Execute synchronous function in thread pool
-        # Handle both parameterized and parameterless functions
-        import inspect
-
-        sig = inspect.signature(tool_function)
-        if len(sig.parameters) == 0:
-            # Function has no parameters, call without arguments
-            result = await sync_to_async(tool_function)()
-        else:
-            # Function has parameters, pass input_args
-            result = await sync_to_async(tool_function)(**input_args)
-
-        # Return unified response
+        # Execute via unified service
+        result = await sync_to_async(execute_tool_run)(
+            organization=org,
+            environment=env,
+            tool_identifier=tool_identifier,
+            agent_identifier=None,  # NOT from Payload - only from Token!
+            input_data=input_data,
+            context=context,
+        )
+        
+        # Response is already MCP-compatible
         return result
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
+    except ValueError as e:
+        # Validation/Security Errors from execute_tool_run
+        raise raise_mcp_http_exception(
+            ErrorCodes.EXECUTION_FAILED,
+            str(e),
+            400,
+        )
     except Exception as e:
         # Get context IDs for error response
         from libs.logging.context import get_context_ids
@@ -268,12 +237,12 @@ async def run(
         run_id = context_ids.get("run_id")
         
         logger.error(
-            f"Error running tool '{tool_name}': {e}",
+            f"Error running tool '{tool_identifier}': {e}",
             extra={
                 "org_id": str(org_id),
                 "env_id": str(env_id),
-                "tool_name": tool_name,
-                "input_args": str(input_args),
+                "tool_identifier": tool_identifier,
+                "input_data": str(input_data),
                 "error_type": type(e).__name__,
                 "trace_id": trace_id,
                 "request_id": request_id,
