@@ -179,18 +179,16 @@ class MCPFabricClient {
     // MCP Fabric API requires agent JWT token (not user token)
     // User tokens are Django tokens without JWT claims (sub/iss) needed for agent resolution
     if (!agentToken || typeof agentToken !== 'string' || agentToken.trim().length === 0) {
-      // This should not happen if the calling code properly checks for token before calling
-      // Log detailed info for debugging
-      console.error("getHeaders called without valid token:", {
-        agentToken,
+      // This happens during initialization or when no agent is selected
+      // Only log as warning if it's not just an empty call
+      if (agentToken !== null && agentToken !== undefined) {
+        console.warn("MCP Fabric: Agent token not available or invalid", {
         type: typeof agentToken,
-        length: agentToken?.length,
-        isNull: agentToken === null,
-        isUndefined: agentToken === undefined,
         isEmpty: agentToken === '',
       });
+      }
       throw new MCPFabricError(
-        "Agent token is required but not available. Please ensure an agent with a ServiceAccount is selected and wait for token generation to complete.",
+        "Agent token is required. Please ensure an agent with a ServiceAccount is selected.",
         400
       );
     }

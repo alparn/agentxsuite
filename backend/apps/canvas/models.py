@@ -9,7 +9,7 @@ from libs.common.models import TimeStamped
 
 
 class CanvasState(TimeStamped):
-    """Model for storing canvas visualization state."""
+    """Model for storing canvas visualization state (shared across organization, like Miro boards)."""
 
     organization = models.ForeignKey(
         "tenants.Organization",

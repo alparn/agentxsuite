@@ -68,7 +68,8 @@ class PolicyViewSet(AuditLoggingMixin, ModelViewSet):
                 )
 
         try:
-            serializer.save(organization_id=org_id)
+            # Save with organization_id and environment_id
+            serializer.save(organization_id=org_id, environment_id=environment_id)
         except IntegrityError as e:
             # Catch UNIQUE constraint violations and provide user-friendly error
             if "UNIQUE constraint failed" in str(e) and "organization_id" in str(e) and "name" in str(e):

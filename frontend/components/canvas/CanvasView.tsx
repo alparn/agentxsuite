@@ -16,6 +16,7 @@ import {
   Edge,
   Node,
   ReactFlowProvider,
+  useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { CanvasNode } from "./CanvasNode";
@@ -37,12 +38,109 @@ import { api, agentsApi, canvasApi, policyRulesApi, policyBindingsApi } from "@/
 import { useAppStore } from "@/lib/store";
 import type { CanvasNodeData, CanvasEdgeData, CanvasState, CanvasNodeType } from "@/lib/canvasTypes";
 import { isValidEdgeConnection, getDefaultEdgeType, getValidEdgeTypes } from "@/lib/canvasEdgeValidation";
-import { Plus, Download, Upload, Save, RefreshCw, Layers, Filter, X } from "lucide-react";
+import { Plus, Download, Upload, Save, RefreshCw, Layers, Filter, X, ArrowDownUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getAutoLayoutPosition, getLaneForNodeType } from "@/lib/canvasVisualConfig";
 
 const nodeTypes = {
   canvasNode: CanvasNode,
 };
+
+// Inner component for node navigation
+function NodeNavigator({ nodes }: { nodes: Node<CanvasNodeData>[] }) {
+  const { setCenter, getNode } = useReactFlow();
+  const [isOpen, setIsOpen] = useState(false);
+  
+  // Function to zoom to a specific node
+  const zoomToNode = useCallback((nodeId: string) => {
+    const node = getNode(nodeId);
+    if (!node) return;
+    
+    // Center on node with zoom
+    const nodeWidth = node.data.type === "server" ? 320 : node.data.type === "agent" ? 240 : 208;
+    const nodeHeight = node.data.type === "server" ? 200 : node.data.type === "agent" ? 150 : 120;
+    
+    setCenter(node.position.x + nodeWidth / 2, node.position.y + nodeHeight / 2, {
+      zoom: 1.5,
+      duration: 600,
+    });
+  }, [setCenter, getNode]);
+  
+  // Group nodes by type
+  const nodesByType = useMemo(() => {
+    const grouped = new Map<CanvasNodeType, Node<CanvasNodeData>[]>();
+    nodes.forEach((node) => {
+      const type = node.data.type;
+      if (!grouped.has(type)) {
+        grouped.set(type, []);
+      }
+      grouped.get(type)!.push(node);
+    });
+    return grouped;
+  }, [nodes]);
+  
+  if (!isOpen) {
+    return (
+      <Panel position="bottom-left" className="m-2">
+        <button
+          onClick={() => setIsOpen(true)}
+          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors flex items-center gap-2 shadow-lg"
+          title="Open node navigator"
+        >
+          <Layers className="w-4 h-4" />
+          Navigator
+        </button>
+      </Panel>
+    );
+  }
+  
+  return (
+    <Panel position="bottom-left" className="m-2">
+      <div className="bg-slate-900/95 rounded-lg shadow-xl border border-slate-700 max-w-xs max-h-96 overflow-hidden flex flex-col">
+        <div className="px-3 py-2 border-b border-slate-700 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-200">Node Navigator</h3>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-2">
+          {Array.from(nodesByType.entries()).map(([type, nodesOfType]) => (
+            <div key={type} className="mb-3">
+              <div className="text-xs font-semibold text-slate-400 uppercase px-2 py-1">
+                {type}s ({nodesOfType.length})
+              </div>
+              {nodesOfType.map((node) => (
+                <button
+                  key={node.id}
+                  onClick={() => zoomToNode(node.id)}
+                  className="w-full text-left px-2 py-1.5 text-sm text-slate-300 hover:bg-slate-700/50 rounded transition-colors flex items-center gap-2"
+                >
+                  <div className={cn(
+                    "w-5 h-5 rounded flex items-center justify-center text-xs font-bold",
+                    type === "server" && "bg-teal-500/20 text-teal-400",
+                    type === "agent" && "bg-purple-500/20 text-purple-400",
+                    type === "tool" && "bg-blue-500/20 text-blue-400",
+                    type === "policy" && "bg-yellow-500/20 text-yellow-400",
+                    type === "resource" && "bg-orange-500/20 text-orange-400",
+                    type === "environment" && "bg-slate-500/20 text-slate-400",
+                    type === "prompt" && "bg-pink-500/20 text-pink-400",
+                  )}>
+                    {type === "server" ? "S" : type === "agent" ? "A" : type === "tool" ? "T" : 
+                     type === "policy" ? "P" : type === "resource" ? "R" : type === "environment" ? "E" : "►"}
+                  </div>
+                  <span className="truncate">{node.data.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
+}
 
 export function CanvasView() {
   const t = useTranslations();
@@ -1507,20 +1605,40 @@ export function CanvasView() {
     
     setNodes((currentNodes) => {
       // If we haven't initialized yet or nodes are empty, use mergedNodes directly
+      // mergedNodes already contains saved positions from backend
       if (!nodesInitializedRef.current || currentNodes.length === 0) {
         nodesInitializedRef.current = true;
         return mergedNodes.length > 0 ? mergedNodes : currentNodes;
       }
       
-      // Otherwise, merge positions
-      const currentPositions = new Map(currentNodes.map((n) => [n.id, n.position]));
+      // Otherwise, merge: prefer saved positions from mergedNodes (backend), 
+      // but keep current positions if user is actively dragging
       const updatedNodes = mergedNodes.map((node) => {
-        const savedPosition = currentPositions.get(node.id);
+        // Use saved position from mergedNodes (from backend) as primary source
+        // mergedNodes already has the correct saved positions merged
+        const savedPosition = node.position;
+        
+        // Only use current position if it's different (user is actively editing)
+        // and if it's a valid position
+        const currentNode = currentNodes.find((n) => n.id === node.id);
+        if (currentNode) {
+          const currentPos = currentNode.position;
+          // If current position is valid and different from saved, user is editing
+          if (currentPos && typeof currentPos.x === 'number' && typeof currentPos.y === 'number' &&
+              !isNaN(currentPos.x) && !isNaN(currentPos.y) &&
+              (currentPos.x !== savedPosition?.x || currentPos.y !== savedPosition?.y)) {
+            // User is actively editing - keep current position
+            return { ...node, position: currentPos };
+          }
+        }
+        
+        // Use saved position from backend (mergedNodes)
         if (savedPosition && typeof savedPosition.x === 'number' && typeof savedPosition.y === 'number' &&
             !isNaN(savedPosition.x) && !isNaN(savedPosition.y)) {
           return { ...node, position: savedPosition };
         }
-        // Ensure node position is valid
+        
+        // Fallback: ensure node position is valid
         const nodePos = node.position || { x: 0, y: 0 };
         if (typeof nodePos.x !== 'number' || typeof nodePos.y !== 'number' ||
             isNaN(nodePos.x) || isNaN(nodePos.y)) {
@@ -1767,6 +1885,66 @@ export function CanvasView() {
     queryClient.invalidateQueries({ queryKey: ["connections", effectiveOrgId] });
     queryClient.invalidateQueries({ queryKey: ["environments", effectiveOrgId] });
   }, [queryClient, effectiveOrgId]);
+
+  const handleAutoArrange = useCallback(() => {
+    // Group nodes by LANE (not by type!) to prevent overlaps
+    const nodesByLane = new Map<string, Node<CanvasNodeData>[]>();
+    
+    nodes.forEach((node) => {
+      const lane = getLaneForNodeType(node.data.type);
+      if (lane) {
+        const laneId = lane.id;
+        if (!nodesByLane.has(laneId)) {
+          nodesByLane.set(laneId, []);
+        }
+        nodesByLane.get(laneId)!.push(node);
+      }
+    });
+
+    // Sort nodes within each lane by type (so similar nodes stay together)
+    nodesByLane.forEach((nodesInLane, laneId) => {
+      nodesInLane.sort((a, b) => {
+        // Sort by type first, then by label
+        if (a.data.type !== b.data.type) {
+          return a.data.type.localeCompare(b.data.type);
+        }
+        return a.data.label.localeCompare(b.data.label);
+      });
+    });
+
+    // Apply auto-layout positions to each node
+    const updatedNodes = nodes.map((node) => {
+      const lane = getLaneForNodeType(node.data.type);
+      if (!lane) {
+        return node; // Keep original position if no lane found
+      }
+      
+      // Get all nodes in the same lane (already sorted)
+      const nodesInSameLane = nodesByLane.get(lane.id) || [];
+      
+      // Find index of this node within its lane
+      const indexInLane = nodesInSameLane.findIndex((n) => n.id === node.id);
+      
+      if (indexInLane === -1) {
+        return node; // Keep original if not found
+      }
+      
+      // Calculate position based on lane and index
+      const newPosition = getAutoLayoutPosition(node.data.type, indexInLane);
+      
+      return {
+        ...node,
+        position: newPosition,
+      };
+    });
+
+    setNodes(updatedNodes);
+    
+    // Save state after auto-arranging
+    setTimeout(() => {
+      saveCanvasState(updatedNodes, edges);
+    }, 100);
+  }, [nodes, edges, setNodes, saveCanvasState]);
 
   const handleExport = useCallback(() => {
     const canvasState: CanvasState = {
@@ -2741,14 +2919,16 @@ export function CanvasView() {
                   if (!node?.data) return "#64748b";
                   const nodeData = node.data as CanvasNodeData;
                   const nodeType = nodeData.type;
+                  // Use accent colors from visual config for consistency
                   const colorMap: Record<string, string> = {
-                    agent: "#a855f7",
-                    tool: "#3b82f6",
-                    resource: "#10b981",
-                    policy: "#eab308",
-                    server: "#06b6d4",
-                    environment: "#ec4899",
-                    organization: "#6366f1",
+                    environment: "#64748b", // Slate (subtle)
+                    server: "#14b8a6", // Teal (PROMINENT)
+                    agent: "#a855f7", // Purple (PROMINENT)
+                    tool: "#3b82f6", // Blue
+                    policy: "#eab308", // Yellow
+                    resource: "#f97316", // Orange
+                    organization: "#6366f1", // Indigo
+                    prompt: "#ec4899", // Pink
                   };
                   return colorMap[nodeType] || "#64748b";
                 } catch {
@@ -2760,10 +2940,13 @@ export function CanvasView() {
               maskColor="rgba(0, 0, 0, 0.6)"
               maskStrokeColor="rgba(255, 255, 255, 0.4)"
               position="bottom-right"
+              pannable={true}
+              zoomable={true}
               style={{
                 backgroundColor: "#0f172a",
                 border: "1px solid #334155",
                 borderRadius: "8px",
+                cursor: "pointer",
               }}
             />
 
@@ -2774,13 +2957,23 @@ export function CanvasView() {
                   onClick={handleRefresh}
                   className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   disabled={!effectiveOrgId}
+                  title="Refresh data from backend"
                 >
                   <RefreshCw className="w-4 h-4" />
                   Refresh
                 </button>
                 <button
+                  onClick={handleAutoArrange}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                  title="Auto-arrange nodes into lanes"
+                >
+                  <ArrowDownUp className="w-4 h-4" />
+                  Auto-Arrange
+                </button>
+                <button
                   onClick={handleExport}
                   className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors flex items-center gap-2"
+                  title="Export canvas configuration"
                 >
                   <Download className="w-4 h-4" />
                   Export
@@ -2971,6 +3164,9 @@ export function CanvasView() {
                 </button>
               </div>
             </Panel>
+            
+            {/* Node Navigator for easy navigation */}
+            <NodeNavigator nodes={nodes} />
           </ReactFlow>
         </div>
 

@@ -16,6 +16,39 @@ from apps.tools.models import Tool
 logger = logging.getLogger(__name__)
 
 
+class EndpointType:
+    """Enum-like class for connection endpoint types."""
+    
+    SYSTEM = "system"  # agentxsuite://system
+    OWN_MCP_FABRIC = "own_mcp_fabric"  # http://localhost:8090
+    EXTERNAL_MCP = "external_mcp"  # Any other HTTP endpoint
+
+
+def _detect_endpoint_type(conn: Connection) -> str:
+    """
+    Detect the type of connection endpoint.
+    
+    Args:
+        conn: Connection instance
+    
+    Returns:
+        EndpointType constant (SYSTEM, OWN_MCP_FABRIC, or EXTERNAL_MCP)
+    """
+    endpoint = conn.endpoint.rstrip("/")
+    
+    # Special case: agentxsuite://system
+    if endpoint == "agentxsuite://system":
+        return EndpointType.SYSTEM
+    
+    # Check if it's our own MCP Fabric service
+    mcp_fabric_endpoints = _get_mcp_fabric_endpoints()
+    if any(endpoint.startswith(e) for e in mcp_fabric_endpoints):
+        return EndpointType.OWN_MCP_FABRIC
+    
+    # Default: external MCP server
+    return EndpointType.EXTERNAL_MCP
+
+
 def test_connection(conn: Connection) -> Connection:
     """
     Test a connection with comprehensive MCP validation.
@@ -159,6 +192,11 @@ def sync_connection(conn: Connection) -> tuple[list[Tool], list[Tool]]:
         f"{len(created_tools)} created, {len(updated_tools)} updated"
     )
 
+    # Update connection status and last_seen_at after successful sync
+    conn.status = "ok"
+    conn.last_seen_at = timezone.now()
+    conn.save(update_fields=["status", "last_seen_at"])
+
     return (created_tools, updated_tools)
 
 
@@ -248,29 +286,96 @@ def _get_endpoints_from_manifest(manifest: dict, base_endpoint: str) -> dict[str
     return endpoints
 
 
-def verify_mcp_server(conn: Connection) -> bool:
+def _verify_system_connection(conn: Connection) -> bool:
     """
-    Verify that endpoint is a valid MCP server.
-
-    Checks:
-    1. Try to fetch manifest (optional but preferred)
-    2. Health endpoint responds with 200 (from manifest or default)
-    3. Tools endpoint exists and returns valid MCP format (from manifest or default)
-
+    Verify system connection (agentxsuite://system).
+    
     Args:
-        conn: Connection instance to verify
-
+        conn: Connection instance
+    
     Returns:
-        True if valid MCP server, False otherwise
+        True if valid, False otherwise
     """
-    # Normalize endpoint: remove trailing /mcp if present (MCP Fabric uses /.well-known/mcp prefix)
+    if not conn.organization or not conn.environment:
+        logger.warning(f"System connection missing organization or environment")
+        return False
+    
+    try:
+        from mcp_fabric.registry import get_tools_list_for_org_env
+        
+        tools_list = get_tools_list_for_org_env(
+            org=conn.organization,
+            env=conn.environment,
+        )
+        
+        # Filter for system tools only (agentxsuite_*)
+        system_tools = [t for t in tools_list if t.get("name", "").startswith("agentxsuite_")]
+        
+        if system_tools and len(system_tools) > 0:
+            logger.info(f"System connection verified: found {len(system_tools)} system tools")
+            return True
+        else:
+            logger.warning(f"System connection has no system tools registered")
+            return False
+    except Exception as e:
+        logger.warning(f"Error validating system connection: {e}")
+        return False
+
+
+def _verify_own_mcp_fabric(conn: Connection) -> bool:
+    """
+    Verify own MCP Fabric service by checking database directly.
+    
+    Args:
+        conn: Connection instance
+    
+    Returns:
+        True if valid, False otherwise
+    """
+    if not conn.organization or not conn.environment:
+        logger.warning(f"MCP Fabric connection missing organization or environment")
+        return False
+    
+    try:
+        from mcp_fabric.registry import get_tools_list_for_org_env
+        
+        tools_list = get_tools_list_for_org_env(
+            org=conn.organization,
+            env=conn.environment,
+        )
+        
+        if tools_list and len(tools_list) > 0:
+            logger.info(f"MCP Fabric server verified: found {len(tools_list)} tools in database")
+            return True
+        else:
+            logger.warning(f"MCP Fabric server has no tools registered")
+            return False
+    except Exception as e:
+        logger.warning(f"Error validating own MCP Fabric service: {e}")
+        return False
+
+
+def _verify_external_mcp_server(conn: Connection) -> bool:
+    """
+    Verify external MCP server via HTTP (manifest, health check, tools endpoint).
+    
+    Args:
+        conn: Connection instance
+    
+    Returns:
+        True if valid, False otherwise
+    """
+    # Normalize endpoint: remove trailing /mcp if present
     base_endpoint = conn.endpoint.rstrip("/")
     if base_endpoint.endswith("/mcp"):
-        base_endpoint = base_endpoint[:-4]  # Remove /mcp suffix
+        base_endpoint = base_endpoint[:-4]
         logger.debug(f"Normalized endpoint from {conn.endpoint} to {base_endpoint}")
     
-    # 1. Try to fetch manifest (optional - improves verification)
-    # Temporarily use normalized endpoint for manifest fetch
+    # Extract org_id and env_id for MCP Fabric multi-tenant endpoints
+    org_id = str(conn.organization.id) if conn.organization else None
+    env_id = str(conn.environment.id) if conn.environment else None
+    
+    # 1. Try to fetch manifest (optional)
     original_endpoint = conn.endpoint
     conn.endpoint = base_endpoint
     try:
@@ -280,9 +385,9 @@ def verify_mcp_server(conn: Connection) -> bool:
             endpoints = _get_endpoints_from_manifest(manifest, base_endpoint)
             logger.info(f"Using endpoints from manifest: {list(endpoints.keys())}")
     finally:
-        conn.endpoint = original_endpoint  # Restore original
+        conn.endpoint = original_endpoint
 
-    # 2. Health check (use manifest endpoint or default)
+    # 2. Health check
     health_urls = []
     if "health" in endpoints:
         health_urls.append(endpoints["health"])
@@ -304,12 +409,18 @@ def verify_mcp_server(conn: Connection) -> bool:
         logger.warning(f"Health check failed for {conn.endpoint}")
         return False
 
-    # 3. Tools endpoint validation (use manifest endpoint or defaults)
+    # 3. Tools endpoint validation
     tools_urls = []
     if "tools" in endpoints:
         tools_urls.append(endpoints["tools"])
     
-    # Add standard MCP tool endpoint variants (use normalized base_endpoint)
+    # Add MCP Fabric multi-tenant endpoint if org_id and env_id are available
+    if org_id and env_id:
+        tools_urls.append(
+            urljoin(base_endpoint.rstrip("/") + "/", f"mcp/{org_id}/{env_id}/.well-known/mcp/tools")
+        )
+    
+    # Add standard MCP tool endpoint variants
     tools_urls.extend([
         urljoin(base_endpoint.rstrip("/") + "/", ".well-known/mcp/tools"),
         urljoin(base_endpoint.rstrip("/") + "/", "mcp/tools"),
@@ -337,26 +448,20 @@ def verify_mcp_server(conn: Connection) -> bool:
                 if response.status_code == 200:
                     try:
                         data = response.json()
-                        # MCP Fabric returns a list directly, validate it
+                        # MCP Fabric returns a list directly
                         if isinstance(data, list):
-                            # Validate tool structure
                             for tool in data:
                                 if not isinstance(tool, dict) or "name" not in tool:
-                                    logger.warning(
-                                        f"Invalid tool structure in {tools_url}"
-                                    )
+                                    logger.warning(f"Invalid tool structure in {tools_url}")
                                     return False
                             logger.info(f"MCP Fabric server verified: {tools_url}")
                             return True
-                        # Validate MCP format: must be dict with "tools" key
+                        # Standard MCP format: dict with "tools" key
                         if isinstance(data, dict) and "tools" in data:
                             if isinstance(data["tools"], list):
-                                # Validate tool structure
                                 for tool in data["tools"]:
                                     if not isinstance(tool, dict) or "name" not in tool:
-                                        logger.warning(
-                                            f"Invalid tool structure in {tools_url}"
-                                        )
+                                        logger.warning(f"Invalid tool structure in {tools_url}")
                                         return False
                                 logger.info(f"MCP server verified: {tools_url}")
                                 return True
@@ -364,7 +469,6 @@ def verify_mcp_server(conn: Connection) -> bool:
                         logger.debug(f"Invalid JSON response from {tools_url}")
                         continue
                 elif response.status_code == 401:
-                    # 401 means server exists and responds, but needs authentication
                     got_auth_required = True
                     logger.debug(f"Authentication required for {tools_url}")
                     continue
@@ -381,8 +485,7 @@ def verify_mcp_server(conn: Connection) -> bool:
             logger.debug(f"Unexpected error checking {tools_url}: {e}")
             continue
 
-    # If health passed AND we got 401 responses, the server likely exists but needs auth
-    # This is acceptable for MCP servers with authentication requirements
+    # If health passed AND we got 401 responses, server likely exists but needs auth
     if got_auth_required:
         logger.info(f"MCP server detected at {conn.endpoint} (authentication required)")
         return True
@@ -391,11 +494,97 @@ def verify_mcp_server(conn: Connection) -> bool:
     return False
 
 
+def verify_mcp_server(conn: Connection) -> bool:
+    """
+    Verify that endpoint is a valid MCP server.
+
+    Uses strategy pattern based on endpoint type:
+    - SYSTEM: Validate via database (system tools)
+    - OWN_MCP_FABRIC: Validate via database (all tools)
+    - EXTERNAL_MCP: Validate via HTTP (manifest, health, tools endpoint)
+
+    Args:
+        conn: Connection instance to verify
+
+    Returns:
+        True if valid MCP server, False otherwise
+    """
+    endpoint_type = _detect_endpoint_type(conn)
+    
+    if endpoint_type == EndpointType.SYSTEM:
+        return _verify_system_connection(conn)
+    elif endpoint_type == EndpointType.OWN_MCP_FABRIC:
+        return _verify_own_mcp_fabric(conn)
+    else:  # EXTERNAL_MCP
+        return _verify_external_mcp_server(conn)
+
+
+def _get_mcp_fabric_endpoints() -> list[str]:
+    """
+    Get list of MCP Fabric endpoints for own service detection.
+    
+    Returns both localhost and 127.0.0.1 variants of the configured MCP Fabric URL.
+    """
+    try:
+        from mcp_fabric.deps import MCP_FABRIC_BASE_URL
+        
+        endpoints = [MCP_FABRIC_BASE_URL.rstrip("/")]
+        
+        # Also add 127.0.0.1 variant if URL contains localhost
+        if "localhost" in MCP_FABRIC_BASE_URL:
+            endpoints.append(MCP_FABRIC_BASE_URL.replace("localhost", "127.0.0.1").rstrip("/"))
+        
+        return endpoints
+    except ImportError:
+        # Fallback if mcp_fabric is not available
+        logger.warning("Could not import MCP_FABRIC_BASE_URL, using defaults")
+        return ["http://localhost:8090", "http://127.0.0.1:8090"]
+
+
+def _fetch_tools_from_database(conn: Connection, system_tools_only: bool = False) -> dict | None:
+    """
+    Fetch tools directly from database (for system or own MCP Fabric connections).
+    
+    Args:
+        conn: Connection instance
+        system_tools_only: If True, filter for system tools (agentxsuite_*) only
+    
+    Returns:
+        Tools data dictionary if valid, None otherwise
+    """
+    if not conn.organization or not conn.environment:
+        logger.warning(f"Connection missing organization or environment")
+        return None
+    
+    try:
+        from mcp_fabric.registry import get_tools_list_for_org_env
+        
+        tools_list = get_tools_list_for_org_env(
+            org=conn.organization,
+            env=conn.environment,
+        )
+        
+        if system_tools_only:
+            # Filter for system tools only (agentxsuite_*)
+            tools_list = [t for t in tools_list if t.get("name", "").startswith("agentxsuite_")]
+            logger.info(f"Fetched {len(tools_list)} system tools from database")
+        else:
+            logger.info(f"Fetched {len(tools_list)} tools from database")
+        
+        return {"tools": tools_list}
+    except Exception as e:
+        logger.warning(f"Error fetching tools from database: {e}")
+        return None
+
+
 def _fetch_tools_with_validation(conn: Connection) -> dict | None:
     """
     Fetch tools from MCP server with strict validation.
 
-    Uses manifest endpoints if available, otherwise falls back to standard MCP endpoints.
+    Uses strategy pattern based on endpoint type:
+    - SYSTEM: Fetch system tools from database
+    - OWN_MCP_FABRIC: Fetch all tools from database
+    - EXTERNAL_MCP: Fetch via HTTP (manifest endpoints or defaults)
 
     Args:
         conn: Connection instance
@@ -403,11 +592,24 @@ def _fetch_tools_with_validation(conn: Connection) -> dict | None:
     Returns:
         Tools data dictionary if valid, None otherwise
     """
-    # Normalize endpoint: remove trailing /mcp if present (MCP Fabric uses /.well-known/mcp prefix)
+    endpoint_type = _detect_endpoint_type(conn)
+    
+    # System or own MCP Fabric: fetch from database
+    if endpoint_type == EndpointType.SYSTEM:
+        return _fetch_tools_from_database(conn, system_tools_only=True)
+    elif endpoint_type == EndpointType.OWN_MCP_FABRIC:
+        return _fetch_tools_from_database(conn, system_tools_only=False)
+    
+    # External MCP: fetch via HTTP
+    # Normalize endpoint: remove trailing /mcp if present
     base_endpoint = conn.endpoint.rstrip("/")
     if base_endpoint.endswith("/mcp"):
-        base_endpoint = base_endpoint[:-4]  # Remove /mcp suffix
+        base_endpoint = base_endpoint[:-4]
         logger.debug(f"Normalized endpoint from {conn.endpoint} to {base_endpoint}")
+    
+    # Extract org_id and env_id from connection for MCP Fabric multi-tenant endpoints
+    org_id = str(conn.organization.id) if conn.organization else None
+    env_id = str(conn.environment.id) if conn.environment else None
     
     # Try to get endpoints from manifest first
     original_endpoint = conn.endpoint
@@ -423,6 +625,11 @@ def _fetch_tools_with_validation(conn: Connection) -> dict | None:
                 logger.info(f"Using tools endpoint from manifest: {endpoints['tools']}")
     finally:
         conn.endpoint = original_endpoint  # Restore original
+    
+    # Add MCP Fabric multi-tenant endpoint if org_id and env_id are available (prioritize this)
+    if org_id and env_id:
+        tools_urls.insert(0, urljoin(base_endpoint.rstrip("/") + "/", f"mcp/{org_id}/{env_id}/.well-known/mcp/tools"))
+        logger.info(f"Using MCP Fabric multi-tenant endpoint: mcp/{org_id}/{env_id}/.well-known/mcp/tools")
     
     # Add standard MCP tool endpoint variants (use normalized base_endpoint)
     tools_urls.extend([

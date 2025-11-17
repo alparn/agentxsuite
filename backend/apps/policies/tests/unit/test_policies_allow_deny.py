@@ -723,3 +723,201 @@ def test_policy_matching_is_case_and_whitespace_sensitive(agent_tool, tool_name_
         assert_allowed(agent, tool, expected_allowed=True)
     else:
         assert_allowed(agent, tool, expected_allowed=False, expected_reason_keywords=["No policy explicitly allows"])
+
+
+# ========== Wildcard Support ==========
+
+
+@pytest.mark.django_db
+def test_wildcard_allow_all_system_tools(agent_tool):
+    """Test that wildcard pattern agentxsuite_* allows all system tools."""
+    from apps.tools.models import Tool
+    
+    agent, _ = agent_tool
+    
+    # Create system tool
+    system_tool = Tool.objects.create(
+        organization=agent.organization,
+        environment=agent.environment,
+        connection=agent.connection,
+        name="agentxsuite_list_runs",
+        schema_json={},
+        sync_status="synced",
+        enabled=True,
+    )
+    
+    # Create policy with wildcard
+    create_policy(
+        agent.organization,
+        agent.environment,
+        "allow-system-tools",
+        {"allow": ["agentxsuite_*"]},
+        enabled=True,
+    )
+    
+    # Should be allowed (wildcard matches)
+    assert_allowed(agent, system_tool, expected_allowed=True)
+
+
+@pytest.mark.django_db
+def test_wildcard_deny_pattern(agent_tool):
+    """Test that wildcard pattern in deny list works."""
+    from apps.tools.models import Tool
+    
+    agent, _ = agent_tool
+    
+    # Create tool matching pattern
+    dangerous_tool = Tool.objects.create(
+        organization=agent.organization,
+        environment=agent.environment,
+        connection=agent.connection,
+        name="dangerous_delete_all",
+        schema_json={},
+        sync_status="synced",
+        enabled=True,
+    )
+    
+    # Create policy with wildcard deny
+    create_policy(
+        agent.organization,
+        agent.environment,
+        "deny-dangerous",
+        {"deny": ["dangerous_*"]},
+        enabled=True,
+    )
+    
+    # Should be denied (wildcard matches)
+    assert_allowed(agent, dangerous_tool, expected_allowed=False, expected_reason_keywords=["denied"])
+
+
+@pytest.mark.parametrize(
+    "pattern,tool_name,should_match",
+    [
+        ("agentxsuite_*", "agentxsuite_list_runs", True),
+        ("agentxsuite_*", "agentxsuite_create_agent", True),
+        ("agentxsuite_*", "other_tool", False),
+        ("*_delete", "user_delete", True),
+        ("*_delete", "tool_delete", True),
+        ("*_delete", "delete_user", False),
+        ("tool-*", "tool-123", True),
+        ("tool-*", "tool-", True),
+        ("tool-*", "tools-123", False),
+        ("*", "any_tool", True),
+        ("test_*_prod", "test_app_prod", True),
+        ("test_*_prod", "test_prod", False),
+    ],
+)
+@pytest.mark.django_db
+def test_wildcard_patterns(agent_tool, pattern, tool_name, should_match):
+    """Test various wildcard patterns with fnmatch."""
+    from apps.tools.models import Tool
+    
+    agent, _ = agent_tool
+    
+    # Create tool with specific name
+    test_tool = Tool.objects.create(
+        organization=agent.organization,
+        environment=agent.environment,
+        connection=agent.connection,
+        name=tool_name,
+        schema_json={},
+        sync_status="synced",
+        enabled=True,
+    )
+    
+    # Create policy with wildcard pattern
+    create_policy(
+        agent.organization,
+        agent.environment,
+        "wildcard-policy",
+        {"allow": [pattern]},
+        enabled=True,
+    )
+    
+    # Check if pattern matches
+    if should_match:
+        assert_allowed(agent, test_tool, expected_allowed=True)
+    else:
+        assert_allowed(agent, test_tool, expected_allowed=False, expected_reason_keywords=["No policy explicitly allows"])
+
+
+@pytest.mark.django_db
+def test_wildcard_deny_beats_wildcard_allow(agent_tool):
+    """Test that wildcard deny beats wildcard allow."""
+    from apps.tools.models import Tool
+    
+    agent, _ = agent_tool
+    
+    # Create system tool
+    system_tool = Tool.objects.create(
+        organization=agent.organization,
+        environment=agent.environment,
+        connection=agent.connection,
+        name="agentxsuite_delete_all",
+        schema_json={},
+        sync_status="synced",
+        enabled=True,
+    )
+    
+    # Create allow policy with wildcard
+    create_policy(
+        agent.organization,
+        agent.environment,
+        "allow-all-system",
+        {"allow": ["agentxsuite_*"]},
+        enabled=True,
+    )
+    
+    # Create deny policy with more specific wildcard
+    create_policy(
+        agent.organization,
+        agent.environment,
+        "deny-delete-tools",
+        {"deny": ["*_delete_*"]},
+        enabled=True,
+    )
+    
+    # Should be denied (deny beats allow, both wildcards)
+    assert_allowed(agent, system_tool, expected_allowed=False, expected_reason_keywords=["denied"])
+
+
+@pytest.mark.django_db
+def test_wildcard_and_exact_match_mixed(agent_tool):
+    """Test that wildcard and exact match patterns can be mixed."""
+    from apps.tools.models import Tool
+    
+    agent, _ = agent_tool
+    
+    # Create tools
+    system_tool1 = Tool.objects.create(
+        organization=agent.organization,
+        environment=agent.environment,
+        connection=agent.connection,
+        name="agentxsuite_list_runs",
+        schema_json={},
+        sync_status="synced",
+        enabled=True,
+    )
+    
+    custom_tool = Tool.objects.create(
+        organization=agent.organization,
+        environment=agent.environment,
+        connection=agent.connection,
+        name="custom_special_tool",
+        schema_json={},
+        sync_status="synced",
+        enabled=True,
+    )
+    
+    # Create policy with mixed patterns
+    create_policy(
+        agent.organization,
+        agent.environment,
+        "mixed-policy",
+        {"allow": ["agentxsuite_*", "custom_special_tool"]},
+        enabled=True,
+    )
+    
+    # Both should be allowed
+    assert_allowed(agent, system_tool1, expected_allowed=True)
+    assert_allowed(agent, custom_tool, expected_allowed=True)

@@ -6,6 +6,7 @@ import { Bot, Wrench, Database, Shield, Server, Globe, Building2, CheckCircle2, 
 import type { CanvasNodeData, CanvasNodeType } from "@/lib/canvasTypes";
 import { cn } from "@/lib/utils";
 import { getValidTargetTypes, getValidSourceTypes, getAllowedChildNodes, getValidParentTypes } from "@/lib/canvasEdgeValidation";
+import { getNodeColors, getNodeSizeClass } from "@/lib/canvasVisualConfig";
 
 const nodeIcons = {
   agent: Bot,
@@ -45,6 +46,18 @@ const nodeTypeOptions: Array<{ type: CanvasNodeType; label: string; icon: typeof
   { type: "prompt", label: "Prompt", icon: MessageSquare },
 ];
 
+// Type badge mapping (S, T, P, R, E, A, O, ►)
+const typeBadges: Record<CanvasNodeType, string> = {
+  server: "S",
+  tool: "T",
+  policy: "P",
+  resource: "R",
+  environment: "E",
+  agent: "A",
+  organization: "O",
+  prompt: "►",
+};
+
 export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNodeData>>) => {
   const { getNode } = useReactFlow();
   const Icon = nodeIcons[data.type] || Bot;
@@ -56,6 +69,10 @@ export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNod
   const menuRef = useRef<HTMLDivElement>(null);
   // Show buttons if onCreateNode is available (always show if node can create children/parents)
   const showButtons = !!data.onCreateNode;
+  
+  // Get visual config for this node type
+  const colors = getNodeColors(data.type);
+  const sizeClass = getNodeSizeClass(data.type);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -141,12 +158,17 @@ export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNod
   return (
     <div
       className={cn(
-        "px-4 py-3 rounded-lg border-2 min-w-[180px] bg-slate-900 shadow-lg transition-all relative group",
-        getNodeBorderColor(),
-        statusColor
+        "relative group backdrop-blur-sm border-2 rounded-xl shadow-xl transition-all duration-200 hover:shadow-2xl",
+        sizeClass,
+        "bg-slate-900/80", // Neutral dark body
+        selected ? "border-purple-500 ring-2 ring-purple-500/50" : "border-slate-700/30",
+        isHovered && !selected && "border-purple-500/30"
       )}
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseLeave={() => {
+        setIsHovered(false);
+        setShowMenu(null);
+      }}
     >
       {/* Plus Button Left */}
       {showButtons && data.onCreateNode && data.type !== "policy" && data.type !== "prompt" && data.type !== "environment" && data.type !== "organization" && (() => {
@@ -208,40 +230,40 @@ export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNod
         </div>
       ) : null}
 
-      {/* Node content */}
-      <div className="flex items-start gap-3">
+      {/* Colored Header with Badge */}
+      <div className={cn(
+        "px-3 py-2 flex items-center gap-2 rounded-t-xl",
+        colors.iconBg,
+        "border-b border-slate-700/30"
+      )}>
         <div className={cn(
-          "p-2 rounded-lg",
-          data.type === "agent" && "bg-purple-500/20 text-purple-400",
-          data.type === "tool" && "bg-green-500/20 text-green-400",
-          data.type === "resource" && "bg-amber-500/20 text-amber-400",
-          data.type === "policy" && "bg-yellow-600/20 text-yellow-500",
-          data.type === "server" && "bg-rose-500/20 text-rose-400",
-          data.type === "environment" && "bg-cyan-500/20 text-cyan-400",
-          data.type === "organization" && "bg-indigo-500/20 text-indigo-400",
-          data.type === "prompt" && "bg-blue-500/20 text-blue-400",
+          "w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold",
+          colors.bg,
+          colors.icon,
+          "border",
+          colors.border
         )}>
-          <Icon className="w-5 h-5" />
+          {typeBadges[data.type]}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="font-semibold text-sm text-white truncate">{data.label}</h3>
+        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+          <h3 className={cn("font-semibold text-sm truncate", colors.text)}>{data.label}</h3>
             {StatusIcon && (
-              <StatusIcon className={cn("w-4 h-4 flex-shrink-0", statusColor)} />
+            <StatusIcon className={cn("w-3.5 h-3.5 flex-shrink-0", statusColor)} />
             )}
           </div>
+      </div>
+      
+      {/* Neutral Body */}
+      <div className="px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Icon className={cn("w-4 h-4", colors.icon)} />
           <p className="text-xs text-slate-400 capitalize">{data.type}</p>
-          {data.status && (
-            <span className={cn("text-xs px-2 py-0.5 rounded mt-1 inline-block", statusColor)}>
-              {status}
-            </span>
-          )}
         </div>
       </div>
 
-      {/* Action Buttons */}
+      {/* Action Buttons - Icon Only */}
       {data.onAction && (data.type === "server" || data.type === "tool" || data.type === "agent") && (
-        <div className="flex items-center gap-1 mt-2 pt-2 border-t border-slate-700/50">
+        <div className="flex items-center gap-1 px-3 pb-2">
           {data.type === "server" && (
             <>
               <button
@@ -249,22 +271,20 @@ export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNod
                   e.stopPropagation();
                   data.onAction?.("test", data.connectionId);
                 }}
-                className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded transition-colors"
+                className="flex items-center justify-center w-7 h-7 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded transition-colors"
                 title="Test Connection"
               >
-                <Wifi className="w-3 h-3" />
-                Test
+                <Wifi className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   data.onAction?.("sync", data.connectionId);
                 }}
-                className="flex items-center gap-1 px-2 py-1 text-xs bg-green-500/10 hover:bg-green-500/20 text-green-400 rounded transition-colors"
+                className="flex items-center justify-center w-7 h-7 bg-green-500/10 hover:bg-green-500/20 text-green-400 rounded transition-colors"
                 title="Sync Tools"
               >
-                <RefreshCw className="w-3 h-3" />
-                Sync
+                <RefreshCw className="w-3.5 h-3.5" />
               </button>
             </>
           )}
@@ -274,11 +294,10 @@ export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNod
                 e.stopPropagation();
                 data.onAction?.("run", data.toolId);
               }}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded transition-colors"
+              className="flex items-center justify-center w-7 h-7 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded transition-colors"
               title="Run Tool"
             >
-              <Play className="w-3 h-3" />
-              Run
+              <Play className="w-3.5 h-3.5" />
             </button>
           )}
           {data.type === "agent" && (
@@ -287,11 +306,10 @@ export const CanvasNode = memo(({ data, selected, id }: NodeProps<Node<CanvasNod
                 e.stopPropagation();
                 data.onAction?.("ping", data.agentId);
               }}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded transition-colors"
+              className="flex items-center justify-center w-7 h-7 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded transition-colors"
               title="Ping Agent"
             >
-              <Wifi className="w-3 h-3" />
-              Ping
+              <Wifi className="w-3.5 h-3.5" />
             </button>
           )}
         </div>

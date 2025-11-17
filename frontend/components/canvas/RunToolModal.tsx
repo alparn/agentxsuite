@@ -173,62 +173,127 @@ export function RunToolModal({
           {/* Run Result */}
           {runResult && (
             <div className={`p-4 rounded-lg border ${
-              runResult.error 
+              runResult.error || runResult.isError || runResult.status === "failed"
                 ? "bg-red-500/10 border-red-500/30" 
                 : "bg-green-500/10 border-green-500/30"
             }`}>
               <div className="flex items-center gap-2 mb-3">
-                {runResult.error ? (
+                {runResult.error || runResult.isError || runResult.status === "failed" ? (
                   <XCircle className="w-5 h-5 text-red-400" />
                 ) : (
                   <CheckCircle className="w-5 h-5 text-green-400" />
                 )}
                 <span className={`font-medium ${
-                  runResult.error ? "text-red-400" : "text-green-400"
+                  runResult.error || runResult.isError || runResult.status === "failed" 
+                    ? "text-red-400" 
+                    : "text-green-400"
                 }`}>
-                  {runResult.error ? "Run Failed" : "Run Started"}
+                  {runResult.error || runResult.isError || runResult.status === "failed" 
+                    ? "Run Failed" 
+                    : runResult.status === "succeeded" 
+                      ? "Run Succeeded" 
+                      : "Run Started"}
                 </span>
               </div>
               
+              {/* Success case - show full details */}
               {!runResult.error && runResult.run_id && (
-                <div className="space-y-2">
-                  <div className="text-sm text-slate-300">
-                    <span className="text-slate-400">Run ID:</span>{" "}
-                    <span className="font-mono text-purple-400">{runResult.run_id}</span>
-                  </div>
-                  <div className="text-sm text-slate-300">
-                    <span className="text-slate-400">Status:</span>{" "}
-                    <span className="capitalize">{runResult.status}</span>
-                  </div>
-                  {runResult.execution?.started_at && (
+                <div className="space-y-3">
+                  {/* Run Info */}
+                  <div className="space-y-2">
                     <div className="text-sm text-slate-300">
-                      <span className="text-slate-400">Started:</span>{" "}
-                      {new Date(runResult.execution.started_at).toLocaleString()}
+                      <span className="text-slate-400">Run ID:</span>{" "}
+                      <span className="font-mono text-purple-400">{runResult.run_id}</span>
+                    </div>
+                    <div className="text-sm text-slate-300">
+                      <span className="text-slate-400">Status:</span>{" "}
+                      <span className={`capitalize px-2 py-0.5 rounded text-xs ${
+                        runResult.status === "succeeded" 
+                          ? "bg-green-500/20 text-green-400" 
+                          : runResult.status === "failed"
+                            ? "bg-red-500/20 text-red-400"
+                            : "bg-yellow-500/20 text-yellow-400"
+                      }`}>
+                        {runResult.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Agent & Tool Info */}
+                  {(runResult.agent || runResult.tool) && (
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-700/50">
+                      {runResult.agent && (
+                        <div className="text-sm">
+                          <div className="text-slate-400 mb-1">Agent:</div>
+                          <div className="text-slate-200 font-medium">{runResult.agent.name}</div>
+                        </div>
+                      )}
+                      {runResult.tool && (
+                        <div className="text-sm">
+                          <div className="text-slate-400 mb-1">Tool:</div>
+                          <div className="text-slate-200 font-medium">{runResult.tool.name}</div>
+                        </div>
+                      )}
                     </div>
                   )}
-                  {runResult.execution?.duration_ms && (
-                    <div className="text-sm text-slate-300">
-                      <span className="text-slate-400">Duration:</span>{" "}
-                      {runResult.execution.duration_ms}ms
+
+                  {/* Execution Info */}
+                  {runResult.execution && (
+                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-700/50">
+                      {runResult.execution.started_at && (
+                        <div className="text-sm">
+                          <div className="text-slate-400 mb-1">Started:</div>
+                          <div className="text-slate-300 font-mono text-xs">
+                            {new Date(runResult.execution.started_at).toLocaleTimeString()}
+                          </div>
+                        </div>
+                      )}
+                      {runResult.execution.duration_ms !== undefined && (
+                        <div className="text-sm">
+                          <div className="text-slate-400 mb-1">Duration:</div>
+                          <div className="text-slate-300">
+                            <span className="font-mono">{runResult.execution.duration_ms}</span>
+                            <span className="text-slate-500 ml-1">ms</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
+
+                  {/* Output */}
                   {runResult.content && runResult.content.length > 0 && (
-                    <div className="mt-3">
-                      <div className="text-sm text-slate-400 mb-1">Output:</div>
-                      <pre className="px-3 py-2 bg-slate-800 rounded-lg text-slate-300 text-xs overflow-x-auto max-h-48 overflow-y-auto">
+                    <div className="pt-2 border-t border-slate-700/50">
+                      <div className="text-sm font-medium text-slate-400 mb-2">Output:</div>
+                      <div className="space-y-2">
                         {runResult.content.map((item: any, idx: number) => (
-                          <div key={idx}>{item.text || JSON.stringify(item, null, 2)}</div>
+                          <div key={idx} className="px-3 py-2 bg-slate-800 rounded-lg">
+                            {item.type && (
+                              <div className="text-xs text-slate-500 mb-1 uppercase">{item.type}</div>
+                            )}
+                            <pre className="text-slate-200 text-sm whitespace-pre-wrap break-words">
+                              {item.text || JSON.stringify(item, null, 2)}
+                            </pre>
+                          </div>
                         ))}
-                      </pre>
+                      </div>
                     </div>
                   )}
                 </div>
               )}
               
+              {/* Error case */}
               {runResult.error && (
-                <p className="text-sm text-red-400 mt-2">
-                  Error: {runResult.error}
-                </p>
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-red-400">Error Details:</div>
+                  <pre className="px-3 py-2 bg-slate-800 rounded-lg text-red-300 text-sm whitespace-pre-wrap">
+                    {runResult.error}
+                  </pre>
+                  {runResult.error_description && (
+                    <pre className="px-3 py-2 bg-slate-800 rounded-lg text-slate-300 text-xs whitespace-pre-wrap">
+                      {runResult.error_description}
+                    </pre>
+                  )}
+                </div>
               )}
             </div>
           )}

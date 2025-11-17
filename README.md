@@ -73,14 +73,38 @@ python manage.py createsuperuser
 
 ### 5. Start the servers
 
+**Wichtig:** Stelle sicher, dass das virtuelle Environment aktiviert ist (`source venv/bin/activate`)
+
 **Django API**
 ```bash
+cd backend
 python manage.py runserver
 ```
 
 **MCP Fabric (FastAPI)**
 ```bash
+cd backend
 uvicorn mcp_fabric.main:app --reload --port 8090
+```
+
+**Beide Server gleichzeitig starten:**
+```bash
+cd backend
+# Terminal 1: Django
+python manage.py runserver
+
+# Terminal 2: MCP Fabric (in neuem Terminal, venv muss aktiviert sein!)
+source ../venv/bin/activate  # Falls noch nicht aktiviert
+uvicorn mcp_fabric.main:app --reload --port 8090
+```
+
+**Alternative: Makefile verwenden**
+```bash
+# Django API
+make run
+
+# MCP Fabric
+make run-mcp-fabric
 ```
 
 ## 🔑 Authentication

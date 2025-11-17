@@ -113,7 +113,15 @@ async def options_handler(request: Request, full_path: str):
 # Include routers
 app.include_router(prm.router)  # PRM endpoint (no prefix)
 
-# MCP routers with org/env scoping
+# Root MCP endpoints (org/env extracted from token claims)
+# These endpoints allow requests without org/env in URL path
+# Useful for direct browser/client requests with JWT tokens
+# Router already has prefix "/.well-known/mcp", so include directly
+app.include_router(mcp.router)  # Root /.well-known/mcp/*
+app.include_router(resources_router)  # Root /.well-known/mcp/resources
+app.include_router(prompts_router)  # Root /.well-known/mcp/prompts
+
+# MCP routers with org/env scoping in URL path
 # Tests expect: /mcp/{org_id}/{env_id}/.well-known/mcp/*
 # Create parent router with org/env prefix
 mcp_scoped_router = APIRouter(prefix="/mcp/{org_id}/{env_id}")

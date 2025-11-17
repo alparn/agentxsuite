@@ -578,9 +578,40 @@ def start_run(
 
         # 6. Execute with timeout protection
         def execute_tool() -> dict:
-            """Execute tool via MCP server HTTP call."""
+            """Execute tool via MCP server HTTP call or system tool handler."""
             if not tool.connection:
                 raise ValueError("Tool has no connection")
+
+            # Check if this is a system tool (agentxsuite://system)
+            # System tools are executed directly via handler functions, not HTTP
+            if tool.is_system_tool:
+                from apps.system_tools.services import TOOL_HANDLERS
+                
+                handler = TOOL_HANDLERS.get(tool.name)
+                if not handler:
+                    raise ValueError(f"System tool '{tool.name}' has no handler registered")
+                
+                logger.info(f"Executing system tool '{tool.name}' via handler")
+                
+                # Execute handler with token context
+                from libs.logging.context import get_context_ids
+                context_ids = get_context_ids()
+                
+                result = handler(
+                    organization_id=str(agent.organization.id),
+                    environment_id=str(agent.environment.id),
+                    **input_json,
+                    _token_agent_id=str(agent.id),
+                    _jti=context_ids.get("jti"),
+                    _client_ip=context_ids.get("client_ip"),
+                    _request_id=context_ids.get("request_id"),
+                )
+                
+                # Convert system tool result to MCP-compatible format
+                if result.get("status") == "success":
+                    return result
+                else:
+                    raise ValueError(result.get("error_description", "System tool execution failed"))
 
             # Check if connection points to our own MCP Fabric service
             # If so, execute tool directly without HTTP call (avoid recursion)

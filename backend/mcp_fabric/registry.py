@@ -16,6 +16,64 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def get_tools_list_for_org_env(
+    *,
+    org: "Organization",
+    env: "Environment",
+) -> list[dict]:
+    """
+    Get list of available tools for organization/environment in MCP-compatible format.
+    
+    This function directly queries the database and returns tools in MCP format,
+    without requiring FastMCP. Used by sync API and other internal services.
+    
+    Args:
+        org: Organization instance
+        env: Environment instance
+    
+    Returns:
+        List of tool definitions in MCP-compatible format:
+        [
+            {
+                "name": "tool_name",
+                "description": "...",
+                "inputSchema": {...}
+            },
+            ...
+        ]
+    """
+    tools_list = []
+    
+    # Get regular tools from database
+    tools = Tool.objects.filter(
+        organization=org, environment=env, enabled=True
+    ).select_related("connection")
+    
+    for tool in tools:
+        input_schema = getattr(tool, "schema_json", None) or {"type": "object"}
+        description = input_schema.get("description") if isinstance(input_schema, dict) else None
+        
+        tool_dict = {
+            "name": tool.name,
+            "description": description or f"Tool: {tool.name}",
+            "inputSchema": input_schema,
+        }
+        tools_list.append(tool_dict)
+    
+    # Add system tools
+    from apps.system_tools.tools import SYSTEM_TOOLS
+    
+    for tool_def in SYSTEM_TOOLS:
+        tool_dict = {
+            "name": tool_def["name"],
+            "description": tool_def["description"],
+            "inputSchema": tool_def["schema"],
+        }
+        tools_list.append(tool_dict)
+    
+    return tools_list
+
+
 def register_tools_for_org_env(
     mcp: "MCPServer",
     *,

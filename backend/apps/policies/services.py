@@ -19,6 +19,7 @@ def is_allowed(agent: Agent, tool: Tool, payload: dict) -> Tuple[bool, str | Non
     Check if agent is allowed to run tool with given payload.
 
     Default deny: Only allows if a matching policy explicitly permits it.
+    Supports wildcards (e.g., "agentxsuite_*", "tool-*") using fnmatch.
 
     Args:
         agent: Agent instance requesting the run
@@ -29,6 +30,8 @@ def is_allowed(agent: Agent, tool: Tool, payload: dict) -> Tuple[bool, str | Non
         Tuple of (is_allowed: bool, reason: str | None)
         reason is None if allowed, otherwise contains denial reason
     """
+    from fnmatch import fnmatch
+    
     # Query policies matching organization and optionally environment
     policies = Policy.objects.filter(
         organization=agent.organization,
@@ -44,15 +47,17 @@ def is_allowed(agent: Agent, tool: Tool, payload: dict) -> Tuple[bool, str | Non
     for policy in policies:
         deny_list = policy.rules_json.get("deny", [])
         if isinstance(deny_list, list):
-            if tool.name in deny_list:
-                return False, f"Tool '{tool.name}' denied by policy '{policy.name}'"
+            for pattern in deny_list:
+                if fnmatch(tool.name, pattern):
+                    return False, f"Tool '{tool.name}' denied by policy '{policy.name}'"
 
-    # Check allow list (explicit allow)
+    # Check allow list (explicit allow with wildcard support)
     for policy in policies:
         allow_list = policy.rules_json.get("allow", [])
         if isinstance(allow_list, list):
-            if tool.name in allow_list:
-                return True, None
+            for pattern in allow_list:
+                if fnmatch(tool.name, pattern):
+                    return True, None
 
     # Default deny if no explicit allow
     return False, "No policy explicitly allows this tool"

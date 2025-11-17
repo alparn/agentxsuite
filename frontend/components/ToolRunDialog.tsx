@@ -283,11 +283,13 @@ export function ToolRunDialog({
                   </span>
                 </div>
               )}
-              {result.output_json && (
+              {(result.output_json || result.content) && (
                 <div>
                   <span className="font-medium">Output:</span>
                   <pre className="mt-1 whitespace-pre-wrap overflow-x-auto">
-                    {formatResult(result.output_json)}
+                    {result.output_json 
+                      ? formatResult(result.output_json) 
+                      : result.content?.map((item: any) => item.text || JSON.stringify(item, null, 2)).join("\n") || "No output"}
                   </pre>
                 </div>
               )}
@@ -297,9 +299,14 @@ export function ToolRunDialog({
                   <span className="text-red-300">{result.error_text}</span>
                 </div>
               )}
-              {result.id && (
+              {(result.id || result.run_id) && (
                 <div className="text-xs text-slate-400 mt-2">
-                  Run ID: {result.id}
+                  Run ID: {result.id || result.run_id}
+                </div>
+              )}
+              {result.execution?.duration_ms && (
+                <div className="text-xs text-slate-400">
+                  Duration: {result.execution.duration_ms}ms
                 </div>
               )}
             </div>

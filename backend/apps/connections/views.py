@@ -3,6 +3,7 @@ Views for connections app.
 """
 from __future__ import annotations
 
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -81,6 +82,11 @@ class ConnectionViewSet(AuditLoggingMixin, ModelViewSet):
             return Response(response_data.model_dump(), status=status.HTTP_200_OK)
         except Exception as e:
             # Handle ValidationError and other sync errors
+            # Update connection status to fail and last_seen_at on error
+            conn.status = "fail"
+            conn.last_seen_at = timezone.now()
+            conn.save(update_fields=["status", "last_seen_at"])
+            
             error_message = str(e)
             return Response(
                 {"error": error_message},
