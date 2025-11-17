@@ -13,27 +13,56 @@ from apps.tenants.models import Environment, Organization
 # ========== Helper Functions ==========
 
 
-def create_policy(org, env, name, rules_json, enabled=True):
+def create_policy(org, env, name, rules_json=None, enabled=True):
     """
-    Helper to create a policy with common defaults.
+    Helper to create a policy with PolicyRule support.
 
     Args:
         org: Organization instance
         env: Environment instance (can be None for org-wide)
         name: Policy name
-        rules_json: Rules dictionary
+        rules_json: Rules dictionary (will be converted to PolicyRule objects)
         enabled: Whether policy is enabled (default: True)
 
     Returns:
         Policy instance
     """
-    return Policy.objects.create(
+    from apps.policies.models import PolicyRule
+    
+    policy = Policy.objects.create(
         organization=org,
         environment=env,
         name=name,
-        rules_json=rules_json,
-        enabled=enabled,
+        is_active=enabled,
     )
+    
+    # Convert rules_json to PolicyRule objects
+    if rules_json:
+        # Handle allow list
+        allow_list = rules_json.get("allow", [])
+        if allow_list:  # Only iterate if not None or empty
+            for pattern in allow_list:
+                PolicyRule.objects.create(
+                    policy=policy,
+                    action="tool.invoke",
+                    target=f"tool:{pattern}" if not pattern.startswith("tool:") else pattern,
+                    effect="allow",
+                    conditions={},
+                )
+        
+        # Handle deny list
+        deny_list = rules_json.get("deny", [])
+        if deny_list:  # Only iterate if not None or empty
+            for pattern in deny_list:
+                PolicyRule.objects.create(
+                    policy=policy,
+                    action="tool.invoke",
+                    target=f"tool:{pattern}" if not pattern.startswith("tool:") else pattern,
+                    effect="deny",
+                    conditions={},
+                )
+    
+    return policy
 
 
 def assert_allowed(agent, tool, expected_allowed=True, expected_reason_keywords=None):
@@ -921,3 +950,143 @@ def test_wildcard_and_exact_match_mixed(agent_tool):
     # Both should be allowed
     assert_allowed(agent, system_tool1, expected_allowed=True)
     assert_allowed(agent, custom_tool, expected_allowed=True)
+
+
+# ========== PolicyRule System Support ==========
+
+
+@pytest.mark.django_db
+def test_policy_rule_allow_tool_with_connection_name(agent_tool):
+    """Test that PolicyRule with connection name in target works."""
+    from apps.policies.models import PolicyRule
+    
+    agent, tool = agent_tool
+    
+    # Create policy
+    policy = create_policy(
+        agent.organization,
+        agent.environment,
+        "policy-rule-test",
+        {},
+        enabled=True,
+    )
+    
+    # Create PolicyRule with connection name in target
+    PolicyRule.objects.create(
+        policy=policy,
+        action="tool.invoke",
+        target=f"tool:{tool.connection.name}/{tool.name}",
+        effect="allow",
+        conditions={},
+    )
+    
+    # Should be allowed (PolicyRule matches)
+    assert_allowed(agent, tool, expected_allowed=True)
+
+
+@pytest.mark.django_db
+def test_policy_rule_allow_tool_name_only(agent_tool):
+    """Test that PolicyRule with just tool name in target works."""
+    from apps.policies.models import PolicyRule
+    
+    agent, tool = agent_tool
+    
+    # Create policy
+    policy = create_policy(
+        agent.organization,
+        agent.environment,
+        "policy-rule-test-2",
+        {},
+        enabled=True,
+    )
+    
+    # Create PolicyRule with just tool name
+    PolicyRule.objects.create(
+        policy=policy,
+        action="tool.invoke",
+        target=f"tool:{tool.name}",
+        effect="allow",
+        conditions={},
+    )
+    
+    # Should be allowed (PolicyRule matches)
+    assert_allowed(agent, tool, expected_allowed=True)
+
+
+@pytest.mark.django_db
+def test_policy_rule_deny_takes_precedence(agent_tool):
+    """Test that PolicyRule deny takes precedence over allow."""
+    from apps.policies.models import PolicyRule
+    
+    agent, tool = agent_tool
+    
+    # Create policy
+    policy = create_policy(
+        agent.organization,
+        agent.environment,
+        "policy-rule-deny-test",
+        {},
+        enabled=True,
+    )
+    
+    # Create deny rule
+    PolicyRule.objects.create(
+        policy=policy,
+        action="tool.invoke",
+        target=f"tool:{tool.name}",
+        effect="deny",
+        conditions={},
+    )
+    
+    # Create allow rule (should be ignored)
+    PolicyRule.objects.create(
+        policy=policy,
+        action="tool.invoke",
+        target=f"tool:{tool.name}",
+        effect="allow",
+        conditions={},
+    )
+    
+    # Should be denied (deny takes precedence)
+    assert_allowed(agent, tool, expected_allowed=False, expected_reason_keywords=["denied"])
+
+
+@pytest.mark.django_db
+def test_policy_rule_wildcard_pattern(agent_tool):
+    """Test that PolicyRule supports wildcard patterns."""
+    from apps.policies.models import PolicyRule
+    from apps.tools.models import Tool
+    
+    agent, _ = agent_tool
+    
+    # Create tool
+    test_tool = Tool.objects.create(
+        organization=agent.organization,
+        environment=agent.environment,
+        connection=agent.connection,
+        name="test-tool-123",
+        schema_json={},
+        sync_status="synced",
+        enabled=True,
+    )
+    
+    # Create policy
+    policy = create_policy(
+        agent.organization,
+        agent.environment,
+        "policy-rule-wildcard",
+        {},
+        enabled=True,
+    )
+    
+    # Create PolicyRule with wildcard pattern
+    PolicyRule.objects.create(
+        policy=policy,
+        action="tool.invoke",
+        target="tool:test-tool-*",
+        effect="allow",
+        conditions={},
+    )
+    
+    # Should be allowed (wildcard matches)
+    assert_allowed(agent, test_tool, expected_allowed=True)

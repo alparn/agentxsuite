@@ -19,7 +19,7 @@ def is_allowed(agent: Agent, tool: Tool, payload: dict) -> Tuple[bool, str | Non
     Check if agent is allowed to run tool with given payload.
 
     Default deny: Only allows if a matching policy explicitly permits it.
-    Supports wildcards (e.g., "agentxsuite_*", "tool-*") using fnmatch.
+    Uses PolicyRule system with support for wildcards and scope-based bindings.
 
     Args:
         agent: Agent instance requesting the run
@@ -30,35 +30,115 @@ def is_allowed(agent: Agent, tool: Tool, payload: dict) -> Tuple[bool, str | Non
         Tuple of (is_allowed: bool, reason: str | None)
         reason is None if allowed, otherwise contains denial reason
     """
+    from apps.policies.models import PolicyBinding, PolicyRule
     from fnmatch import fnmatch
     
-    # Query policies matching organization and optionally environment
+    # Query active policies for organization/environment
     policies = Policy.objects.filter(
         organization=agent.organization,
-        enabled=True,
-    )
-
-    # Filter by environment if policy has environment set
-    policies = policies.filter(
+        is_active=True,
+    ).filter(
         models.Q(environment__isnull=True) | models.Q(environment=agent.environment)
     )
-
-    # Check deny list first (most restrictive)
+    
+    # Helper function to match target pattern
+    def matches_target(rule_target: str, tool_name: str, connection_name: str | None) -> bool:
+        """Check if rule target matches tool name or connection/tool combination."""
+        # Remove "tool:" prefix if present, but don't strip whitespace (exact matching)
+        target_pattern = rule_target.replace("tool:", "", 1) if rule_target.startswith("tool:") else rule_target
+        if fnmatch(tool_name, target_pattern):
+            return True
+        if connection_name and fnmatch(f"{connection_name}/{tool_name}", target_pattern):
+            return True
+        return False
+    
+    # Get bindings for different scopes
+    agent_bindings = PolicyBinding.objects.filter(
+        scope_type="agent",
+        scope_id=str(agent.id),
+    ).select_related("policy")
+    
+    tool_bindings = PolicyBinding.objects.filter(
+        scope_type="tool",
+        scope_id=str(tool.id),
+    ).select_related("policy")
+    
+    # PHASE 1: Check all DENY rules (deny takes precedence)
+    # Agent-specific bindings
+    for binding in agent_bindings:
+        if not binding.policy.is_active:
+            continue
+        deny_rules = PolicyRule.objects.filter(
+            policy=binding.policy,
+            action="tool.invoke",
+            effect="deny",
+        )
+        for rule in deny_rules:
+            if matches_target(rule.target, tool.name, tool.connection.name if tool.connection else None):
+                return False, f"Tool '{tool.name}' denied by policy '{binding.policy.name}' rule"
+    
+    # Tool-specific bindings
+    for binding in tool_bindings:
+        if not binding.policy.is_active:
+            continue
+        deny_rules = PolicyRule.objects.filter(
+            policy=binding.policy,
+            action="tool.invoke",
+            effect="deny",
+        )
+        for rule in deny_rules:
+            if matches_target(rule.target, tool.name, tool.connection.name if tool.connection else None):
+                return False, f"Tool '{tool.name}' denied by policy '{binding.policy.name}' rule"
+    
+    # Environment and Organization policies
     for policy in policies:
-        deny_list = policy.rules_json.get("deny", [])
-        if isinstance(deny_list, list):
-            for pattern in deny_list:
-                if fnmatch(tool.name, pattern):
-                    return False, f"Tool '{tool.name}' denied by policy '{policy.name}'"
-
-    # Check allow list (explicit allow with wildcard support)
+        deny_rules = PolicyRule.objects.filter(
+            policy=policy,
+            action="tool.invoke",
+            effect="deny",
+        )
+        for rule in deny_rules:
+            if matches_target(rule.target, tool.name, tool.connection.name if tool.connection else None):
+                return False, f"Tool '{tool.name}' denied by policy '{policy.name}' rule"
+    
+    # PHASE 2: Check ALLOW rules (only if no deny found)
+    # Agent-specific bindings
+    for binding in agent_bindings:
+        if not binding.policy.is_active:
+            continue
+        allow_rules = PolicyRule.objects.filter(
+            policy=binding.policy,
+            action="tool.invoke",
+            effect="allow",
+        )
+        for rule in allow_rules:
+            if matches_target(rule.target, tool.name, tool.connection.name if tool.connection else None):
+                return True, None
+    
+    # Tool-specific bindings
+    for binding in tool_bindings:
+        if not binding.policy.is_active:
+            continue
+        allow_rules = PolicyRule.objects.filter(
+            policy=binding.policy,
+            action="tool.invoke",
+            effect="allow",
+        )
+        for rule in allow_rules:
+            if matches_target(rule.target, tool.name, tool.connection.name if tool.connection else None):
+                return True, None
+    
+    # Environment and Organization policies
     for policy in policies:
-        allow_list = policy.rules_json.get("allow", [])
-        if isinstance(allow_list, list):
-            for pattern in allow_list:
-                if fnmatch(tool.name, pattern):
-                    return True, None
-
+        allow_rules = PolicyRule.objects.filter(
+            policy=policy,
+            action="tool.invoke",
+            effect="allow",
+        )
+        for rule in allow_rules:
+            if matches_target(rule.target, tool.name, tool.connection.name if tool.connection else None):
+                return True, None
+    
     # Default deny if no explicit allow
     return False, "No policy explicitly allows this tool"
 
@@ -70,6 +150,7 @@ def is_allowed_resource(
     Check if agent is allowed to access resource with given action.
 
     Default deny: Only allows if a matching policy explicitly permits it.
+    Uses PolicyRule system with support for wildcards and scope-based bindings.
 
     Args:
         agent: Agent instance requesting access
@@ -80,34 +161,76 @@ def is_allowed_resource(
         Tuple of (is_allowed: bool, reason: str | None)
         reason is None if allowed, otherwise contains denial reason
     """
-    # Query policies matching organization and optionally environment
+    from apps.policies.models import PolicyBinding, PolicyRule
+    from fnmatch import fnmatch
+    
+    # Query active policies for organization/environment
     policies = Policy.objects.filter(
         organization=agent.organization,
-        enabled=True,
-    )
-
-    # Filter by environment if policy has environment set
-    policies = policies.filter(
+        is_active=True,
+    ).filter(
         models.Q(environment__isnull=True) | models.Q(environment=agent.environment)
     )
-
-    # Check deny list first (most restrictive)
+    
+    # Get bindings for agent scope
+    agent_bindings = PolicyBinding.objects.filter(
+        scope_type="agent",
+        scope_id=str(agent.id),
+    ).select_related("policy")
+    
+    # Helper function to match target pattern
+    def matches_resource(rule_target: str, resource: str) -> bool:
+        """Check if rule target matches resource name."""
+        # Remove "resource:" prefix if present, but don't strip whitespace (exact matching)
+        target_pattern = rule_target.replace("resource:", "", 1) if rule_target.startswith("resource:") else rule_target
+        return fnmatch(resource, target_pattern)
+    
+    # PHASE 1: Check all DENY rules
+    for binding in agent_bindings:
+        if not binding.policy.is_active:
+            continue
+        deny_rules = PolicyRule.objects.filter(
+            policy=binding.policy,
+            action=f"resource.{action}",
+            effect="deny",
+        )
+        for rule in deny_rules:
+            if matches_resource(rule.target, resource_name):
+                return False, f"Resource '{resource_name}' denied by policy '{binding.policy.name}' rule"
+    
     for policy in policies:
-        deny_resources = policy.rules_json.get("deny_resources", [])
-        if isinstance(deny_resources, list):
-            if resource_name in deny_resources:
-                return (
-                    False,
-                    f"Resource '{resource_name}' denied by policy '{policy.name}'",
-                )
-
-    # Check allow list (explicit allow)
-    for policy in policies:
-        allow_resources = policy.rules_json.get("allow_resources", [])
-        if isinstance(allow_resources, list):
-            if resource_name in allow_resources:
+        deny_rules = PolicyRule.objects.filter(
+            policy=policy,
+            action=f"resource.{action}",
+            effect="deny",
+        )
+        for rule in deny_rules:
+            if matches_resource(rule.target, resource_name):
+                return False, f"Resource '{resource_name}' denied by policy '{policy.name}' rule"
+    
+    # PHASE 2: Check ALLOW rules
+    for binding in agent_bindings:
+        if not binding.policy.is_active:
+            continue
+        allow_rules = PolicyRule.objects.filter(
+            policy=binding.policy,
+            action=f"resource.{action}",
+            effect="allow",
+        )
+        for rule in allow_rules:
+            if matches_resource(rule.target, resource_name):
                 return True, None
-
+    
+    for policy in policies:
+        allow_rules = PolicyRule.objects.filter(
+            policy=policy,
+            action=f"resource.{action}",
+            effect="allow",
+        )
+        for rule in allow_rules:
+            if matches_resource(rule.target, resource_name):
+                return True, None
+    
     # Default deny if no explicit allow
     return False, f"No policy explicitly allows resource '{resource_name}'"
 
@@ -119,7 +242,7 @@ def is_allowed_prompt(
     Check if agent is allowed to invoke prompt with given action.
 
     Default deny: Only allows if a matching policy explicitly permits it.
-    Checks both new PolicyRule system and legacy rules_json.
+    Uses PolicyRule system with support for wildcards and scope-based bindings.
 
     Args:
         agent: Agent instance requesting access
@@ -133,61 +256,72 @@ def is_allowed_prompt(
     from apps.policies.models import PolicyBinding, PolicyRule
     from fnmatch import fnmatch
     
-    # Query policies matching organization and optionally environment
+    # Query active policies for organization/environment
     policies = Policy.objects.filter(
         organization=agent.organization,
-        enabled=True,
-    )
-
-    # Filter by environment if policy has environment set
-    policies = policies.filter(
+        is_active=True,
+    ).filter(
         models.Q(environment__isnull=True) | models.Q(environment=agent.environment)
     )
     
-    # NEW: Check PolicyRule system first (takes precedence)
-    # Get bindings for this agent
+    # Get bindings for agent scope
     agent_bindings = PolicyBinding.objects.filter(
         scope_type="agent",
         scope_id=str(agent.id),
     ).select_related("policy")
     
-    # Check all rules from bound policies
+    # Helper function to match target pattern
+    def matches_prompt(rule_target: str, prompt: str) -> bool:
+        """Check if rule target matches prompt name."""
+        # Remove "prompt:" prefix if present, but don't strip whitespace (exact matching)
+        target_pattern = rule_target.replace("prompt:", "", 1) if rule_target.startswith("prompt:") else rule_target
+        return fnmatch(prompt, target_pattern)
+    
+    # PHASE 1: Check all DENY rules
     for binding in agent_bindings:
-        policy = binding.policy
-        if not policy.is_active:
+        if not binding.policy.is_active:
             continue
-            
-        # Get rules for this policy with action="prompt.invoke"
-        rules = PolicyRule.objects.filter(
+        deny_rules = PolicyRule.objects.filter(
+            policy=binding.policy,
+            action=f"prompt.{action}",
+            effect="deny",
+        )
+        for rule in deny_rules:
+            if matches_prompt(rule.target, prompt_name):
+                return False, f"Prompt '{prompt_name}' denied by policy '{binding.policy.name}' rule"
+    
+    for policy in policies:
+        deny_rules = PolicyRule.objects.filter(
             policy=policy,
             action=f"prompt.{action}",
-        ).order_by("-created_at")
-        
-        for rule in rules:
-            # Match target pattern (e.g., "prompt:customer-*", "prompt:*")
-            target_pattern = rule.target.replace("prompt:", "")
-            if fnmatch(prompt_name, target_pattern):
-                if rule.effect == "deny":
-                    return False, f"Prompt '{prompt_name}' denied by policy '{policy.name}' rule"
-                elif rule.effect == "allow":
-                    return True, None
+            effect="deny",
+        )
+        for rule in deny_rules:
+            if matches_prompt(rule.target, prompt_name):
+                return False, f"Prompt '{prompt_name}' denied by policy '{policy.name}' rule"
     
-    # LEGACY: Check deny list first (most restrictive)
-    for policy in policies:
-        deny_prompts = policy.rules_json.get("deny_prompts", [])
-        if isinstance(deny_prompts, list):
-            if prompt_name in deny_prompts:
-                return (
-                    False,
-                    f"Prompt '{prompt_name}' denied by policy '{policy.name}'",
-                )
-
-    # LEGACY: Check allow list (explicit allow)
-    for policy in policies:
-        allow_prompts = policy.rules_json.get("allow_prompts", [])
-        if isinstance(allow_prompts, list):
-            if prompt_name in allow_prompts:
+    # PHASE 2: Check ALLOW rules
+    for binding in agent_bindings:
+        if not binding.policy.is_active:
+            continue
+        allow_rules = PolicyRule.objects.filter(
+            policy=binding.policy,
+            action=f"prompt.{action}",
+            effect="allow",
+        )
+        for rule in allow_rules:
+            if matches_prompt(rule.target, prompt_name):
                 return True, None
-
+    
+    for policy in policies:
+        allow_rules = PolicyRule.objects.filter(
+            policy=policy,
+            action=f"prompt.{action}",
+            effect="allow",
+        )
+        for rule in allow_rules:
+            if matches_prompt(rule.target, prompt_name):
+                return True, None
+    
     # Default deny if no explicit allow
     return False, f"No policy explicitly allows prompt '{prompt_name}'"
