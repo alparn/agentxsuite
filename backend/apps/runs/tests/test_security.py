@@ -9,64 +9,19 @@ import pytest
 from django.core.cache import cache
 from django.utils import timezone
 
-from apps.agents.models import Agent
 from apps.audit.models import AuditEvent
-from apps.connections.models import Connection
 from apps.policies.models import Policy
 from apps.runs.models import Run
 from apps.runs.rate_limit import RateLimiter
 from apps.runs.services import start_run
 from apps.runs.timeout import TimeoutError
 from apps.tenants.models import Environment, Organization
-from apps.tools.models import Tool
 
 # Status constants from Run.STATUS_CHOICES
 RUN_STATUS_PENDING = "pending"
 RUN_STATUS_RUNNING = "running"
 RUN_STATUS_SUCCEEDED = "succeeded"
 RUN_STATUS_FAILED = "failed"
-
-
-@pytest.fixture
-def org_env(db):
-    """Create organization and environment for tests."""
-    org = Organization.objects.create(name="TestOrg")
-    env = Environment.objects.create(organization=org, name="dev", type="dev")
-    return org, env
-
-
-@pytest.fixture
-def agent_tool(org_env):
-    """Create agent and tool for tests."""
-    org, env = org_env
-    conn = Connection.objects.create(
-        organization=org,
-        environment=env,
-        name="test-conn",
-        endpoint="http://localhost:8090",  # Use localhost to trigger "own service" path
-        auth_method="none",
-    )
-    agent = Agent.objects.create(
-        organization=org,
-        environment=env,
-        connection=conn,
-        name="test-agent",
-    )
-    tool = Tool.objects.create(
-        organization=org,
-        environment=env,
-        connection=conn,
-        name="test-tool",
-        schema_json={
-            "type": "object",
-            "properties": {
-                "x": {"type": "integer"},
-            },
-            "required": ["x"],
-        },
-        sync_status="synced",
-    )
-    return agent, tool
 
 
 @pytest.mark.django_db
@@ -120,7 +75,26 @@ def test_policy_allow_permits_run(agent_tool):
 @pytest.mark.django_db
 def test_jsonschema_invalid_input_raises(agent_tool):
     """Test that invalid input raises validation error."""
-    agent, tool = agent_tool
+    from apps.tools.models import Tool
+    
+    agent, _ = agent_tool
+
+    # Create a tool with required field for this test
+    tool = Tool.objects.create(
+        organization=agent.organization,
+        environment=agent.environment,
+        connection=agent.connection,
+        name="test-tool-with-schema",
+        schema_json={
+            "type": "object",
+            "properties": {
+                "x": {"type": "integer"},
+            },
+            "required": ["x"],  # x is required
+        },
+        sync_status="synced",
+        enabled=True,
+    )
 
     # Create allow policy
     Policy.objects.create(
@@ -131,7 +105,7 @@ def test_jsonschema_invalid_input_raises(agent_tool):
         enabled=True,
     )
 
-    # Invalid input (missing required field)
+    # Invalid input (missing required field 'x')
     with pytest.raises(ValueError, match="Input validation failed"):
         start_run(agent=agent, tool=tool, input_json={})
 

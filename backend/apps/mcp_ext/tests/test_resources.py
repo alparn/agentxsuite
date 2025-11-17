@@ -5,11 +5,8 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
-from model_bakery import baker
 
-from apps.agents.models import Agent
 from apps.mcp_ext.models import Resource
-from apps.tenants.models import Environment, Organization
 from mcp_fabric.errors import ErrorCodes
 from mcp_fabric.main import app
 
@@ -19,65 +16,6 @@ def client():
     """Create TestClient instance per test with proper cleanup."""
     with TestClient(app) as c:
         yield c
-
-
-@pytest.fixture
-def org_env(db):
-    """Create test organization and environment."""
-    org = baker.make(Organization, name="TestOrg")
-    env = baker.make(Environment, organization=org, name="test")
-    return org, env
-
-
-@pytest.fixture
-def agent(org_env):
-    """Create test agent."""
-    org, env = org_env
-    from apps.agents.models import InboundAuthMethod
-    
-    # Use Agent.objects.create() directly instead of baker to avoid validation issues
-    return Agent.objects.create(
-        organization=org,
-        environment=env,
-        name="test-agent",
-        slug="test-agent",
-        enabled=True,
-        inbound_auth_method=InboundAuthMethod.NONE,
-        capabilities=[],
-        tags=[],
-    )
-
-
-@pytest.fixture
-def static_resource(org_env):
-    """Create static test resource."""
-    org, env = org_env
-    return baker.make(
-        Resource,
-        organization=org,
-        environment=env,
-        name="static-resource",
-        type="static",
-        config_json={"value": "Hello, World!"},
-        mime_type="text/plain",
-        enabled=True,
-    )
-
-
-@pytest.fixture
-def http_resource(org_env):
-    """Create HTTP test resource."""
-    org, env = org_env
-    return baker.make(
-        Resource,
-        organization=org,
-        environment=env,
-        name="http-resource",
-        type="http",
-        config_json={"url": "https://example.com/api/data"},
-        mime_type="application/json",
-        enabled=True,
-    )
 
 
 def test_resources_list_requires_scope(org_env, mocker, client):

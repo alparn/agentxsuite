@@ -9,7 +9,7 @@ import os
 from contextlib import asynccontextmanager
 
 import django
-from fastapi import FastAPI, Request, Response
+from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from mcp_fabric.middleware import LoggingContextMiddleware
@@ -112,9 +112,15 @@ async def options_handler(request: Request, full_path: str):
 
 # Include routers
 app.include_router(prm.router)  # PRM endpoint (no prefix)
-app.include_router(mcp.router)  # Standard MCP endpoints: /.well-known/mcp/*
-app.include_router(resources_router)  # Standard MCP endpoints: /.well-known/mcp/*
-app.include_router(prompts_router)  # Standard MCP endpoints: /.well-known/mcp/*
+
+# MCP routers with org/env scoping
+# Tests expect: /mcp/{org_id}/{env_id}/.well-known/mcp/*
+# Create parent router with org/env prefix
+mcp_scoped_router = APIRouter(prefix="/mcp/{org_id}/{env_id}")
+mcp_scoped_router.include_router(mcp.router)  # /.well-known/mcp/*
+mcp_scoped_router.include_router(resources_router)  # /.well-known/mcp/resources
+mcp_scoped_router.include_router(prompts_router)  # /.well-known/mcp/prompts
+app.include_router(mcp_scoped_router)
 
 
 @app.get("/health")

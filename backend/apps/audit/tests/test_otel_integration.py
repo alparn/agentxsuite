@@ -12,23 +12,49 @@ from model_bakery import baker
 from apps.audit.models import AuditEvent
 from apps.audit.services import log_run_event, log_security_event
 from apps.runs.models import Run
-from apps.tenants.models import Environment, Organization
-
-
-@pytest.fixture
-def org_env(db):
-    """Create test organization and environment."""
-    org = baker.make(Organization, name="TestOrg")
-    env = baker.make(Environment, organization=org, name="test")
-    return org, env
+from apps.tenants.models import Organization
 
 
 @pytest.fixture
 def run(org_env):
     """Create test run."""
     org, env = org_env
-    agent = baker.make("agents.Agent", organization=org, environment=env)
-    tool = baker.make("tools.Tool", organization=org, environment=env)
+    from apps.agents.models import Agent, InboundAuthMethod
+    from apps.connections.models import Connection
+    from apps.tools.models import Tool
+    
+    conn = baker.make(
+        Connection,
+        organization=org,
+        environment=env,
+        name="test-conn",
+        endpoint="https://example.com",
+        auth_method="none",
+    )
+    
+    agent = baker.make(
+        Agent,
+        organization=org,
+        environment=env,
+        connection=conn,
+        name="test-agent",
+        slug="test-agent",
+        enabled=True,
+        inbound_auth_method=InboundAuthMethod.NONE,
+        capabilities=[],
+        tags=[],
+    )
+    
+    tool = baker.make(
+        Tool,
+        organization=org,
+        environment=env,
+        connection=conn,
+        name="test-tool",
+        schema_json={"type": "object"},
+        sync_status="synced",
+    )
+    
     return baker.make(Run, organization=org, environment=env, agent=agent, tool=tool)
 
 

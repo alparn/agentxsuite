@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from apps.agents.models import Agent, AgentMode
+from apps.agents.models import Agent, AgentMode, InboundAuthMethod
 from apps.connections.models import Connection
 from apps.runs.models import Run
 from apps.system_tools.services import (
@@ -16,59 +16,6 @@ from apps.system_tools.services import (
     list_tools_handler,
     list_runs_handler,
 )
-from apps.tools.models import Tool
-
-
-@pytest.fixture
-def org_env(db):
-    """Create organization and environment for testing."""
-    from apps.tenants.models import Organization, Environment
-    
-    org = Organization.objects.create(name="TestOrg")
-    env = Environment.objects.create(organization=org, name="test", type="dev")
-    return org, env
-
-
-@pytest.fixture
-def agent(org_env):
-    """Create an agent for testing."""
-    org, env = org_env
-    return Agent.objects.create(
-        organization=org,
-        environment=env,
-        name="Test Agent",
-        mode=AgentMode.RUNNER,
-        enabled=True,
-    )
-
-
-@pytest.fixture
-def connection(org_env):
-    """Create a connection for testing."""
-    org, env = org_env
-    return Connection.objects.create(
-        organization=org,
-        environment=env,
-        name="Test Connection",
-        endpoint="http://example.com",
-        auth_method="none",
-        status="ok",
-    )
-
-
-@pytest.fixture
-def tool(org_env, connection):
-    """Create a tool for testing."""
-    org, env = org_env
-    return Tool.objects.create(
-        organization=org,
-        environment=env,
-        connection=connection,
-        name="test_tool",
-        version="1.0.0",
-        enabled=True,
-        schema_json={"type": "object", "properties": {}},
-    )
 
 
 @pytest.mark.django_db
@@ -100,6 +47,7 @@ def test_list_agents_handler_filter_mode(org_env, agent):
         name="Caller Agent",
         mode=AgentMode.CALLER,
         enabled=True,
+        inbound_auth_method=InboundAuthMethod.NONE,
     )
     
     result = list_agents_handler(
@@ -161,7 +109,7 @@ def test_get_agent_handler_not_found(org_env):
 
 
 @pytest.mark.django_db
-def test_create_agent_handler(org_env):
+def test_create_agent_handler(org_env, connection):
     """Test create_agent_handler."""
     org, env = org_env
     
@@ -171,6 +119,7 @@ def test_create_agent_handler(org_env):
         name="New Agent",
         mode="runner",
         enabled=True,
+        connection_id=str(connection.id),
     )
     
     assert result["status"] == "success"

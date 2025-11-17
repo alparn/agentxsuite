@@ -5,26 +5,19 @@ from __future__ import annotations
 
 import pytest
 from django.utils import timezone
+from model_bakery import baker
 
+from apps.agents.models import InboundAuthMethod
 from apps.policies.models import Policy, PolicyBinding, PolicyRule
 from apps.policies.pdp import PolicyDecision, PolicyEvaluator, get_pdp
-
-
-@pytest.fixture
-def org_env():
-    """Create organization and environment for testing."""
-    from apps.tenants.models import Environment, Organization
-
-    org = Organization.objects.create(name="test-org")
-    env = Environment.objects.create(name="test-env", organization=org, type="development")
-    return org, env
 
 
 @pytest.fixture
 def policy(org_env):
     """Create a test policy."""
     org, env = org_env
-    return Policy.objects.create(
+    return baker.make(
+        Policy,
         organization=org,
         environment=env,
         name="test-policy",
@@ -171,6 +164,7 @@ class TestPolicyEvaluator:
             connection=conn,
             name="test-agent",
             slug="test-agent",
+            inbound_auth_method=InboundAuthMethod.NONE,
         )
 
         # Create rules
@@ -359,6 +353,7 @@ class TestDelegationConstraints:
             name="test-agent",
             slug="test-agent",
             default_max_depth=2,
+            inbound_auth_method=InboundAuthMethod.NONE,
         )
 
         policy = Policy.objects.create(organization=org, name="delegation-policy", is_active=True)
@@ -433,6 +428,7 @@ class TestDelegationConstraints:
             slug="test-agent",
             default_budget_cents=1000,
             default_ttl_seconds=600,
+            inbound_auth_method=InboundAuthMethod.NONE,
         )
 
         policy = Policy.objects.create(organization=org, name="delegation-policy", is_active=True)
@@ -508,6 +504,7 @@ class TestDelegationConstraints:
             connection=conn,
             name="test-agent",
             slug="test-agent",
+            inbound_auth_method=InboundAuthMethod.NONE,
         )
 
         policy = Policy.objects.create(organization=org, name="delegation-policy", is_active=True)

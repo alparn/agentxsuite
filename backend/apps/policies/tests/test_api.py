@@ -6,35 +6,8 @@ from __future__ import annotations
 import pytest
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from apps.policies.models import Policy, PolicyBinding, PolicyRule
-from apps.tenants.models import Environment, Organization
-
-
-@pytest.fixture
-def api_client():
-    """Create API client."""
-    return APIClient()
-
-
-@pytest.fixture
-def org_env():
-    """Create organization and environment for testing."""
-    org = Organization.objects.create(name="test-org")
-    env = Environment.objects.create(name="test-env", organization=org, type="development")
-    return org, env
-
-
-@pytest.fixture
-def user_token(org_env):
-    """Create user and token for authentication."""
-    from apps.accounts.models import User
-    from rest_framework.authtoken.models import Token
-
-    user = User.objects.create_user(email="test@example.com", password="testpass123")
-    token = Token.objects.create(user=user)
-    return token
 
 
 @pytest.mark.django_db

@@ -27,22 +27,39 @@ def org_env(db):
 
 
 @pytest.fixture
-def agent(org_env):
-    """Create test agent."""
+def connection(org_env):
+    """Create test connection for MCP agents."""
     org, env = org_env
-    from apps.agents.models import InboundAuthMethod
+    from apps.connections.models import Connection
     
-    # Use Agent.objects.create() directly instead of baker to avoid validation issues
-    # This matches the pattern used in other agent tests
+    return Connection.objects.create(
+        organization=org,
+        environment=env,
+        name="test-mcp-connection",
+        endpoint="http://localhost:8000",
+        auth_method="none",
+        status="ok",
+    )
+
+
+@pytest.fixture
+def agent(org_env, connection):
+    """Create test agent with connection."""
+    org, env = org_env
+    from apps.agents.models import InboundAuthMethod, AgentMode
+    
+    # Agent with RUNNER mode requires connection
     return Agent.objects.create(
         organization=org,
         environment=env,
+        connection=connection,  # RUNNER mode requires connection
         name="test-agent",
-        slug="test-agent",  # Explicit slug to avoid auto-generation issues
+        slug="test-agent",
+        mode=AgentMode.RUNNER,
         enabled=True,
-        inbound_auth_method=InboundAuthMethod.NONE,  # NONE doesn't require secret_ref
-        capabilities=[],  # Empty list is valid for JSONField
-        tags=[],  # Empty list is valid for JSONField
+        inbound_auth_method=InboundAuthMethod.NONE,
+        capabilities=[],
+        tags=[],
     )
 
 

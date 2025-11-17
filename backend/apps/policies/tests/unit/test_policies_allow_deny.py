@@ -10,46 +10,6 @@ from apps.policies.services import is_allowed
 from apps.tenants.models import Environment, Organization
 
 
-@pytest.fixture
-def org_env(db):
-    """Create organization and environment for tests."""
-    org = Organization.objects.create(name="TestOrg")
-    env = Environment.objects.create(organization=org, name="dev", type="dev")
-    return org, env
-
-
-@pytest.fixture
-def agent_tool(org_env):
-    """Create agent and tool for tests."""
-    org, env = org_env
-    from apps.agents.models import Agent
-    from apps.connections.models import Connection
-    from apps.tools.models import Tool
-
-    conn = Connection.objects.create(
-        organization=org,
-        environment=env,
-        name="test-conn",
-        endpoint="https://example.com",
-        auth_method="none",
-    )
-    agent = Agent.objects.create(
-        organization=org,
-        environment=env,
-        connection=conn,
-        name="test-agent",
-    )
-    tool = Tool.objects.create(
-        organization=org,
-        environment=env,
-        connection=conn,
-        name="test-tool",
-        schema_json={"type": "object"},
-        sync_status="synced",
-    )
-    return agent, tool
-
-
 # ========== Helper Functions ==========
 
 

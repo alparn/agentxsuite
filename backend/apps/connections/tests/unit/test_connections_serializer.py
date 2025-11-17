@@ -6,15 +6,6 @@ from __future__ import annotations
 import pytest
 
 from apps.connections.serializers import ConnectionSerializer
-from apps.tenants.models import Environment, Organization
-
-
-@pytest.fixture
-def org_env():
-    """Create test organization and environment."""
-    org = Organization.objects.create(name="TestOrg")
-    env = Environment.objects.create(organization=org, name="dev", type="dev")
-    return org, env
 
 
 @pytest.mark.django_db

@@ -20,69 +20,14 @@ from mcp_fabric.routes_resources import router as resources_router
 
 
 @pytest.fixture
-def org_env(db):
-    """Create test organization and environment."""
-    org = baker.make(Organization, name="TestOrg")
-    env = baker.make(Environment, organization=org, name="test")
-    return org, env
-
-
-@pytest.fixture
 def other_org_env(db):
     """Create another organization/environment for cross-tenant tests."""
+    from model_bakery import baker
+    from apps.tenants.models import Environment, Organization
+    
     org = baker.make(Organization, name="OtherOrg")
     env = baker.make(Environment, organization=org, name="test")
     return org, env
-
-
-@pytest.fixture
-def agent(org_env):
-    """Create test agent."""
-    org, env = org_env
-    from apps.agents.models import InboundAuthMethod
-    
-    # Use Agent.objects.create() directly instead of baker to avoid validation issues
-    return Agent.objects.create(
-        organization=org,
-        environment=env,
-        name="test-agent",
-        slug="test-agent",
-        enabled=True,
-        inbound_auth_method=InboundAuthMethod.NONE,
-        capabilities=[],
-        tags=[],
-    )
-
-
-@pytest.fixture
-def static_resource(org_env):
-    """Create static test resource."""
-    org, env = org_env
-    return baker.make(
-        Resource,
-        organization=org,
-        environment=env,
-        name="static-resource",
-        type="static",
-        config_json={"value": "Hello, World!"},
-        mime_type="text/plain",
-        enabled=True,
-    )
-
-
-@pytest.fixture
-def disabled_resource(org_env):
-    """Create disabled test resource."""
-    org, env = org_env
-    return baker.make(
-        Resource,
-        organization=org,
-        environment=env,
-        name="disabled-resource",
-        type="static",
-        config_json={"value": "Disabled"},
-        enabled=False,
-    )
 
 
 @pytest.fixture
@@ -195,8 +140,10 @@ async def test_resources_list_insufficient_scope(async_client, org_env, override
     )
     assert response.status_code == 403
     data = response.json()
-    assert data.get("error") == ErrorCodes.INSUFFICIENT_SCOPE
-    assert "scope" in data.get("error_description", "").lower()
+    # Error is nested under "detail" key
+    detail = data.get("detail", {})
+    assert detail.get("error") == ErrorCodes.INSUFFICIENT_SCOPE
+    assert "scope" in detail.get("error_description", "").lower()
 
 
 @pytest.mark.django_db
@@ -237,7 +184,8 @@ async def test_resources_list_org_env_mismatch(
     # Should fail at token validation (org/env mismatch)
     assert response.status_code in [403, 401]
     data = response.json()
-    assert "error" in data
+    # Error can be in "error" or nested under "detail"
+    assert "error" in data or ("detail" in data and "error" in data["detail"])
 
 
 @pytest.mark.django_db
@@ -326,7 +274,7 @@ async def test_resources_list_excludes_disabled(
     assert "disabled-resource" not in names
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_resources_read_not_found(
     async_client, org_env, agent, override_auth, mocker
@@ -367,11 +315,13 @@ async def test_resources_read_not_found(
     )
     assert response.status_code == 404
     data = response.json()
-    assert data.get("error") == ErrorCodes.RESOURCE_NOT_FOUND
-    assert "not found" in data.get("error_description", "").lower()
+    # Error is nested under "detail" key
+    detail = data.get("detail", {})
+    assert detail.get("error") == ErrorCodes.RESOURCE_NOT_FOUND
+    assert "not found" in detail.get("error_description", "").lower()
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_resources_read_disabled_not_found(
     async_client, org_env, disabled_resource, override_auth, mocker
@@ -407,10 +357,12 @@ async def test_resources_read_disabled_not_found(
     )
     assert response.status_code == 404
     data = response.json()
-    assert data.get("error") == ErrorCodes.RESOURCE_NOT_FOUND
+    # Error is nested under "detail" key
+    detail = data.get("detail", {})
+    assert detail.get("error") == ErrorCodes.RESOURCE_NOT_FOUND
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_resources_read_policy_denied(
     async_client, org_env, static_resource, agent, deny_policy, override_auth, mocker
@@ -438,13 +390,15 @@ async def test_resources_read_policy_denied(
     )
     assert response.status_code == 403
     data = response.json()
-    assert data.get("error") == ErrorCodes.FORBIDDEN
-    assert "denied" in data.get("error_description", "").lower() or "policy" in data.get(
+    # Error is nested under "detail" key
+    detail = data.get("detail", {})
+    assert detail.get("error") == ErrorCodes.FORBIDDEN
+    assert "denied" in detail.get("error_description", "").lower() or "policy" in detail.get(
         "error_description", ""
     ).lower()
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_resources_read_static_success(
     async_client, org_env, static_resource, agent, allow_policy, override_auth, mocker
@@ -495,7 +449,7 @@ async def test_resources_read_static_success(
     assert data["content"] == "Hello, World!"
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.asyncio
 async def test_resources_read_rate_limit_exceeded(
     async_client, org_env, static_resource, agent, allow_policy, override_auth, mocker
@@ -526,7 +480,7 @@ async def test_resources_read_rate_limit_exceeded(
     
     # Mock rate limit to deny
     mocker.patch(
-        "apps.runs.rate_limit.check_rate_limit",
+        "mcp_fabric.routes_resources.check_rate_limit",
         return_value=(False, "Rate limit exceeded"),
     )
 
@@ -535,8 +489,9 @@ async def test_resources_read_rate_limit_exceeded(
     )
     assert response.status_code == 429
     data = response.json()
-    assert "error" in data
-    assert "rate" in data.get("error_description", "").lower() or "limit" in data.get(
-        "error_description", ""
-    ).lower()
+    # Error is nested under "detail" key
+    detail = data.get("detail", {})
+    assert "error" in detail or "error" in data
+    error_desc = detail.get("error_description", "") or data.get("error_description", "")
+    assert "rate" in error_desc.lower() or "limit" in error_desc.lower()
 

@@ -7,7 +7,6 @@ import pytest
 from uuid import uuid4
 
 from apps.agents.models import Agent
-from apps.connections.models import Connection
 from apps.policies.models import Policy
 from apps.runs.services import (
     ExecutionContext,
@@ -17,45 +16,6 @@ from apps.runs.services import (
     resolve_tool,
 )
 from apps.tenants.models import Environment, Organization
-from apps.tools.models import Tool
-
-
-@pytest.fixture
-def org_env(db):
-    """Create organization and environment for tests."""
-    org = Organization.objects.create(name="TestOrg")
-    env = Environment.objects.create(organization=org, name="dev", type="dev")
-    return org, env
-
-
-@pytest.fixture
-def agent_tool(org_env):
-    """Create agent, tool, and connection for tests."""
-    org, env = org_env
-    conn = Connection.objects.create(
-        organization=org,
-        environment=env,
-        name="test-conn",
-        endpoint="http://localhost:8090",
-        auth_method="none",
-    )
-    agent = Agent.objects.create(
-        organization=org,
-        environment=env,
-        connection=conn,
-        name="test-agent",
-        enabled=True,
-    )
-    tool = Tool.objects.create(
-        organization=org,
-        environment=env,
-        connection=conn,
-        name="test-tool",
-        schema_json={"type": "object"},
-        sync_status="synced",
-        enabled=True,
-    )
-    return agent, tool
 
 
 # ========== resolve_agent Tests ==========
@@ -103,13 +63,16 @@ def test_resolve_agent_token_mismatch_raises(org_env, agent_tool):
     """Test that agent mismatch between token and request raises error."""
     org, env = org_env
     agent, _ = agent_tool
+    from apps.agents.models import AgentMode
     
-    # Create another agent
+    # Create another agent (CALLER mode doesn't need connection)
     other_agent = Agent.objects.create(
         organization=org,
         environment=env,
         name="other-agent",
+        mode=AgentMode.CALLER,
         enabled=True,
+        inbound_auth_method="none",
     )
     
     context = ExecutionContext(token_agent_id=str(agent.id))

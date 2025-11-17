@@ -278,14 +278,17 @@ def create_agent_handler(
     organization_id: str,
     environment_id: str,
     name: str,
-    mode: str = "runner",
+    mode: str = "caller",
     enabled: bool = True,
     capabilities: list[str] | None = None,
     tags: list[str] | None = None,
+    connection_id: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Handler für agentxsuite_create_agent."""
     from apps.tenants.models import Organization, Environment
+    from apps.connections.models import Connection
+    from apps.agents.models import InboundAuthMethod
     
     try:
         org = Organization.objects.get(id=organization_id)
@@ -296,6 +299,16 @@ def create_agent_handler(
     if Agent.objects.filter(organization=org, environment=env, name=name).exists():
         return {"status": "error", "error": "agent_already_exists"}
     
+    # Validate connection for RUNNER mode
+    connection = None
+    if mode == "runner":
+        if not connection_id:
+            return {"status": "error", "error": "connection_required", "error_description": "RUNNER mode requires a connection"}
+        try:
+            connection = Connection.objects.get(id=connection_id, organization=org, environment=env)
+        except Connection.DoesNotExist:
+            return {"status": "error", "error": "connection_not_found"}
+    
     try:
         agent = Agent.objects.create(
             organization=org,
@@ -305,6 +318,8 @@ def create_agent_handler(
             enabled=enabled,
             capabilities=capabilities or [],
             tags=tags or [],
+            connection=connection,
+            inbound_auth_method=InboundAuthMethod.NONE,
         )
         return {
             "status": "success",

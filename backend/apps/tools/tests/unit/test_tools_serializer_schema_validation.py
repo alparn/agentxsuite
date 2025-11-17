@@ -6,15 +6,6 @@ from __future__ import annotations
 import pytest
 
 from apps.tools.serializers import ToolSerializer
-from apps.tenants.models import Environment, Organization
-
-
-@pytest.fixture
-def org_env():
-    """Create test organization and environment."""
-    org = Organization.objects.create(name="TestOrg")
-    env = Environment.objects.create(organization=org, name="dev", type="dev")
-    return org, env
 
 
 @pytest.mark.django_db
@@ -39,12 +30,13 @@ def test_tool_validates_schema_json_is_dict(org_env):
 
 
 @pytest.mark.django_db
-def test_tool_accepts_valid_schema_json(org_env):
+def test_tool_accepts_valid_schema_json(org_env_conn):
     """Test that valid schema_json is accepted."""
-    org, env = org_env
+    org, env, conn = org_env_conn
     serializer = ToolSerializer(
         data={
             "environment_id": env.id,
+            "connection_id": conn.id,
             "name": "test-tool",
             "version": "1.0.0",
             "schema_json": {
@@ -62,12 +54,13 @@ def test_tool_accepts_valid_schema_json(org_env):
 
 
 @pytest.mark.django_db
-def test_tool_accepts_empty_schema_json(org_env):
+def test_tool_accepts_empty_schema_json(org_env_conn):
     """Test that empty schema_json is accepted."""
-    org, env = org_env
+    org, env, conn = org_env_conn
     serializer = ToolSerializer(
         data={
             "environment_id": env.id,
+            "connection_id": conn.id,
             "name": "test-tool",
             "version": "1.0.0",
             "schema_json": {},

@@ -11,16 +11,6 @@ from apps.system_tools.services import TOOL_HANDLERS
 from mcp_fabric.registry import register_system_tools_for_org_env
 
 
-@pytest.fixture
-def org_env(db):
-    """Create organization and environment for testing."""
-    from apps.tenants.models import Organization, Environment
-    
-    org = Organization.objects.create(name="TestOrg")
-    env = Environment.objects.create(organization=org, name="test", type="dev")
-    return org, env
-
-
 @pytest.mark.django_db
 def test_system_tools_registered(org_env):
     """Test that system tools are registered in MCP server."""
