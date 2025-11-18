@@ -748,7 +748,26 @@ def start_run(
             run.output_json = output
             run.status = "succeeded"
             run.ended_at = timezone.now()
-            run.save(update_fields=["output_json", "status", "ended_at"])
+            
+            # Extract token usage from response (if available)
+            # This allows tracking LLM costs when tools make LLM calls
+            if output and isinstance(output, dict):
+                usage = output.get("usage") or output.get("token_usage")
+                if usage and isinstance(usage, dict):
+                    from apps.runs.cost_services import update_run_with_usage
+                    _add_run_step(run, "info", "Extracting token usage for cost calculation", {"usage": usage})
+                    try:
+                        # update_run_with_usage will update run fields and calculate costs
+                        # save=False because we save once at the end
+                        update_run_with_usage(run, usage, save=False)
+                        _add_run_step(run, "success", f"Token usage recorded: {run.input_tokens} input + {run.output_tokens} output tokens, cost: {run.cost_total} {run.cost_currency}")
+                    except Exception as e:
+                        # Don't fail the run if cost calculation fails
+                        logger.warning(f"Failed to calculate token usage/cost for run {run.id}: {e}")
+                        _add_run_step(run, "warning", f"Cost calculation failed: {str(e)}")
+            
+            # Save all fields once
+            run.save(update_fields=["output_json", "status", "ended_at", "input_tokens", "output_tokens", "total_tokens", "model_name", "cost_input", "cost_output", "cost_total", "cost_currency"])
 
             # Log success
             log_run_event(run, "run_succeeded")
