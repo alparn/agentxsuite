@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { Resource, Prompt, Policy, PolicyRule, PolicyBinding, PolicyEvaluateRequest, Agent, IssuedToken, TokenGenerateRequest, TokenGenerateResponse, ServiceAccount, RunList, RunDetail } from "./types";
+import type { Resource, Prompt, Policy, PolicyRule, PolicyBinding, PolicyEvaluateRequest, Agent, IssuedToken, TokenGenerateRequest, TokenGenerateResponse, ServiceAccount, RunList, RunDetail, MCPServerRegistration, ClaudeDesktopConfig, CostSummary, AgentCostSummary, EnvironmentCostSummary, ModelCostSummary, ToolCostSummary } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -202,6 +202,30 @@ export const canvasApi = {
     api.delete(`/orgs/${orgId}/canvas/${id}/`),
 };
 
+// MCP Server Registration API
+export const mcpServersApi = {
+  list: (orgId: string) => api.get<MCPServerRegistration[]>(`/orgs/${orgId}/mcp-servers/`),
+  get: (orgId: string, id: string) => api.get<MCPServerRegistration>(`/orgs/${orgId}/mcp-servers/${id}/`),
+  create: (orgId: string, data: Partial<MCPServerRegistration>) =>
+    api.post<MCPServerRegistration>(`/orgs/${orgId}/mcp-servers/`, data),
+  update: (orgId: string, id: string, data: Partial<MCPServerRegistration>) =>
+    api.put<MCPServerRegistration>(`/orgs/${orgId}/mcp-servers/${id}/`, data),
+  delete: (orgId: string, id: string) =>
+    api.delete(`/orgs/${orgId}/mcp-servers/${id}/`),
+  // Health check for a specific server
+  healthCheck: (orgId: string, id: string) =>
+    api.post<{
+      id: string;
+      slug: string;
+      health_status: string;
+      health_message: string;
+      last_health_check: string | null;
+    }>(`/orgs/${orgId}/mcp-servers/${id}/health_check/`),
+  // Get Claude Desktop configuration
+  getClaudeConfig: (orgId: string) =>
+    api.get<ClaudeDesktopConfig>(`/orgs/${orgId}/mcp-servers/claude_config/`),
+};
+
 // Auth API
 export const authApi = {
   me: () => api.get("/auth/me/"),
@@ -212,6 +236,29 @@ export const authApi = {
   myOrganizations: () => api.get("/auth/me/orgs/"),
   addOrganization: (data: { organization_id?: string; organization_name?: string }) =>
     api.post("/auth/me/orgs/", data),
+};
+
+// Cost Analytics API
+export const costsApi = {
+  // Get organization total cost summary
+  summary: (orgId: string, params?: { environment?: string; days?: number }) =>
+    api.get<CostSummary>(`/orgs/${orgId}/costs/`, { params }),
+  
+  // Get cost breakdown by agent
+  byAgent: (orgId: string, params?: { environment?: string; days?: number }) =>
+    api.get<AgentCostSummary[]>(`/orgs/${orgId}/costs/by_agent/`, { params }),
+  
+  // Get cost breakdown by environment
+  byEnvironment: (orgId: string, params?: { days?: number }) =>
+    api.get<EnvironmentCostSummary[]>(`/orgs/${orgId}/costs/by_environment/`, { params }),
+  
+  // Get cost breakdown by model
+  byModel: (orgId: string, params?: { environment?: string; days?: number }) =>
+    api.get<ModelCostSummary[]>(`/orgs/${orgId}/costs/by_model/`, { params }),
+  
+  // Get cost breakdown by tool
+  byTool: (orgId: string, params?: { environment?: string; days?: number }) =>
+    api.get<ToolCostSummary[]>(`/orgs/${orgId}/costs/by_tool/`, { params }),
 };
 
 export default api;

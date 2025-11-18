@@ -20,6 +20,7 @@ import {
   Wifi,
   Zap,
   Network,
+  DollarSign,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ const navItems = [
   { href: "/resources", icon: Database, key: "resources" },
   { href: "/prompts", icon: MessageSquare, key: "prompts" },
   { href: "/runs", icon: Play, key: "runs" },
+  { href: "/cost-analytics", icon: DollarSign, key: "costAnalytics" },
   { href: "/policies", icon: Shield, key: "policies" },
   { href: "/environments", icon: Globe, key: "environments" },
   { href: "/mcp-connect", icon: Wifi, key: "mcpConnect" },

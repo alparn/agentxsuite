@@ -10,6 +10,64 @@ export interface Organization {
   updated_at: string;
 }
 
+// Cost Analytics types
+export interface CostSummary {
+  organization_id: string;
+  environment_id?: string;
+  period_days: number;
+  start_date: string;
+  end_date: string;
+  total_cost: number;
+  total_cost_input: number;
+  total_cost_output: number;
+  total_runs: number;
+  successful_runs: number;
+  failed_runs: number;
+  total_tokens: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  currency: string;
+}
+
+export interface AgentCostSummary {
+  agent_id: string;
+  agent_name: string;
+  total_cost: number;
+  total_runs: number;
+  total_tokens: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+}
+
+export interface EnvironmentCostSummary {
+  environment_id: string;
+  environment_name: string;
+  total_cost: number;
+  total_runs: number;
+  total_tokens: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+}
+
+export interface ModelCostSummary {
+  model_name: string;
+  total_cost: number;
+  total_runs: number;
+  total_tokens: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+}
+
+export interface ToolCostSummary {
+  tool_id: string;
+  tool_name: string;
+  total_cost: number;
+  total_runs: number;
+  total_tokens: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+}
+
 export interface Environment {
   id: string;
   name: string;
@@ -52,6 +110,40 @@ export interface Prompt {
   enabled: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// MCP Server Registration types
+export interface MCPServerRegistration {
+  id: string;
+  organization: Organization;
+  environment: Environment;
+  environment_id: string;
+  name: string;
+  slug: string;
+  description: string;
+  server_type: "stdio" | "http" | "ws";
+  endpoint: string;
+  command: string;
+  args: string[];
+  env_vars: Record<string, string>;
+  auth_method: "none" | "bearer" | "basic" | "api_key" | "oauth2";
+  secret_ref: string;
+  enabled: boolean;
+  last_health_check: string | null;
+  health_status: string;
+  health_message: string;
+  tags: string[];
+  metadata: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClaudeDesktopConfig {
+  mcpServers: Record<string, {
+    command: string;
+    args: string[];
+    env?: Record<string, string>;
+  }>;
 }
 
 // MCP Fabric Resource types
