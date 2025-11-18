@@ -203,7 +203,7 @@ def list_agents_handler(
     mode: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Handler für agentxsuite_list_agents."""
+    """Handler for agentxsuite_list_agents."""
     from apps.tenants.models import Organization, Environment
     
     try:
@@ -242,7 +242,7 @@ def get_agent_handler(
     agent_name: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Handler für agentxsuite_get_agent."""
+    """Handler for agentxsuite_get_agent."""
     from apps.tenants.models import Organization, Environment
     
     try:
@@ -285,7 +285,7 @@ def create_agent_handler(
     connection_id: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Handler für agentxsuite_create_agent."""
+    """Handler for agentxsuite_create_agent."""
     from apps.tenants.models import Organization, Environment
     from apps.connections.models import Connection
     from apps.agents.models import InboundAuthMethod
@@ -341,7 +341,7 @@ def list_connections_handler(
     status: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Handler für agentxsuite_list_connections."""
+    """Handler for agentxsuite_list_connections."""
     from apps.tenants.models import Organization, Environment
     
     try:
@@ -377,7 +377,7 @@ def list_tools_handler(
     connection_id: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Handler für agentxsuite_list_tools."""
+    """Handler for agentxsuite_list_tools."""
     from apps.tenants.models import Organization, Environment
     
     try:
@@ -416,7 +416,7 @@ def list_runs_handler(
     agent_id: str | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Handler für agentxsuite_list_runs."""
+    """Handler for agentxsuite_list_runs."""
     from apps.tenants.models import Organization, Environment
     
     try:
