@@ -180,12 +180,12 @@ class MCPFabricClient {
     // User tokens are Django tokens without JWT claims (sub/iss) needed for agent resolution
     if (!agentToken || typeof agentToken !== 'string' || agentToken.trim().length === 0) {
       // This happens during initialization or when no agent is selected
-      // Only log as warning if it's not just an empty call
-      if (agentToken !== null && agentToken !== undefined) {
+      // Only log in development for debugging
+      if (process.env.NODE_ENV === 'development' && agentToken !== null && agentToken !== undefined) {
         console.warn("MCP Fabric: Agent token not available or invalid", {
-        type: typeof agentToken,
-        isEmpty: agentToken === '',
-      });
+          type: typeof agentToken,
+          isEmpty: agentToken === '',
+        });
       }
       throw new MCPFabricError(
         "Agent token is required. Please ensure an agent with a ServiceAccount is selected.",
@@ -274,11 +274,13 @@ class MCPFabricClient {
         }
       }
       
-      // Only log if we have meaningful data, otherwise log the raw error
-      if (Object.keys(errorDetails).length > 1) {
-        console.error("MCP Fabric getTools error:", errorDetails);
-      } else {
-        console.error("MCP Fabric getTools error (unexpected format):", error);
+      // Only log in development for debugging
+      if (process.env.NODE_ENV === 'development') {
+        if (Object.keys(errorDetails).length > 1) {
+          console.error("MCP Fabric getTools error:", errorDetails);
+        } else {
+          console.error("MCP Fabric getTools error (unexpected format):", error);
+        }
       }
       
       throw new MCPFabricError(
