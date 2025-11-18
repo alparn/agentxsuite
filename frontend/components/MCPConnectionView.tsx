@@ -55,12 +55,28 @@ export function MCPConnectionView() {
     }
   };
 
-  const generateClaudeDesktopConfig = (env: any) => {
+  const generateClaudeDesktopConfig = (env: any, token?: string) => {
     const mcpUrl = getMCPUrl(env);
+    // Claude Desktop requires stdio-based MCP servers
+    // We provide a bridge script that converts HTTP to stdio
+    // IMPORTANT: Update the path to mcp-http-bridge.js to match your system
+    const tokenPlaceholder = token || "YOUR_TOKEN_HERE";
+    
+    // Use absolute path - user must update this to match their system
+    // Example: "/Users/username/AgentxSuite/docs/mcp-http-bridge.js"
+    // Or relative from home: "~/AgentxSuite/docs/mcp-http-bridge.js"
+    const bridgeScriptPath = "/path/to/AgentxSuite/docs/mcp-http-bridge.js";
+    
     const config = {
       mcpServers: {
         agentxsuite: {
-          url: mcpUrl,
+          command: "node",
+          args: [
+            bridgeScriptPath,
+            mcpUrl,
+            "--header",
+            `Authorization: Bearer ${tokenPlaceholder}`,
+          ],
         },
       },
     };

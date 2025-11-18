@@ -242,7 +242,7 @@
       "title": "Connect to Claude Desktop",
       "description": "Use your tools directly in Claude's desktop app. One-click installation.",
       "button": "Add to Claude Desktop",
-      "hint": "Downloads .json file. Open to connect."
+      "hint": "Downloads .json file. Replace YOUR_TOKEN_HERE with your Agent Token from Token Management."
     },
     "claudeCode": {
       "title": "Connect to Claude Code",
