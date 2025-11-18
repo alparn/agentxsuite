@@ -24,6 +24,7 @@ export function PromptsView() {
   const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
   const [invokingPrompt, setInvokingPrompt] = useState<Prompt | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [agentToken, setAgentToken] = useState<string | null>(null);
 
   // Fetch organizations
   const { data: orgsResponse } = useQuery({
@@ -102,6 +103,46 @@ export function PromptsView() {
   });
 
   const prompts = Array.isArray(promptsData) ? promptsData : [];
+
+  // Fetch agents to get default agent for token generation
+  const { data: agentsData } = useQuery({
+    queryKey: ["agents", orgId],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const response = await api.get(`/orgs/${orgId}/agents/`);
+      return Array.isArray(response.data) ? response.data : response.data?.results || [];
+    },
+    enabled: !!orgId,
+  });
+
+  const agents = Array.isArray(agentsData) ? agentsData : [];
+  const defaultAgent = agents.find((a: any) => a.name === "AgentCore" || a.enabled);
+
+  // Generate agent token for MCP Fabric calls (if we have a default agent)
+  const { data: agentTokenData } = useQuery({
+    queryKey: ["agent-token-for-prompts", orgId, envId, defaultAgent?.id],
+    queryFn: async () => {
+      if (!orgId || !envId || !defaultAgent?.id) return null;
+      try {
+        const response = await api.post(`/orgs/${orgId}/agents/${defaultAgent.id}/tokens/`, {
+          ttl_minutes: 60,
+          scopes: ["mcp:prompts", "mcp:prompt:invoke", "mcp:manifest"],
+        });
+        return response.data?.token || null;
+      } catch (error: any) {
+        console.error("Failed to generate agent token for prompts:", error);
+        return null;
+      }
+    },
+    enabled: !!orgId && !!envId && !!defaultAgent?.id,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  // Update agentToken when data changes
+  useEffect(() => {
+    setAgentToken(agentTokenData || null);
+  }, [agentTokenData]);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -394,6 +435,7 @@ export function PromptsView() {
           onClose={() => setInvokingPrompt(null)}
           orgId={orgId || ""}
           envId={envId || ""}
+          agentToken={agentToken}
         />
       )}
     </div>

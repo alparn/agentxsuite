@@ -57,10 +57,11 @@ export function ToolRunDialog({
     }
   }, [steps]);
 
-  // Extract runId from result
+  // Extract runId from result (MCP format uses run_id, legacy format uses id)
   useEffect(() => {
-    if (result?.id) {
-      setRunId(result.id);
+    const id = result?.run_id || result?.id;
+    if (id) {
+      setRunId(id);
       setShowChat(true);
     }
   }, [result]);
@@ -91,7 +92,7 @@ export function ToolRunDialog({
     setArgs((prev) => ({ ...prev, [key]: value }));
   };
 
-  const getStepIcon = (stepType: string) => {
+  const getStepIcon = (stepType: string, isRunning: boolean) => {
     switch (stepType) {
       case "success":
         return <CheckCircle2 className="w-4 h-4 text-green-400" />;
@@ -100,9 +101,15 @@ export function ToolRunDialog({
       case "warning":
         return <AlertCircle className="w-4 h-4 text-yellow-400" />;
       case "check":
-        return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />;
+        // Show spinner only while running, otherwise show info icon
+        return isRunning 
+          ? <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+          : <Info className="w-4 h-4 text-blue-400" />;
       case "execution":
-        return <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />;
+        // Show spinner only while running, otherwise show checkmark
+        return isRunning
+          ? <Loader2 className="w-4 h-4 text-purple-400 animate-spin" />
+          : <CheckCircle2 className="w-4 h-4 text-purple-400" />;
       default:
         return <Info className="w-4 h-4 text-slate-400" />;
     }
@@ -163,7 +170,7 @@ export function ToolRunDialog({
                     key={step.id}
                     className={`p-3 rounded-lg border ${getStepColor(step.step_type)} flex items-start gap-3`}
                   >
-                    <div className="flex-shrink-0 mt-0.5">{getStepIcon(step.step_type)}</div>
+                    <div className="flex-shrink-0 mt-0.5">{getStepIcon(step.step_type, running)}</div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium break-words">{step.message}</div>
                       {step.details && Object.keys(step.details).length > 0 && (
@@ -198,7 +205,7 @@ export function ToolRunDialog({
           <p className="text-slate-400 mb-4">{toolDescription}</p>
         )}
 
-            {agents && agents.length > 0 && (
+            {agents && agents.length > 0 ? (
               <div className="mb-4">
                 <label className="block text-sm font-medium mb-1 text-slate-300">
                   Agent auswählen
@@ -225,6 +232,13 @@ export function ToolRunDialog({
                 </select>
                 <p className="text-xs text-slate-500 mt-1">
                   Wählen Sie den Agent aus, der diese Aufgabe ausführen soll.
+                </p>
+              </div>
+            ) : (
+              <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded">
+                <p className="text-sm text-yellow-300">
+                  ⚠️ Kein Agent in derselben Environment wie dieses Tool verfügbar. 
+                  Bitte erstellen Sie einen Agent in der Environment "{tool.environment?.name || 'Unknown'}".
                 </p>
               </div>
             )}
@@ -299,9 +313,9 @@ export function ToolRunDialog({
                   <span className="text-red-300">{result.error_text}</span>
                 </div>
               )}
-              {(result.id || result.run_id) && (
+              {(result.run_id || result.id) && (
                 <div className="text-xs text-slate-400 mt-2">
-                  Run ID: {result.id || result.run_id}
+                  Run ID: {result.run_id || result.id}
                 </div>
               )}
               {result.execution?.duration_ms && (

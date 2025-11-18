@@ -140,9 +140,9 @@ export function ToolsView() {
       }
       const response = await runsApi.execute(orgId, {
         tool: toolId, // Tool UUID
-        agent: agentId, // Optional agent UUID
+        agent: agentId ?? undefined, // Optional agent UUID (make sure it's string | undefined, not null)
         input: inputJson,
-        environment: envId, // Include environment if available
+        environment: envId ?? undefined, // Make sure envId is undefined if null
       });
       return response.data;
     },
@@ -485,9 +485,10 @@ export function ToolsView() {
           result={runResult}
           error={runError}
           agents={agents.filter((agent: any) => 
-            agent.enabled && 
-            agent.environment?.id === runningTool.environment?.id || 
-            agent.environment_id === runningTool.environment_id
+            agent.enabled && (
+              agent.environment?.id === runningTool.environment?.id || 
+              agent.environment_id === runningTool.environment_id
+            )
           )}
           selectedAgentId={selectedAgentId}
           onAgentChange={setSelectedAgentId}

@@ -12,6 +12,7 @@ interface PromptInvokeDialogProps {
   onClose: () => void;
   orgId: string;
   envId: string;
+  agentToken?: string | null; // Add agentToken prop
 }
 
 export function PromptInvokeDialog({
@@ -19,6 +20,7 @@ export function PromptInvokeDialog({
   onClose,
   orgId,
   envId,
+  agentToken,
 }: PromptInvokeDialogProps) {
   const t = useTranslations();
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -32,7 +34,11 @@ export function PromptInvokeDialog({
 
   const invokeMutation = useMutation({
     mutationFn: async (input: Record<string, any>) => {
-      return mcpFabric.invokePrompt(orgId, envId, prompt.name, input);
+      // Check if token is available
+      if (!agentToken) {
+        throw new Error("Agent token is required. Please ensure an agent with a ServiceAccount is selected.");
+      }
+      return mcpFabric.invokePrompt(orgId, envId, prompt.name, input, agentToken);
     },
     onSuccess: (data) => {
       setResult(data);
