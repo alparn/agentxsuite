@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, runsApi } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import { Plus, Play, CheckCircle2, XCircle, Edit } from "lucide-react";
 import { mcpFabric } from "@/lib/mcpFabric";
@@ -134,25 +134,24 @@ export function ToolsView() {
 
   const runToolMutation = useMutation({
     mutationFn: async ({ toolId, inputJson, agentId }: { toolId: string; inputJson: Record<string, any>; agentId?: string }) => {
-      // Use Tool Registry API
-      const url = orgId 
-        ? `/orgs/${orgId}/tools/${toolId}/run/`
-        : `/tools/${toolId}/run/`;
-      const payload: any = {
-        input_json: inputJson,
-      };
-      if (agentId) {
-        payload.agent_id = agentId;
+      // Use unified Runs API (MCP-compatible)
+      if (!orgId) {
+        throw new Error("Organization ID is required");
       }
-      const response = await api.post(url, payload);
+      const response = await runsApi.execute(orgId, {
+        tool: toolId, // Tool UUID
+        agent: agentId, // Optional agent UUID
+        input: inputJson,
+        environment: envId, // Include environment if available
+      });
       return response.data;
     },
     onSuccess: (data) => {
       setRunResult(data);
       setRunError(null);
-      // Extract run ID from response if available
-      if (data?.id) {
-        // Run ID is already in the result
+      // New format includes run_id (MCP-compatible response)
+      if (data?.run_id) {
+        // Run ID is in the result
       }
     },
     onError: (error: any) => {
@@ -209,8 +208,14 @@ export function ToolsView() {
     
     if (isSystemTool && orgId && envId) {
       // Use MCP Fabric API for system tools
+      // IMPORTANT: System tools need agent token
+      if (!agentTokenData) {
+        setRunError("Agent token is required to run system tools. Please ensure the agent has a ServiceAccount configured.");
+        return;
+      }
+      
       try {
-        const response = await mcpFabric.runTool(orgId, envId, runningTool.name, inputJson);
+        const response = await mcpFabric.runTool(orgId, envId, runningTool.name, inputJson, agentTokenData);
         if (response.isError) {
           const errorText = response.content?.map((item) => item.text || "").filter(Boolean).join("\n") || "Unknown error";
           setRunError(errorText);
