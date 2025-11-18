@@ -62,7 +62,10 @@ export function ToolsView() {
     enabled: !!orgId,
   });
 
-  const tools = Array.isArray(toolsData) ? toolsData : [];
+  // Filter out system tools (agentxsuite://system) - they are internal tools for AxCore agents
+  const tools = Array.isArray(toolsData) 
+    ? toolsData.filter((tool: any) => tool.connection?.endpoint !== 'agentxsuite://system')
+    : [];
 
   // Fetch agents for the selected organization/environment
   const { data: agentsData } = useQuery({
@@ -133,7 +136,6 @@ export function ToolsView() {
     },
     enabled: !!orgId && !!envId && isAxCoreAgent && !!agentTokenData,
     retry: false, // Don't retry on failure
-    onError: () => {}, // Suppress React Query error handler
   });
 
   const systemTools = Array.isArray(systemToolsData) ? systemToolsData : [];
