@@ -713,9 +713,27 @@ function MCPToolCard({
       if (err instanceof MCPFabricError) {
         setError(err.message);
       } else {
-        setError(
-          err.response?.data?.detail || err.message || "Failed to execute tool"
-        );
+        // Handle nested error objects
+        let errorMsg = "Failed to execute tool";
+        
+        if (err.response?.data) {
+          const data = err.response.data;
+          
+          // Check if detail is an object with error_description
+          if (typeof data.detail === 'object' && data.detail !== null) {
+            errorMsg = data.detail.error_description || data.detail.error || JSON.stringify(data.detail);
+          } else if (typeof data.detail === 'string') {
+            errorMsg = data.detail;
+          } else if (data.message) {
+            errorMsg = data.message;
+          } else if (data.error) {
+            errorMsg = data.error;
+          }
+        } else if (err.message) {
+          errorMsg = err.message;
+        }
+        
+        setError(errorMsg);
       }
     } finally {
       setRunning(false);
