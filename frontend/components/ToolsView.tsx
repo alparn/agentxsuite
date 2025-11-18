@@ -123,11 +123,17 @@ export function ToolsView() {
         // Filter for system tools (agentxsuite_*)
         return allTools.filter((tool: any) => tool.name?.startsWith("agentxsuite_"));
       } catch (error) {
-        console.error("Failed to fetch system tools:", error);
+        // Silently fail - system tools are optional
+        // Only log in development
+        if (process.env.NODE_ENV === 'development') {
+          console.error("Failed to fetch system tools:", error);
+        }
         return [];
       }
     },
     enabled: !!orgId && !!envId && isAxCoreAgent && !!agentTokenData,
+    retry: false, // Don't retry on failure
+    onError: () => {}, // Suppress React Query error handler
   });
 
   const systemTools = Array.isArray(systemToolsData) ? systemToolsData : [];

@@ -376,7 +376,29 @@ class MCPFabricClient {
       }
     } catch (error: any) {
       // Handle HTTP errors
-      const errorMessage = error.response?.data?.detail || handleMCPError(error);
+      let errorMessage = "Execution failed";
+      
+      if (error.response?.data) {
+        const data = error.response.data;
+        
+        // Check if detail is an object with error_description
+        if (typeof data.detail === 'object' && data.detail !== null) {
+          errorMessage = data.detail.error_description || data.detail.error || JSON.stringify(data.detail);
+        } else if (typeof data.detail === 'string') {
+          errorMessage = data.detail;
+        } else if (data.error_description) {
+          errorMessage = data.error_description;
+        } else if (data.error) {
+          errorMessage = data.error;
+        } else if (data.message) {
+          errorMessage = data.message;
+        } else {
+          errorMessage = handleMCPError(error);
+        }
+      } else {
+        errorMessage = handleMCPError(error);
+      }
+      
       return {
         content: [
           {

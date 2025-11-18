@@ -696,7 +696,14 @@ function MCPToolCard({
       if (response.isError) {
         // Combine all error content items
         const errorText = response.content
-          ?.map((item) => item.text || "")
+          ?.map((item) => {
+            const text = item.text || "";
+            // If text is an object (nested error), extract the description
+            if (typeof text === 'object' && text !== null) {
+              return (text as any).error_description || (text as any).error || JSON.stringify(text);
+            }
+            return text;
+          })
           .filter(Boolean)
           .join("\n") || "Unknown error";
         setError(errorText);
