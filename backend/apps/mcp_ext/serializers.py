@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from apps.mcp_ext.models import Prompt, Resource
+from apps.mcp_ext.models import MCPServerRegistration, Prompt, Resource
 from apps.tenants.serializers import EnvironmentSerializer, OrganizationSerializer
 
 
@@ -81,4 +81,79 @@ class PromptSerializer(serializers.ModelSerializer):
         if instance.environment:
             representation["environment_id"] = str(instance.environment.id)
         return representation
+
+
+class MCPServerRegistrationSerializer(serializers.ModelSerializer):
+    """Serializer for MCPServerRegistration."""
+
+    organization = OrganizationSerializer(read_only=True)
+    environment = EnvironmentSerializer(read_only=True)
+    environment_id = serializers.UUIDField(write_only=True, required=False)
+    args = serializers.JSONField(required=False, allow_null=False)
+    env_vars = serializers.JSONField(required=False, allow_null=False)
+    tags = serializers.JSONField(required=False, allow_null=False)
+    metadata = serializers.JSONField(required=False, allow_null=False)
+
+    class Meta:
+        model = MCPServerRegistration
+        fields = [
+            "id",
+            "organization",
+            "environment",
+            "environment_id",
+            "name",
+            "slug",
+            "description",
+            "server_type",
+            "endpoint",
+            "command",
+            "args",
+            "env_vars",
+            "auth_method",
+            "secret_ref",
+            "enabled",
+            "last_health_check",
+            "health_status",
+            "health_message",
+            "tags",
+            "metadata",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "last_health_check",
+            "health_status",
+            "health_message",
+        ]
+
+    def to_representation(self, instance):
+        """Add environment_id to representation for filtering."""
+        representation = super().to_representation(instance)
+        if instance.environment:
+            representation["environment_id"] = str(instance.environment.id)
+        return representation
+
+    def validate(self, attrs):
+        """Cross-field validation."""
+        server_type = attrs.get("server_type")
+        
+        # Validate required fields based on server type
+        if server_type == MCPServerRegistration.ServerType.STDIO:
+            if not attrs.get("command"):
+                raise serializers.ValidationError(
+                    {"command": "Command is required for stdio servers"}
+                )
+        elif server_type in [
+            MCPServerRegistration.ServerType.HTTP,
+            MCPServerRegistration.ServerType.WEBSOCKET,
+        ]:
+            if not attrs.get("endpoint"):
+                raise serializers.ValidationError(
+                    {"endpoint": "Endpoint is required for HTTP/WebSocket servers"}
+                )
+
+        return attrs
 
