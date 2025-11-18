@@ -300,6 +300,7 @@ export interface RunDetail {
     id: string;
     organization: Organization;
     environment: Environment;
+    connection?: Connection;
     name: string;
     version: string;
     schema_json: Record<string, any>;

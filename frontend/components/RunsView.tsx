@@ -261,14 +261,15 @@ export function RunsView() {
               </button>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
+            {/* Quick Summary */}
+            <div className="grid grid-cols-2 gap-3 mb-6 p-3 bg-slate-900/30 rounded-lg">
               <div>
-                <span className="text-slate-400">Status:</span>{" "}
+                <div className="text-slate-500 text-xs mb-1">Status</div>
                 {getStatusBadge(selectedRunDetail.status)}
               </div>
               <div>
-                <span className="text-slate-400">Duration:</span>{" "}
-                <span className="text-white">
+                <div className="text-slate-500 text-xs mb-1">Duration</div>
+                <div className="text-white font-medium">
                   {selectedRunDetail.started_at && selectedRunDetail.ended_at
                     ? formatDuration(
                         Math.floor(
@@ -278,54 +279,120 @@ export function RunsView() {
                         )
                       )
                     : "-"}
-                </span>
+                </div>
               </div>
-              <div>
-                <span className="text-slate-400">Agent:</span>{" "}
-                <span className="text-white">{selectedRunDetail.agent.name}</span>
-              </div>
-              <div>
-                <span className="text-slate-400">Tool:</span>{" "}
-                <span className="text-white">{selectedRunDetail.tool.name}</span>
-              </div>
-              <div>
-                <span className="text-slate-400">Environment:</span>{" "}
-                <span className="text-white">{selectedRunDetail.environment.name}</span>
-              </div>
-              <div>
-                <span className="text-slate-400">Started:</span>{" "}
-                <span className="text-white">
-                  {selectedRunDetail.started_at
-                    ? new Date(selectedRunDetail.started_at).toLocaleString()
-                    : "-"}
-                </span>
+              <div className="col-span-2">
+                <div className="text-slate-500 text-xs mb-1">Run ID</div>
+                <div className="text-white font-mono text-xs break-all">{selectedRunDetail.id}</div>
               </div>
             </div>
 
+            {/* Agent Details */}
+            <details open className="mb-3 p-3 bg-slate-800/40 rounded-lg border border-slate-700/50">
+              <summary className="cursor-pointer font-medium text-white hover:text-purple-400 transition-colors">
+                🤖 Agent: <span className="text-purple-400">{selectedRunDetail.agent.name}</span>
+              </summary>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div><span className="text-slate-500">Version:</span> <span className="text-white">{selectedRunDetail.agent.version}</span></div>
+                  <div><span className="text-slate-500">Mode:</span> <span className="text-white">{selectedRunDetail.agent.mode}</span></div>
+                  <div><span className="text-slate-500">Enabled:</span> <span className={selectedRunDetail.agent.enabled ? "text-green-400" : "text-red-400"}>{selectedRunDetail.agent.enabled ? "✓ Yes" : "✗ No"}</span></div>
+                  <div><span className="text-slate-500">Slug:</span> <span className="text-white font-mono text-xs">{selectedRunDetail.agent.slug}</span></div>
+                </div>
+                {selectedRunDetail.agent.connection && (
+                  <div className="mt-2 p-2 bg-slate-900/50 rounded border border-slate-700/30">
+                    <div className="text-slate-400 text-xs font-semibold mb-1">🔗 Connection</div>
+                    <div className="text-white text-sm">{selectedRunDetail.agent.connection.name}</div>
+                    <div className="text-slate-400 text-xs font-mono mt-1">{selectedRunDetail.agent.connection.endpoint}</div>
+                    <div className="flex gap-3 text-xs mt-2">
+                      <span><span className="text-slate-500">Status:</span> <span className={selectedRunDetail.agent.connection.status === 'ok' ? 'text-green-400' : 'text-red-400'}>{selectedRunDetail.agent.connection.status}</span></span>
+                      <span><span className="text-slate-500">Auth:</span> <span className="text-white">{selectedRunDetail.agent.connection.auth_method}</span></span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </details>
+
+            {/* Tool Details */}
+            <details open className="mb-3 p-3 bg-slate-800/40 rounded-lg border border-slate-700/50">
+              <summary className="cursor-pointer font-medium text-white hover:text-purple-400 transition-colors">
+                🔧 Tool: <span className="text-purple-400">{selectedRunDetail.tool.name}</span>
+              </summary>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div><span className="text-slate-500">Version:</span> <span className="text-white">{selectedRunDetail.tool.version}</span></div>
+                  <div><span className="text-slate-500">Enabled:</span> <span className={selectedRunDetail.tool.enabled ? "text-green-400" : "text-red-400"}>{selectedRunDetail.tool.enabled ? "✓ Yes" : "✗ No"}</span></div>
+                  <div><span className="text-slate-500">Sync:</span> <span className="text-white">{selectedRunDetail.tool.sync_status}</span></div>
+                  <div><span className="text-slate-500">Synced:</span> <span className="text-white text-xs">{selectedRunDetail.tool.synced_at ? new Date(selectedRunDetail.tool.synced_at).toLocaleDateString("de-DE") : "-"}</span></div>
+                </div>
+                {selectedRunDetail.tool.connection && (
+                  <div className="mt-2 p-2 bg-slate-900/50 rounded border border-slate-700/30">
+                    <div className="text-slate-400 text-xs font-semibold mb-1">🔗 Connection</div>
+                    <div className="text-white text-sm">{selectedRunDetail.tool.connection.name}</div>
+                    <div className="text-slate-400 text-xs font-mono mt-1">{selectedRunDetail.tool.connection.endpoint}</div>
+                  </div>
+                )}
+                {selectedRunDetail.tool.schema_json && Object.keys(selectedRunDetail.tool.schema_json).length > 0 && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs text-slate-400 hover:text-white">
+                      📋 Schema {selectedRunDetail.tool.schema_json.properties && `(${Object.keys(selectedRunDetail.tool.schema_json.properties).length} properties)`}
+                    </summary>
+                    <pre className="mt-2 bg-slate-950 p-3 rounded text-xs overflow-x-auto max-h-48 border border-slate-700/30">
+                      {JSON.stringify(selectedRunDetail.tool.schema_json, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            </details>
+
+            {/* Environment & Org */}
+            <details className="mb-3 p-3 bg-slate-800/40 rounded-lg border border-slate-700/50">
+              <summary className="cursor-pointer font-medium text-white hover:text-purple-400 transition-colors">
+                🌍 Environment & Organization
+              </summary>
+              <div className="mt-3 space-y-2 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div><span className="text-slate-500">Environment:</span> <span className="text-white">{selectedRunDetail.environment.name}</span></div>
+                  <div><span className="text-slate-500">Type:</span> <span className="text-white">{selectedRunDetail.environment.type}</span></div>
+                  <div><span className="text-slate-500">Organization:</span> <span className="text-white">{selectedRunDetail.organization.name}</span></div>
+                  <div><span className="text-slate-500">Org ID:</span> <span className="text-white font-mono text-xs">{selectedRunDetail.organization.id.slice(0, 12)}...</span></div>
+                </div>
+              </div>
+            </details>
+
+            {/* Timestamps */}
+            <div className="mb-4 p-3 bg-slate-900/30 rounded-lg border border-slate-700/30">
+              <div className="text-slate-400 text-xs font-semibold mb-2">⏱️ Timestamps</div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div><span className="text-slate-500">Started:</span> <span className="text-white text-xs">{selectedRunDetail.started_at ? new Date(selectedRunDetail.started_at).toLocaleString("de-DE") : "-"}</span></div>
+                <div><span className="text-slate-500">Ended:</span> <span className="text-white text-xs">{selectedRunDetail.ended_at ? new Date(selectedRunDetail.ended_at).toLocaleString("de-DE") : "-"}</span></div>
+                <div><span className="text-slate-500">Created:</span> <span className="text-white text-xs">{selectedRunDetail.created_at ? new Date(selectedRunDetail.created_at).toLocaleString("de-DE") : "-"}</span></div>
+                <div><span className="text-slate-500">Updated:</span> <span className="text-white text-xs">{selectedRunDetail.updated_at ? new Date(selectedRunDetail.updated_at).toLocaleString("de-DE") : "-"}</span></div>
+              </div>
+            </div>
+
+            {/* Error */}
             {selectedRunDetail.error_text && (
-              <div>
-                <h3 className="text-sm font-medium text-red-400 mb-2">
-                  Error
-                </h3>
-                <pre className="bg-red-900/20 border border-red-500/20 p-4 rounded-lg text-sm text-red-300 overflow-x-auto">
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-red-400 mb-2">❌ Error</h3>
+                <pre className="bg-red-900/20 border border-red-500/30 p-4 rounded-lg text-sm text-red-300 overflow-x-auto">
                   {selectedRunDetail.error_text}
                 </pre>
               </div>
             )}
 
-            <div>
-              <h3 className="text-sm font-medium text-slate-400 mb-2">
-                {t("tools.input")}
-              </h3>
-              <pre className="bg-slate-800 p-4 rounded-lg text-sm text-slate-300 overflow-x-auto">
+            {/* Input */}
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-slate-300 mb-2">📥 {t("tools.input")}</h3>
+              <pre className="bg-slate-900/50 border border-slate-700/50 p-4 rounded-lg text-sm text-slate-300 overflow-x-auto max-h-48">
                 {JSON.stringify(selectedRunDetail.input_json || {}, null, 2)}
               </pre>
             </div>
-            <div>
-              <h3 className="text-sm font-medium text-slate-400 mb-2">
-                {t("tools.output")}
-              </h3>
-              <pre className="bg-slate-800 p-4 rounded-lg text-sm text-slate-300 overflow-x-auto">
+
+            {/* Output */}
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-slate-300 mb-2">📤 {t("tools.output")}</h3>
+              <pre className="bg-slate-900/50 border border-slate-700/50 p-4 rounded-lg text-sm text-slate-300 overflow-x-auto max-h-48">
                 {JSON.stringify(selectedRunDetail.output_json || {}, null, 2)}
               </pre>
             </div>

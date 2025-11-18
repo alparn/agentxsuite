@@ -73,6 +73,13 @@ export function ToolRunDialog({
     }
   }, [running]);
 
+  // Hide chat when error occurs (to show error message prominently)
+  useEffect(() => {
+    if (error && !running) {
+      setShowChat(false);
+    }
+  }, [error, running]);
+
   // Parse JSON Schema to generate form fields
   const schema = tool.schema_json || {};
   const properties = schema.properties || {};
@@ -327,10 +334,10 @@ export function ToolRunDialog({
           </div>
         )}
 
-            {error && !showChat && (
+            {error && (
           <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded">
-            <h3 className="font-semibold mb-2 text-red-400">Error:</h3>
-            <pre className="whitespace-pre-wrap text-sm text-red-300 overflow-x-auto">
+            <h3 className="font-semibold mb-2 text-red-400">❌ Error</h3>
+            <pre className="whitespace-pre-wrap text-sm text-red-300 overflow-x-auto max-h-48">
               {error}
             </pre>
               </div>
