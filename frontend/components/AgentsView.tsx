@@ -5,9 +5,10 @@ import { useTranslations } from "next-intl";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
-import { Plus, Power, PowerOff, Edit, Radio, X, CheckCircle2, AlertCircle, AlertTriangle, Link as LinkIcon } from "lucide-react";
+import { Plus, Power, PowerOff, Edit, Radio, X, CheckCircle2, AlertCircle, AlertTriangle, Link as LinkIcon, Trash2 } from "lucide-react";
 import { AgentDialog } from "./AgentDialog";
 import { ServiceAccountDialog } from "./ServiceAccountDialog";
+import { agentsApi } from "@/lib/api";
 
 interface Toast {
   id: string;
@@ -25,6 +26,8 @@ export function AgentsView() {
   const [showServiceAccountDialog, setShowServiceAccountDialog] = useState(false);
   const [serviceAccountAgent, setServiceAccountAgent] = useState<any>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [agentToDelete, setAgentToDelete] = useState<any>(null);
 
   // Fetch organizations and auto-select first one if none selected
   const { data: orgsResponse } = useQuery({
@@ -114,6 +117,28 @@ export function AgentsView() {
       addToast(errorMessage, "error");
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      if (!orgId) throw new Error("Missing org");
+      return agentsApi.delete(orgId, id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      setDeleteDialogOpen(false);
+      setAgentToDelete(null);
+      addToast(t("agents.deleteSuccess") || "Agent deleted successfully", "success");
+    },
+    onError: (error: any) => {
+      const errorMessage = error.response?.data?.message || error.message || t("agents.deleteError") || "Failed to delete agent";
+      addToast(errorMessage, "error");
+    },
+  });
+
+  const handleDeleteConfirm = () => {
+    if (!agentToDelete) return;
+    deleteMutation.mutate(agentToDelete.id);
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -307,6 +332,17 @@ export function AgentsView() {
                               <CheckCircle2 className="w-4 h-4" />
                             </span>
                           )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAgentToDelete(agent);
+                              setDeleteDialogOpen(true);
+                            }}
+                            className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                            title={`${t("common.delete")} - ${agent.name}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -427,11 +463,65 @@ export function AgentsView() {
                       <CheckCircle2 className="w-4 h-4" />
                     </span>
                   )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAgentToDelete(agent);
+                      setDeleteDialogOpen(true);
+                    }}
+                    className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                    title={`${t("common.delete")} - ${agent.name}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         </>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {deleteDialogOpen && agentToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-red-500/10 rounded-lg">
+                <AlertCircle className="w-6 h-6 text-red-400" />
+              </div>
+              <h2 className="text-xl font-semibold text-white">
+                {t("common.delete")} Agent
+              </h2>
+            </div>
+            <div className="mb-6">
+              <p className="text-slate-300 mb-2">
+                Are you sure you want to delete the agent <strong className="text-white">{agentToDelete.name}</strong>?
+              </p>
+              <p className="text-sm text-slate-400">
+                This action cannot be undone. All associated data will be permanently deleted.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setDeleteDialogOpen(false);
+                  setAgentToDelete(null);
+                }}
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors"
+                disabled={deleteMutation.isPending}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={deleteMutation.isPending}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleteMutation.isPending ? t("common.loading") : t("common.delete")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {selectedAgent && (

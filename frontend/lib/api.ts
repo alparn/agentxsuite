@@ -146,6 +146,37 @@ export const tokensApi = {
     api.delete(`/orgs/${orgId}/agents/${agentId}/tokens/${jti}/`),
 };
 
+// User Token Management API (new - not tied to specific agent)
+export const userTokensApi = {
+  // List all user tokens for the organization
+  list: (orgId: string) =>
+    api.get<IssuedToken[]>(`/orgs/${orgId}/tokens/`),
+  // Get a specific token by ID
+  get: (orgId: string, tokenId: string) =>
+    api.get<IssuedToken>(`/orgs/${orgId}/tokens/${tokenId}/`),
+  // Create a new user token
+  create: (orgId: string, data: {
+    name: string;
+    purpose: string;
+    environment_id: string;
+    expires_in_days?: number;
+    scopes?: string[];
+  }) =>
+    api.post<{ token: string; token_id: string; jti: string; expires_at: string }>(`/orgs/${orgId}/tokens/`, data),
+  // Revoke a token (soft delete)
+  revoke: (orgId: string, tokenId: string) =>
+    api.post<IssuedToken>(`/orgs/${orgId}/tokens/${tokenId}/revoke/`),
+  // Delete a token (hard delete)
+  delete: (orgId: string, tokenId: string) =>
+    api.delete(`/orgs/${orgId}/tokens/${tokenId}/`),
+  // Get available purposes
+  purposes: (orgId: string) =>
+    api.get<{ value: string; label: string }[]>(`/orgs/${orgId}/tokens/purposes/`),
+  // Get available scopes
+  scopes: (orgId: string) =>
+    api.get<{ value: string; label: string }[]>(`/orgs/${orgId}/tokens/scopes/`),
+};
+
 // ServiceAccount API
 export const serviceAccountsApi = {
   list: (orgId: string) => api.get<ServiceAccount[]>(`/orgs/${orgId}/service-accounts/`),
@@ -222,8 +253,15 @@ export const mcpServersApi = {
       last_health_check: string | null;
     }>(`/orgs/${orgId}/mcp-servers/${id}/health_check/`),
   // Get Claude Desktop configuration
-  getClaudeConfig: (orgId: string) =>
-    api.get<ClaudeDesktopConfig>(`/orgs/${orgId}/mcp-servers/claude_config/`),
+  getClaudeConfig: (orgId: string, params?: { env_id?: string; token_id?: string; create_token?: boolean }) =>
+    api.get<ClaudeDesktopConfig>(`/orgs/${orgId}/mcp-servers/claude_config/`, { params }),
+  // Download Claude Desktop configuration as JSON file
+  downloadConfig: (orgId: string, params?: { env_id?: string; token_id?: string; create_token?: boolean }) => {
+    const queryString = new URLSearchParams(params as any).toString();
+    const url = `/orgs/${orgId}/mcp-servers/download_config/${queryString ? `?${queryString}` : ''}`;
+    // Trigger browser download
+    window.location.href = url;
+  },
 };
 
 // Auth API

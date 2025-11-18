@@ -19,26 +19,23 @@ class AuditLoggingMixin:
         """Log creation - calls ViewSet's perform_create if it exists, then logs."""
         from rest_framework.viewsets import ModelViewSet
         
-        # Find ViewSet class in MRO (skip AuditLoggingMixin)
+        # Find ViewSet class in MRO (skip AuditLoggingMixin and ModelViewSet)
+        # Check if ViewSet DEFINES perform_create (not just inherits it)
         viewset_class = None
         for cls in self.__class__.__mro__:
-            if cls != AuditLoggingMixin:
-                viewset_class = cls
-                break
+            if cls != AuditLoggingMixin and cls != ModelViewSet:
+                # Check if this class DEFINES perform_create (not just inherits it)
+                if "perform_create" in cls.__dict__:
+                    viewset_class = cls
+                    break
         
         # Call ViewSet's perform_create if it exists and is different from ModelViewSet's
         if viewset_class:
-            viewset_method = getattr(viewset_class, "perform_create", None)
-            if viewset_method and viewset_method != ModelViewSet.perform_create:
-                # ViewSet has custom perform_create - call it
-                viewset_method(self, serializer)
-            else:
-                # No custom method, use ModelViewSet's default
-                from rest_framework.viewsets import ModelViewSet
-                ModelViewSet.perform_create(self, serializer)
+            viewset_method = viewset_class.perform_create
+            # ViewSet has custom perform_create - call it
+            viewset_method(self, serializer)
         else:
-            # Fallback to ModelViewSet's default
-            from rest_framework.viewsets import ModelViewSet
+            # No custom method, use ModelViewSet's default directly
             ModelViewSet.perform_create(self, serializer)
         
         # Log after creation (only if instance was created)
@@ -55,26 +52,23 @@ class AuditLoggingMixin:
         instance = serializer.instance
         old_data = self._get_serialized_data(instance) if instance else None
         
-        # Find ViewSet class in MRO (skip AuditLoggingMixin)
+        # Find ViewSet class in MRO (skip AuditLoggingMixin and ModelViewSet)
+        # Check if ViewSet DEFINES perform_update (not just inherits it)
         viewset_class = None
         for cls in self.__class__.__mro__:
-            if cls != AuditLoggingMixin:
-                viewset_class = cls
-                break
+            if cls != AuditLoggingMixin and cls != ModelViewSet:
+                # Check if this class DEFINES perform_update (not just inherits it)
+                if "perform_update" in cls.__dict__:
+                    viewset_class = cls
+                    break
         
-        # Call ViewSet's perform_update if it exists and is different from ModelViewSet's
+        # Call ViewSet's perform_update if it exists
         if viewset_class:
-            viewset_method = getattr(viewset_class, "perform_update", None)
-            if viewset_method and viewset_method != ModelViewSet.perform_update:
-                # ViewSet has custom perform_update - call it
-                viewset_method(self, serializer)
-            else:
-                # No custom method, use ModelViewSet's default
-                from rest_framework.viewsets import ModelViewSet
-                ModelViewSet.perform_update(self, serializer)
+            viewset_method = viewset_class.perform_update
+            # ViewSet has custom perform_update - call it
+            viewset_method(self, serializer)
         else:
-            # Fallback to ModelViewSet's default
-            from rest_framework.viewsets import ModelViewSet
+            # No custom method, use ModelViewSet's default directly
             ModelViewSet.perform_update(self, serializer)
         
         # Log after update (only if instance was updated)

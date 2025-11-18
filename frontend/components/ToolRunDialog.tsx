@@ -251,17 +251,30 @@ export function ToolRunDialog({
             )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {Object.entries(properties).map(([key, prop]: [string, any]) => (
-            <div key={key}>
-              <label className="block text-sm font-medium mb-1 text-slate-300">
-                {prop.title || key}
-                {required.includes(key) && (
-                  <span className="text-red-500 ml-1">*</span>
-                )}
-              </label>
-              {renderSchemaField(key, prop, args, updateArg, required)}
-            </div>
-          ))}
+          {Object.entries(properties).map(([key, prop]: [string, any]) => {
+            // Skip status field for query tools - it's confusing for users
+            // Status should only be used as a filter parameter, not as input for action tools
+            // For list_runs, status is a filter, which is fine, but we should make it clearer
+            const isStatusField = key === "status";
+            const isQueryTool = tool.name?.startsWith("agentxsuite_list_") || tool.name?.startsWith("list_");
+            
+            // Only show status field for query/list tools where it makes sense as a filter
+            if (isStatusField && !isQueryTool) {
+              return null; // Hide status field for action tools
+            }
+            
+            return (
+              <div key={key}>
+                <label className="block text-sm font-medium mb-1 text-slate-300">
+                  {prop.title || (isStatusField && isQueryTool ? "Filter by Status" : key)}
+                  {required.includes(key) && (
+                    <span className="text-red-500 ml-1">*</span>
+                  )}
+                </label>
+                {renderSchemaField(key, prop, args, updateArg, required)}
+              </div>
+            );
+          })}
 
           {Object.keys(properties).length === 0 && (
             <p className="text-slate-400">No parameters required</p>

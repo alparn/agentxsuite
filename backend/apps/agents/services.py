@@ -157,6 +157,59 @@ def generate_token_for_agent(
     return token_string, issued_token
 
 
+def generate_mcp_token(
+    claims: dict,
+    *,
+    expires_in: timedelta | None = None,
+) -> str:
+    """
+    Generate a JWT token for MCP usage (user tokens, Claude Desktop, etc.).
+    
+    This is a simpler version of generate_token_for_agent that doesn't require
+    an Agent or ServiceAccount. Used for user-created tokens in Token Management.
+    
+    Args:
+        claims: Token claims (must include org_id, env_id, sub, jti, scope)
+        expires_in: Token lifetime (default: 90 days)
+    
+    Returns:
+        Token string (JWT)
+    """
+    if expires_in is None:
+        expires_in = timedelta(days=90)
+    
+    # Calculate timestamps
+    now = django_timezone.now()
+    iat = int(now.timestamp())
+    exp = int((now + expires_in).timestamp())
+    nbf = int((now - timedelta(minutes=1)).timestamp())
+    
+    # Build complete token claims
+    full_claims = {
+        "iss": JWT_ISSUER,
+        "aud": MCP_CANONICAL_URI,
+        "iat": iat,
+        "exp": exp,
+        "nbf": nbf,
+        **claims,  # Merge provided claims
+    }
+    
+    # Sign token
+    private_key = _get_signing_key()
+    token_string = jwt.encode(full_claims, private_key, algorithm=JWT_ALGORITHM)
+    
+    logger.info(
+        f"Generated MCP token",
+        extra={
+            "jti": claims.get("jti"),
+            "purpose": claims.get("purpose"),
+            "expires_in_days": expires_in.days,
+        },
+    )
+    
+    return token_string
+
+
 def revoke_token(jti: str, revoked_by=None) -> IssuedToken:
     """
     Revoke a token by jti.

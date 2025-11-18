@@ -199,12 +199,48 @@ class IssuedToken(TimeStamped):
     Model for tracking issued JWT tokens (for revocation and forensics).
 
     Stores jti (JWT ID) and metadata for tokens issued by AgentxSuite.
+    Enhanced with user-friendly fields for token management UI.
     """
 
     agent = models.ForeignKey(
         Agent,
         on_delete=models.CASCADE,
         related_name="issued_tokens",
+        null=True,  # Allow null for user tokens (not tied to specific agent)
+        blank=True,
+    )
+    organization = models.ForeignKey(
+        "tenants.Organization",
+        on_delete=models.CASCADE,
+        related_name="issued_tokens",
+        help_text="Organization this token belongs to",
+    )
+    environment = models.ForeignKey(
+        "tenants.Environment",
+        on_delete=models.CASCADE,
+        related_name="issued_tokens",
+        help_text="Environment this token is valid for",
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="User-friendly name for this token (e.g., 'My Claude Desktop Token')",
+    )
+    purpose = models.CharField(
+        max_length=50,
+        choices=[
+            ("claude-desktop", "Claude Desktop"),
+            ("api", "API Integration"),
+            ("development", "Development"),
+            ("ci-cd", "CI/CD"),
+        ],
+        default="api",
+        help_text="Purpose/use case for this token",
+    )
+    issued_to = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.CASCADE,
+        related_name="my_issued_tokens",
+        help_text="User who created this token",
     )
     jti = models.CharField(
         max_length=255,
@@ -236,19 +272,32 @@ class IssuedToken(TimeStamped):
         default=dict,
         help_text="Additional metadata (client_ip, user_agent, etc.)",
     )
+    # Usage tracking
+    last_used_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last time this token was used for authentication",
+    )
+    use_count = models.IntegerField(
+        default=0,
+        help_text="Number of times this token has been used",
+    )
 
     class Meta:
         db_table = "agents_issuedtoken"
         ordering = ["-created_at"]
         indexes = [
+            models.Index(fields=["organization", "revoked_at"]),
             models.Index(fields=["agent", "revoked_at"]),
             models.Index(fields=["jti"]),
             models.Index(fields=["expires_at"]),
+            models.Index(fields=["purpose"]),
         ]
 
     def __str__(self) -> str:
         status = "revoked" if self.revoked_at else "active"
-        return f"{self.agent.name}/{self.jti[:8]}... ({status})"
+        agent_name = self.agent.name if self.agent else "User Token"
+        return f"{agent_name}/{self.jti[:8]}... ({status})"
 
     @property
     def is_revoked(self) -> bool:
@@ -261,3 +310,18 @@ class IssuedToken(TimeStamped):
         from django.utils import timezone
 
         return timezone.now() > self.expires_at
+    
+    @property
+    def is_valid(self) -> bool:
+        """Check if token is still valid (not revoked and not expired)."""
+        return not self.is_revoked and not self.is_expired
+    
+    @property
+    def status(self) -> str:
+        """Get human-readable status."""
+        if self.is_revoked:
+            return "revoked"
+        elif self.is_expired:
+            return "expired"
+        else:
+            return "active"

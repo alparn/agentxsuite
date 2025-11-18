@@ -39,6 +39,9 @@ export function AgentDialog({
     inbound_auth_method: "bearer" as "bearer" | "mtls" | "none",
     inbound_secret_ref: "",
     is_axcore: false,
+    default_budget_cents: 0,
+    default_max_depth: 1,
+    default_ttl_seconds: 600,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showTokenDialog, setShowTokenDialog] = useState(false);
@@ -102,6 +105,9 @@ export function AgentDialog({
         inbound_auth_method: agent.inbound_auth_method || "bearer",
         inbound_secret_ref: agent.inbound_secret_ref || "",
         is_axcore: agent.is_axcore || agent.tags?.includes("axcore") || false,
+        default_budget_cents: agent.default_budget_cents || 0,
+        default_max_depth: agent.default_max_depth || 1,
+        default_ttl_seconds: agent.default_ttl_seconds || 600,
       });
     } else {
       setFormData({
@@ -114,6 +120,9 @@ export function AgentDialog({
         inbound_auth_method: "bearer",
         inbound_secret_ref: "",
         is_axcore: false,
+        default_budget_cents: 0,
+        default_max_depth: 1,
+        default_ttl_seconds: 600,
       });
     }
     setErrors({});
@@ -159,6 +168,9 @@ export function AgentDialog({
       enabled: formData.enabled,
       environment_id: formData.environment_id,
       mode: formData.mode,
+      default_budget_cents: formData.default_budget_cents,
+      default_max_depth: formData.default_max_depth,
+      default_ttl_seconds: formData.default_ttl_seconds,
     };
     
     // Connection is required for RUNNER, optional for CALLER
@@ -372,6 +384,88 @@ export function AgentDialog({
               )}
             </>
           )}
+
+          {/* Delegation Settings Section */}
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-4">
+              Delegation Settings
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Default Budget (Cents) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  step="1"
+                  value={formData.default_budget_cents}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      default_budget_cents: parseInt(e.target.value) || 0,
+                    })
+                  }
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="0 (unlimited)"
+                />
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Budget in cents for delegation (0 = unlimited). Example: 1000 = $10.00
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Default Max Depth *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  max="10"
+                  step="1"
+                  value={formData.default_max_depth}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      default_max_depth: parseInt(e.target.value) || 1,
+                    })
+                  }
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="1"
+                />
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Maximum delegation depth (1-10)
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Default TTL (Seconds) *
+                </label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  step="1"
+                  value={formData.default_ttl_seconds}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      default_ttl_seconds: parseInt(e.target.value) || 600,
+                    })
+                  }
+                  className="w-full px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="600"
+                />
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Time-to-live in seconds for delegation (default: 600 = 10 minutes)
+                </p>
+              </div>
+            </div>
+          </div>
 
           <div className="flex items-center gap-2">
             <input

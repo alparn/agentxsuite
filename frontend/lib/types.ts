@@ -319,16 +319,32 @@ export interface Tool {
 export interface IssuedToken {
   id: string;
   jti: string;
-  agent: string;
-  agent_name: string;
-  expires_at: string;
+  // Agent-specific token fields (optional for user tokens)
+  agent?: string;
+  agent_name?: string;
+  // User token fields
+  name: string;
+  purpose: string;
+  organization: Organization | string;  // Can be nested or UUID string
+  environment: Environment | string;    // Can be nested or UUID string
+  environment_name?: string;
+  issued_to: number | string;  // User ID
+  issued_to_email?: string;
+  issued_to_name?: string;
+  last_used_at?: string | null;
+  use_count: number;
+  // Common fields
+  expires_at: string | null;
   revoked_at?: string | null;
   revoked_by?: string | null;
   scopes: string[];
-  metadata: Record<string, any>;
+  metadata?: Record<string, any>;
   created_at: string;
-  is_expired: boolean;
-  is_revoked: boolean;
+  updated_at: string;
+  // Computed properties
+  is_expired?: boolean;
+  is_revoked?: boolean;
+  status?: string;
 }
 
 export interface TokenGenerateRequest {

@@ -1,267 +1,222 @@
 """
 Serializers for agents app.
 """
-from __future__ import annotations
-
 from rest_framework import serializers
+from django.contrib.auth import get_user_model
 
 from apps.agents.models import Agent, IssuedToken
-from apps.connections.serializers import ConnectionSerializer
 from apps.tenants.serializers import EnvironmentSerializer, OrganizationSerializer
+
+User = get_user_model()
 
 
 class AgentSerializer(serializers.ModelSerializer):
-    """Serializer for Agent."""
+    """Serializer for Agent model."""
 
     organization = OrganizationSerializer(read_only=True)
     environment = EnvironmentSerializer(read_only=True)
-    environment_id = serializers.UUIDField(write_only=True, required=False)
-    connection = ConnectionSerializer(read_only=True)
-    connection_id = serializers.UUIDField(write_only=True, required=False)
-
-    # AxCore-Flag (read-only, basierend auf tags)
-    is_axcore = serializers.SerializerMethodField()
+    environment_id = serializers.UUIDField(write_only=True)
+    connection_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+    inbound_auth_method = serializers.ChoiceField(
+        choices=["bearer", "mtls", "none"],
+        required=False,
+        default="none"
+    )
+    inbound_secret_ref = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    default_budget_cents = serializers.IntegerField(required=False, default=0, min_value=0)
+    default_max_depth = serializers.IntegerField(required=False, default=1, min_value=1, max_value=10)
+    default_ttl_seconds = serializers.IntegerField(required=False, default=600, min_value=1)
 
     class Meta:
         model = Agent
         fields = [
             "id",
+            "organization",
+            "environment",
+            "environment_id",
             "name",
             "slug",
             "version",
             "enabled",
             "mode",
+            "connection_id",
+            "inbound_auth_method",
+            "inbound_secret_ref",
             "capabilities",
             "tags",
-            "organization",
-            "environment",
-            "environment_id",
-            "connection",
-            "connection_id",
-            "service_account",
-            "default_max_depth",
             "default_budget_cents",
+            "default_max_depth",
             "default_ttl_seconds",
-            "inbound_auth_method",
             "created_at",
             "updated_at",
-            "is_axcore",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "is_axcore"]
+        read_only_fields = ["id", "created_at", "updated_at"]
     
-    def get_is_axcore(self, obj) -> bool:
-        """Check if agent is an AxCore agent."""
-        return "axcore" in (obj.tags or [])
+    def validate_environment_id(self, value):
+        """Ensure environment belongs to organization."""
+        org_id = self.context.get("org_id")
+        if not org_id:
+            raise serializers.ValidationError("Organization ID required in context")
 
-    def update(self, instance, validated_data):
-        """
-        Override update to handle validation safely.
-        
-        Validation is skipped only if:
-        - Auth method is not being changed AND
-        - Secret refs are not being explicitly removed (set to None/empty)
-        
-        This ensures:
-        1. New agents must have valid auth config
-        2. Changing auth method requires valid config
-        3. Removing secret refs requires changing auth method first
-        4. Other fields can be updated without touching auth config
-        """
-        # Handle environment_id and connection_id explicitly
-        environment_id = validated_data.pop("environment_id", None)
-        connection_id = validated_data.pop("connection_id", None)
-        
-        if environment_id is not None:
-            instance.environment_id = environment_id
-        if connection_id is not None:
-            instance.connection_id = connection_id
-        
-        # Check if auth-related fields are being changed
-        auth_method_changed = (
-            "inbound_auth_method" in validated_data
-            and validated_data.get("inbound_auth_method") != instance.inbound_auth_method
-        )
-        
-        # Check if secret refs are being explicitly removed (set to None or empty string)
-        bearer_secret_removed = (
-            "bearer_secret_ref" in validated_data
-            and validated_data.get("bearer_secret_ref") in (None, "")
-            and instance.bearer_secret_ref not in (None, "")
-        )
-        inbound_secret_removed = (
-            "inbound_secret_ref" in validated_data
-            and validated_data.get("inbound_secret_ref") in (None, "")
-            and instance.inbound_secret_ref not in (None, "")
-        )
-        
-        # Check if mTLS cert/key are being removed
-        mtls_cert_removed = (
-            "mtls_cert_ref" in validated_data
-            and validated_data.get("mtls_cert_ref") in (None, "")
-            and instance.mtls_cert_ref not in (None, "")
-        )
-        mtls_key_removed = (
-            "mtls_key_ref" in validated_data
-            and validated_data.get("mtls_key_ref") in (None, "")
-            and instance.mtls_key_ref not in (None, "")
-        )
-        
-        # Skip validation only if auth config is not being changed
-        # This allows updating other fields (name, enabled, etc.) without validation errors
-        skip_validation = (
-            not auth_method_changed
-            and not bearer_secret_removed
-            and not inbound_secret_removed
-            and not mtls_cert_removed
-            and not mtls_key_removed
-        )
-        
-        if skip_validation:
-            # Save with skip_validation flag to avoid model-level validation
-            for attr, value in validated_data.items():
-                setattr(instance, attr, value)
-            instance.save(skip_validation=True)
-            return instance
-        
-        # Otherwise, use default update (which calls full_clean via model.save)
-        # The validate() method will catch any auth config issues
-        return super().update(instance, validated_data)
+        from apps.tenants.models import Environment
 
-    def validate(self, attrs):
-        """
-        Validate agent configuration.
-        
-        This validation ensures:
-        1. New agents must have valid auth config
-        2. Changing auth method requires valid config
-        3. Removing secret refs is only allowed if auth method is changed to NONE first
-        """
-        instance = self.instance
-        
-        # Get current inbound_auth_method (from attrs if being changed, otherwise from instance)
-        inbound_auth_method = attrs.get("inbound_auth_method")
-        if not inbound_auth_method and instance:
-            inbound_auth_method = instance.inbound_auth_method
-        
-        # Only validate if inbound_auth_method is set and not "none"
-        if inbound_auth_method and inbound_auth_method != "none":
-            if inbound_auth_method == "bearer":
-                bearer_secret_ref = attrs.get("bearer_secret_ref")
-                inbound_secret_ref = attrs.get("inbound_secret_ref")
-                
-                # Check if secret_ref exists in attrs or instance
-                if not bearer_secret_ref and not inbound_secret_ref:
-                    if instance:
-                        bearer_secret_ref = instance.bearer_secret_ref
-                        inbound_secret_ref = instance.inbound_secret_ref
-                    
-                    # If still no secret ref, check if auth method is being changed
-                    if not bearer_secret_ref and not inbound_secret_ref:
-                        # For new instances, always require secret ref
-                        if not instance:
-                            raise serializers.ValidationError(
-                                {"bearer_secret_ref": "Bearer authentication requires bearer_secret_ref or inbound_secret_ref"}
-                            )
-                        # For updates, only require if auth method is being changed TO bearer
-                        if "inbound_auth_method" in attrs:
-                            raise serializers.ValidationError(
-                                {"inbound_auth_method": "Bearer authentication requires bearer_secret_ref or inbound_secret_ref"}
-                            )
-                        # Check if secret refs are being removed
-                        if "bearer_secret_ref" in attrs or "inbound_secret_ref" in attrs:
-                            raise serializers.ValidationError(
-                                {"bearer_secret_ref": "Cannot remove secret refs while auth method is bearer. Change auth method to 'none' first."}
-                            )
-                            
-            elif inbound_auth_method == "mtls":
-                mtls_cert_ref = attrs.get("mtls_cert_ref")
-                mtls_key_ref = attrs.get("mtls_key_ref")
-                
-                # Check if cert/key exists in attrs or instance
-                if not mtls_cert_ref or not mtls_key_ref:
-                    if instance:
-                        mtls_cert_ref = instance.mtls_cert_ref if not mtls_cert_ref else mtls_cert_ref
-                        mtls_key_ref = instance.mtls_key_ref if not mtls_key_ref else mtls_key_ref
-                    
-                    # If still missing cert or key, check if auth method is being changed
-                    if not mtls_cert_ref or not mtls_key_ref:
-                        # For new instances, always require cert and key
-                        if not instance:
-                            raise serializers.ValidationError(
-                                {"mtls_cert_ref": "mTLS authentication requires mtls_cert_ref and mtls_key_ref"}
-                            )
-                        # For updates, only require if auth method is being changed TO mtls
-                        if "inbound_auth_method" in attrs:
-                            raise serializers.ValidationError(
-                                {"inbound_auth_method": "mTLS authentication requires mtls_cert_ref and mtls_key_ref"}
-                            )
-                        # Check if cert/key are being removed
-                        if "mtls_cert_ref" in attrs or "mtls_key_ref" in attrs:
-                            raise serializers.ValidationError(
-                                {"mtls_cert_ref": "Cannot remove mTLS cert/key while auth method is mtls. Change auth method to 'none' first."}
-                            )
-        
-        return attrs
+        if not Environment.objects.filter(id=value, organization_id=org_id).exists():
+            raise serializers.ValidationError(
+                f"Environment does not belong to organization"
+            )
+
+        return value
 
 
 class IssuedTokenSerializer(serializers.ModelSerializer):
-    """Serializer for IssuedToken (read-only, no token value)."""
+    """
+    Serializer for IssuedToken model.
+    
+    Security: Token string is NEVER returned after creation!
+    Users must save it immediately when created.
+    """
 
-    agent_name = serializers.CharField(source="agent.name", read_only=True)
-    is_expired = serializers.BooleanField(read_only=True)
-    is_revoked = serializers.BooleanField(read_only=True)
+    organization = OrganizationSerializer(read_only=True)
+    environment = EnvironmentSerializer(read_only=True)
+    environment_id = serializers.UUIDField(write_only=True)
+    issued_to_email = serializers.EmailField(source="issued_to.email", read_only=True)
+    status = serializers.CharField(read_only=True)  # Computed property
 
     class Meta:
         model = IssuedToken
         fields = [
             "id",
+            "organization",
+            "environment",
+            "environment_id",
+            "name",
+            "purpose",
+            "issued_to",
+            "issued_to_email",
             "jti",
-            "agent",
-            "agent_name",
             "expires_at",
             "revoked_at",
             "revoked_by",
             "scopes",
-            "metadata",
+            "status",
+            "last_used_at",
+            "use_count",
             "created_at",
-            "is_expired",
-            "is_revoked",
+            "updated_at",
         ]
         read_only_fields = [
             "id",
+            "issued_to",
             "jti",
-            "agent",
-            "expires_at",
             "revoked_at",
             "revoked_by",
-            "scopes",
-            "metadata",
+            "last_used_at",
+            "use_count",
             "created_at",
+            "updated_at",
         ]
 
+    def validate_environment_id(self, value):
+        """Ensure environment belongs to organization."""
+        org_id = self.context.get("org_id")
+        if not org_id:
+            raise serializers.ValidationError("Organization ID required in context")
 
-class TokenGenerateSerializer(serializers.Serializer):
-    """Serializer for token generation request."""
+        from apps.tenants.models import Environment
 
-    ttl_minutes = serializers.IntegerField(
-        required=False,
-        min_value=1,
-        max_value=1440,  # Max 24 hours
-        help_text="Token TTL in minutes (default: 30)",
+        if not Environment.objects.filter(id=value, organization_id=org_id).exists():
+            raise serializers.ValidationError(
+                f"Environment does not belong to organization"
+            )
+
+        return value
+
+
+class TokenCreateSerializer(serializers.Serializer):
+    """
+    Serializer for creating new tokens.
+    
+    This is separate from IssuedTokenSerializer because:
+    1. It has different input fields (expires_in_days instead of expires_at)
+    2. It returns the token_string (ONLY on creation!)
+    
+    Note: All fields are REQUIRED for new tokens, even though the DB fields
+    are nullable (for backward compatibility with old tokens).
+    """
+
+    name = serializers.CharField(
+        max_length=255,
+        required=True,
+        help_text="User-friendly name for this token"
+    )
+    purpose = serializers.ChoiceField(
+        choices=["claude-desktop", "api", "development", "ci-cd"],
+        default="api",
+        help_text="Purpose of this token"
+    )
+    environment_id = serializers.UUIDField(
+        required=True,
+        help_text="Environment this token is valid for"
+    )
+    expires_in_days = serializers.IntegerField(
+        default=90, 
+        min_value=1, 
+        max_value=3650,  # Max 10 years
+        help_text="Token lifetime in days"
     )
     scopes = serializers.ListField(
         child=serializers.CharField(),
-        required=False,
-        help_text="List of scopes to grant (default: ['mcp:run', 'mcp:tools', 'mcp:manifest'])",
-    )
-    metadata = serializers.DictField(
-        required=False,
-        help_text="Additional metadata (e.g., {'description': 'Token for Claude Desktop'})",
+        default=["mcp:tools"],
+        help_text="Permissions granted to this token"
     )
 
+    def validate_name(self, value):
+        """Validate name is not empty."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Token name cannot be empty")
+        return value.strip()
 
-class TokenGenerateResponseSerializer(serializers.Serializer):
-    """Serializer for token generation response."""
+    def validate_scopes(self, value):
+        """Validate scopes are known."""
+        if not value:
+            raise serializers.ValidationError("At least one scope is required")
+        
+        valid_scopes = ["mcp:tools", "mcp:resources", "mcp:prompts"]
+        for scope in value:
+            if scope not in valid_scopes:
+                raise serializers.ValidationError(
+                    f"Invalid scope: {scope}. Valid scopes: {', '.join(valid_scopes)}"
+                )
+        return value
+    
+    def validate_environment_id(self, value):
+        """Ensure environment exists and belongs to organization."""
+        org_id = self.context.get("org_id")
+        if not org_id:
+            raise serializers.ValidationError("Organization context required")
+        
+        from apps.tenants.models import Environment
+        if not Environment.objects.filter(id=value, organization_id=org_id).exists():
+            raise serializers.ValidationError(
+                "Environment does not exist or does not belong to this organization"
+            )
+        
+        return value
 
-    token = serializers.CharField(help_text="JWT token string (only shown once)")
-    token_info = IssuedTokenSerializer(help_text="Token metadata")
+
+class TokenPurposeInfoSerializer(serializers.Serializer):
+    """Serializer for token purpose metadata."""
+
+    value = serializers.CharField()
+    label = serializers.CharField()
+    description = serializers.CharField()
+    default_expiry_days = serializers.IntegerField()
+    recommended_scopes = serializers.ListField(child=serializers.CharField())
+
+
+class TokenScopeInfoSerializer(serializers.Serializer):
+    """Serializer for token scope metadata."""
+
+    value = serializers.CharField()
+    label = serializers.CharField()
+    description = serializers.CharField()

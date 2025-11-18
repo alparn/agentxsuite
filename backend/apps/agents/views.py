@@ -1,516 +1,337 @@
 """
 Views for agents app.
 """
-from __future__ import annotations
-
-from rest_framework import status
+from datetime import timedelta
+from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.viewsets import ModelViewSet
+from rest_framework.exceptions import ValidationError
+from django.utils import timezone
+from django.shortcuts import get_object_or_404
 
-from apps.agents.models import Agent, AgentMode, IssuedToken
+from apps.agents.models import Agent, IssuedToken
 from apps.agents.serializers import (
     AgentSerializer,
     IssuedTokenSerializer,
-    TokenGenerateResponseSerializer,
-    TokenGenerateSerializer,
+    TokenCreateSerializer,
+    TokenPurposeInfoSerializer,
+    TokenScopeInfoSerializer,
 )
-from apps.agents.services import generate_token_for_agent
-from apps.agents.services import revoke_token as revoke_token_service
-from apps.agents.services import create_axcore_agent
-from apps.connections.services import test_connection
-from apps.tenants.models import Organization, Environment
+from apps.tenants.models import Environment
 from apps.audit.mixins import AuditLoggingMixin
-import logging
-
-logger = logging.getLogger(__name__)
 
 
-class AgentViewSet(AuditLoggingMixin, ModelViewSet):
-    """ViewSet for Agent."""
+class IssuedTokenViewSet(AuditLoggingMixin, viewsets.ModelViewSet):
+    """
+    ViewSet for managing user tokens.
+    
+    Endpoints:
+    - POST   /api/orgs/{org_id}/tokens/              - Create new token
+    - GET    /api/orgs/{org_id}/tokens/              - List tokens
+    - GET    /api/orgs/{org_id}/tokens/{id}/         - Get token details
+    - DELETE /api/orgs/{org_id}/tokens/{id}/         - Hard delete token
+    - POST   /api/orgs/{org_id}/tokens/{id}/revoke/  - Revoke token (soft delete)
+    - GET    /api/orgs/{org_id}/tokens/purposes/     - Get purpose metadata
+    - GET    /api/orgs/{org_id}/tokens/scopes/       - Get scope metadata
+    """
+
+    queryset = IssuedToken.objects.all()
+    serializer_class = IssuedTokenSerializer
+
+    def get_queryset(self):
+        """Filter by organization and show only active tokens by default."""
+        org_id = self.kwargs.get("org_id")
+        queryset = IssuedToken.objects.filter(organization_id=org_id)
+
+        # Filter by status if requested
+        show_revoked = self.request.query_params.get("show_revoked") == "true"
+        if not show_revoked:
+            queryset = queryset.filter(revoked_at__isnull=True)
+
+        return queryset.select_related(
+            "organization", "environment", "issued_to", "revoked_by"
+        ).order_by("-created_at")
+
+    def get_serializer_context(self):
+        """Add org_id to serializer context."""
+        context = super().get_serializer_context()
+        context["org_id"] = self.kwargs.get("org_id")
+        return context
+
+    def create(self, request, org_id=None):
+        """
+        Create a new token.
+        
+        ⚠️ Token string is returned ONLY ONCE on creation!
+        Users must save it immediately.
+        
+        Request body:
+        {
+            "name": "My Claude Desktop Token",
+            "purpose": "claude-desktop",
+            "environment_id": "uuid",
+            "expires_in_days": 365,
+            "scopes": ["mcp:tools", "mcp:resources"]
+        }
+        
+        Response:
+        {
+            "id": "uuid",
+            "name": "My Claude Desktop Token",
+            "token": "eyJhbGc...",  # ⚠️ ONLY shown once!
+            "expires_at": "2025-11-18T...",
+            "warning": "⚠️ Save this token now! It will not be shown again."
+        }
+        """
+        # Validate input with org_id context
+        serializer = TokenCreateSerializer(
+            data=request.data,
+            context={"org_id": org_id, "request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        # Get environment
+        environment = get_object_or_404(
+            Environment, id=data["environment_id"], organization_id=org_id
+        )
+
+        # Generate token
+        from apps.agents.services import generate_mcp_token
+        import uuid
+
+        jti = str(uuid.uuid4())
+        expires_at = timezone.now() + timedelta(days=data["expires_in_days"])
+
+        token_claims = {
+            "org_id": str(org_id),  # ✅ Convert UUID to string!
+            "env_id": str(environment.id),
+            "sub": f"user:{request.user.id}",
+            "iss": "agentxsuite",
+            "jti": jti,
+            "scope": data["scopes"],
+            "purpose": data["purpose"],
+        }
+
+        token_string = generate_mcp_token(
+            claims=token_claims,
+            expires_in=timedelta(days=data["expires_in_days"]),
+        )
+
+        # Store token metadata (NOT the token itself!)
+        # Note: All required fields MUST be set for new tokens
+        issued_token = IssuedToken.objects.create(
+            organization_id=org_id,  # REQUIRED
+            environment=environment,  # REQUIRED
+            name=data["name"],  # REQUIRED
+            purpose=data["purpose"],  # REQUIRED
+            issued_to=request.user,  # REQUIRED
+            jti=jti,
+            expires_at=expires_at,
+            scopes=data["scopes"],
+            metadata={
+                "created_via": "api",
+                "user_agent": request.META.get("HTTP_USER_AGENT", ""),
+            },
+        )
+
+        # Return token ONLY on creation
+        return Response(
+            {
+                "id": str(issued_token.id),
+                "token_id": str(issued_token.id),  # For frontend compatibility
+                "jti": jti,  # JWT ID
+                "name": data["name"],
+                "purpose": data["purpose"],
+                "token": token_string,  # ⚠️ Only shown once!
+                "expires_at": expires_at.isoformat(),
+                "scopes": data["scopes"],
+                "environment": {
+                    "id": str(environment.id),
+                    "name": environment.name,
+                },
+                "created_at": issued_token.created_at.isoformat(),
+                "warning": "⚠️ Save this token now! It will not be shown again.",
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    def destroy(self, request, org_id=None, pk=None):
+        """
+        Hard delete a token.
+        
+        ⚠️ This permanently deletes the token from the database.
+        Use the 'revoke' action for soft delete instead.
+        """
+        token = self.get_object()
+
+        # Only owner or admin can delete
+        if token.issued_to != request.user and not request.user.is_staff:
+            raise ValidationError("You can only delete your own tokens")
+
+        token_name = token.name
+        token.delete()
+
+        return Response(
+            {"message": f"Token '{token_name}' permanently deleted"},
+            status=status.HTTP_204_NO_CONTENT,
+        )
+
+    @action(detail=True, methods=["post"])
+    def revoke(self, request, org_id=None, pk=None):
+        """
+        Revoke a token (soft delete).
+        
+        This marks the token as revoked without deleting it from the database.
+        Revoked tokens cannot be used but remain visible in the audit log.
+        
+        This is the recommended way to disable tokens.
+        """
+        token = self.get_object()
+
+        # Check if already revoked
+        if token.is_revoked:
+            return Response(
+                {"error": "Token is already revoked"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Only owner or admin can revoke
+        if token.issued_to != request.user and not request.user.is_staff:
+            raise ValidationError("You can only revoke your own tokens")
+
+        # Revoke token
+        token.revoked_at = timezone.now()
+        token.revoked_by = request.user
+        token.save(update_fields=["revoked_at", "revoked_by", "updated_at"])
+
+        return Response(
+            {
+                "message": f"Token '{token.name}' revoked successfully",
+                "revoked_at": token.revoked_at.isoformat(),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["get"])
+    def purposes(self, request, org_id=None):
+        """
+        Get available token purposes with metadata.
+        
+        Returns information about each purpose type including:
+        - Recommended expiry time
+        - Recommended scopes
+        - Description
+        """
+        purposes_data = [
+            {
+                "value": "claude-desktop",
+                "label": "Claude Desktop",
+                "description": "Long-lived token for local Claude Desktop MCP integration",
+                "default_expiry_days": 365,
+                "recommended_scopes": ["mcp:tools", "mcp:resources", "mcp:prompts"],
+            },
+            {
+                "value": "api",
+                "label": "API Integration",
+                "description": "For external tools and integrations",
+                "default_expiry_days": 90,
+                "recommended_scopes": ["mcp:tools"],
+            },
+            {
+                "value": "development",
+                "label": "Development",
+                "description": "Short-lived token for testing",
+                "default_expiry_days": 30,
+                "recommended_scopes": ["mcp:tools", "mcp:resources"],
+            },
+            {
+                "value": "ci-cd",
+                "label": "CI/CD",
+                "description": "For automated pipelines and deployments",
+                "default_expiry_days": 365,
+                "recommended_scopes": ["mcp:tools"],
+            },
+        ]
+
+        serializer = TokenPurposeInfoSerializer(purposes_data, many=True)
+        return Response({"purposes": serializer.data})
+
+    @action(detail=False, methods=["get"])
+    def scopes(self, request, org_id=None):
+        """
+        Get available token scopes with descriptions.
+        """
+        scopes_data = [
+            {
+                "value": "mcp:tools",
+                "label": "MCP Tools",
+                "description": "Execute MCP tools and run agents",
+            },
+            {
+                "value": "mcp:resources",
+                "label": "MCP Resources",
+                "description": "Access MCP resources (files, data, etc.)",
+            },
+            {
+                "value": "mcp:prompts",
+                "label": "MCP Prompts",
+                "description": "Use MCP prompt templates",
+            },
+        ]
+
+        serializer = TokenScopeInfoSerializer(scopes_data, many=True)
+        return Response({"scopes": serializer.data})
+
+
+class AgentViewSet(AuditLoggingMixin, viewsets.ModelViewSet):
+    """ViewSet for Agent model."""
 
     queryset = Agent.objects.all()
     serializer_class = AgentSerializer
 
     def get_queryset(self):
-        """Filter by organization if org_id is provided."""
-        queryset = super().get_queryset()
-        # org_id comes from URL path: /orgs/<uuid:org_id>/agents/
+        """Filter by organization."""
         org_id = self.kwargs.get("org_id")
-        if org_id:
-            queryset = queryset.filter(organization_id=org_id)
-        return queryset
-
-    def perform_create(self, serializer):
-        """Set organization from URL parameter."""
-        org_id = self.kwargs.get("org_id")
-        if org_id:
-            serializer.save(organization_id=org_id)
-
-    def perform_update(self, serializer):
-        """Ensure organization cannot be changed via update."""
-        org_id = self.kwargs.get("org_id")
-        if org_id:
-            serializer.save(organization_id=org_id)
-    
-    def partial_update(self, request, *args, **kwargs):
-        """Handle PATCH requests (partial updates)."""
-        # DRF's partial_update already handles partial=True
-        return super().partial_update(request, *args, **kwargs)
-
-    @action(detail=True, methods=["post"], url_path="ping")
-    def ping(self, request, org_id=None, pk=None):
-        """
-        Ping/Test agent status and connection.
-        
-        Checks:
-        1. Agent enabled status (disabled agents cannot execute tools)
-        2. For RUNNER mode: Connection health check
-        3. For CALLER mode: Agent configuration status
-        
-        Returns:
-            Response with ping result, agent status, and connection status
-        """
-        agent = self.get_object()
-        
-        # Base response data
-        response_data = {
-            "agent_enabled": agent.enabled,
-            "agent_mode": agent.mode,
-            "agent_name": agent.name,
-        }
-        
-        # Check if agent is enabled
-        if not agent.enabled:
-            response_data.update({
-                "status": "warning",
-                "message": "Agent is disabled - it will not be used for tool execution",
-                "connection_status": None,
-            })
-            
-            # Still test connection if RUNNER mode (for informational purposes)
-            if agent.mode == AgentMode.RUNNER and agent.connection:
-                try:
-                    test_connection(agent.connection)
-                    agent.connection.refresh_from_db()
-                    response_data.update({
-                        "connection_status": agent.connection.status,
-                        "connection_endpoint": agent.connection.endpoint,
-                        "connection_name": agent.connection.name,
-                        "note": "Connection is reachable, but agent is disabled",
-                    })
-                except Exception:
-                    response_data.update({
-                        "connection_status": "unknown",
-                        "connection_endpoint": agent.connection.endpoint if agent.connection else None,
-                        "note": "Could not test connection (agent is disabled)",
-                    })
-            
-            return Response(response_data, status=status.HTTP_200_OK)
-        
-        # Agent is enabled - proceed with normal ping
-        if agent.mode == AgentMode.RUNNER:
-            if not agent.connection:
-                return Response(
-                    {
-                        **response_data,
-                        "status": "error",
-                        "message": "Agent has no connection configured",
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            
-            # Test the connection
-            try:
-                test_connection(agent.connection)
-                agent.connection.refresh_from_db()
-                return Response(
-                    {
-                        **response_data,
-                        "status": "success",
-                        "message": f"Agent is enabled and connection '{agent.connection.name}' is reachable",
-                        "connection_status": agent.connection.status,
-                        "connection_endpoint": agent.connection.endpoint,
-                        "connection_name": agent.connection.name,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-            except Exception as e:
-                return Response(
-                    {
-                        **response_data,
-                        "status": "error",
-                        "message": f"Connection test failed: {str(e)}",
-                        "connection_status": agent.connection.status,
-                        "connection_endpoint": agent.connection.endpoint,
-                        "connection_name": agent.connection.name,
-                    },
-                    status=status.HTTP_200_OK,  # 200 OK even if ping fails (to show status)
-                )
-        
-        elif agent.mode == AgentMode.CALLER:
-            # CALLER mode agents don't have connections to test
-            # Return agent status
-            return Response(
-                {
-                    **response_data,
-                    "status": "success",
-                    "message": "Agent is enabled and configured for CALLER mode",
-                    "inbound_auth_method": agent.inbound_auth_method,
-                    "connection_status": None,
-                },
-                status=status.HTTP_200_OK,
-            )
-        
-        return Response(
-            {
-                **response_data,
-                "status": "error",
-                "message": f"Unknown agent mode: {agent.mode}",
-            },
-            status=status.HTTP_400_BAD_REQUEST,
+        return (
+            Agent.objects.filter(organization_id=org_id)
+            .select_related("organization", "environment")
+            .order_by("-created_at")
         )
-
-    @action(detail=True, methods=["get", "post"], url_path="tokens")
-    def tokens(self, request, org_id=None, pk=None):
-        """
-        Handle token operations for the agent.
-        
-        GET: List all tokens issued for this agent.
-        POST: Generate a new JWT token for the agent.
-        """
-        if request.method == "GET":
-            return self._list_tokens(request, org_id, pk)
-        else:  # POST
-            return self._generate_token(request, org_id, pk)
     
-    def _generate_token(self, request, org_id=None, pk=None):
-        """
-        Generate a new JWT token for the agent.
-        
-        Requires agent to have a ServiceAccount configured.
-        
-        Request body (optional):
-        {
-            "ttl_minutes": 30,
-            "scopes": ["mcp:run", "mcp:tools"],
-            "metadata": {"description": "Token for Claude Desktop"}
-        }
-        
-        Returns:
-            {
-                "token": "eyJ...",
-                "token_info": {...}
-            }
-        """
-        agent = self.get_object()
-        
-        if not agent.service_account:
-            return Response(
-                {
-                    "error": "agent_has_no_service_account",
-                    "message": "Agent must have a ServiceAccount configured to generate tokens",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        serializer = TokenGenerateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        
-        try:
-            token_string, issued_token = generate_token_for_agent(
-                agent,
-                ttl_minutes=serializer.validated_data.get("ttl_minutes"),
-                scopes=serializer.validated_data.get("scopes"),
-                metadata=serializer.validated_data.get("metadata"),
-            )
-            
-            response_serializer = TokenGenerateResponseSerializer(
-                {
-                    "token": token_string,
-                    "token_info": issued_token,
-                }
-            )
-            
-            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
-        except ValueError as e:
-            return Response(
-                {"error": "validation_error", "message": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-    def _list_tokens(self, request, org_id=None, pk=None):
-        """
-        List all tokens issued for this agent.
-        
-        Returns:
-            List of token metadata (without token values)
-        """
-        agent = self.get_object()
-        
-        tokens = IssuedToken.objects.filter(agent=agent).order_by("-created_at")
-        
-        serializer = IssuedTokenSerializer(tokens, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    @action(detail=True, methods=["post"], url_path="tokens/(?P<jti>[^/.]+)/revoke")
-    def revoke_token(self, request, org_id=None, pk=None, jti=None):
-        """
-        Revoke a token by jti.
-        
-        Returns:
-            Updated token metadata
-        """
-        agent = self.get_object()
-        
-        try:
-            token = IssuedToken.objects.get(agent=agent, jti=jti)
-        except IssuedToken.DoesNotExist:
-            return Response(
-                {"error": "token_not_found", "message": f"Token with jti '{jti}' not found for this agent"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        
-        if token.revoked_at:
-            return Response(
-                {"error": "already_revoked", "message": "Token is already revoked"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        try:
-            revoked_token = revoke_token_service(jti, revoked_by=request.user if request.user.is_authenticated else None)
-            serializer = IssuedTokenSerializer(revoked_token)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except ValueError as e:
-            return Response(
-                {"error": "validation_error", "message": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-    @action(detail=True, methods=["delete"], url_path="tokens/(?P<jti>[^/.]+)")
-    def delete_token(self, request, org_id=None, pk=None, jti=None):
-        """
-        Delete a token (only if revoked or expired).
-        
-        For security, active tokens should be revoked first, not deleted.
-        """
-        agent = self.get_object()
-        
-        try:
-            token = IssuedToken.objects.get(agent=agent, jti=jti)
-        except IssuedToken.DoesNotExist:
-            return Response(
-                {"error": "token_not_found", "message": f"Token with jti '{jti}' not found for this agent"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        
-        if not token.revoked_at and not token.is_expired:
-            return Response(
-                {
-                    "error": "cannot_delete_active_token",
-                    "message": "Cannot delete active token. Revoke it first.",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        token.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    @action(detail=False, methods=["post"], url_path="create-axcore")
-    def create_axcore(self, request, org_id=None):
-        """
-        Erstellt einen vollständig konfigurierten AxCore-Agent.
-        
-        Erstellt automatisch:
-        - Agent mit "axcore" Tag
-        - ServiceAccount
-        - Policy für System-Tools
-        - Initial Token
-        
-        Request Body:
-        {
-            "name": "Agent Name",
-            "environment_id": "...",
-            "mode": "runner",
-            "enabled": true,
-            "version": "1.0.0",
-            "connection_id": "..." (optional)
-        }
-        
-        Response:
-        {
-            "agent": {...},
-            "service_account": {...},
-            "policy": {...},
-            "token": "...",
-            "token_info": {...}
-        }
-        """
-        org_id = org_id or request.data.get("organization_id")
-        if not org_id:
-            return Response(
-                {"error": "organization_id is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        try:
-            organization = Organization.objects.get(id=org_id)
-        except Organization.DoesNotExist:
-            return Response(
-                {"error": "Organization not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        
-        environment_id = request.data.get("environment_id")
-        if not environment_id:
-            return Response(
-                {"error": "environment_id is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        try:
-            environment = Environment.objects.get(
-                id=environment_id,
-                organization=organization,
-            )
-        except Environment.DoesNotExist:
-            return Response(
-                {"error": "Environment not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-        
-        name = request.data.get("name")
-        if not name:
-            return Response(
-                {"error": "name is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        try:
-            agent, sa, policy, token = create_axcore_agent(
-                organization=organization,
-                environment=environment,
-                name=name,
-                mode=request.data.get("mode", "runner"),
-                enabled=request.data.get("enabled", True),
-                version=request.data.get("version", "1.0.0"),
-                connection_id=request.data.get("connection_id"),
-            )
-            
-            # Get token info
-            token_info = None
-            if agent.issued_tokens.exists():
-                issued_token = agent.issued_tokens.first()
-                token_info = {
-                    "jti": str(issued_token.jti),
-                    "expires_at": issued_token.expires_at.isoformat(),
-                    "scopes": issued_token.scopes,
-                }
-            
-            return Response(
-                {
-                    "agent": AgentSerializer(agent).data,
-                    "service_account": {
-                        "id": str(sa.id),
-                        "name": sa.name,
-                        "subject": sa.subject,
-                    },
-                    "policy": {
-                        "id": str(policy.id),
-                        "name": policy.name,
-                    },
-                    "token": token,
-                    "token_info": token_info,
-                },
-                status=status.HTTP_201_CREATED,
-            )
-        except ValueError as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        except Exception as e:
-            logger.error(f"Failed to create AxCore agent: {e}", exc_info=True)
-            return Response(
-                {"error": "Failed to create AxCore agent", "detail": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-
-class TokenViewSet(AuditLoggingMixin, ModelViewSet):
-    """ViewSet for Token management (list, revoke, delete)."""
-
-    queryset = IssuedToken.objects.all()
-    serializer_class = IssuedTokenSerializer
-    lookup_field = "jti"
-    lookup_url_kwarg = "jti"
-    http_method_names = ["get", "post", "delete", "head", "options"]  # Allow GET for list
-
-    def get_queryset(self):
-        """Filter by agent if agent_id is provided."""
-        queryset = super().get_queryset()
-        # agent_id comes from URL path: /orgs/<uuid:org_id>/agents/<uuid:agent_id>/tokens/
-        agent_id = self.kwargs.get("agent_id")
+    def get_serializer_context(self):
+        """Add org_id to serializer context."""
+        context = super().get_serializer_context()
+        context["org_id"] = self.kwargs.get("org_id")
+        return context
+    
+    def perform_create(self, serializer):
+        """Set organization from URL parameter and validate environment."""
         org_id = self.kwargs.get("org_id")
-        if agent_id:
-            queryset = queryset.filter(agent_id=agent_id)
-        if org_id:
-            queryset = queryset.filter(agent__organization_id=org_id)
-        return queryset.order_by("-created_at")
+        if not org_id:
+            raise ValidationError("Organization ID is required")
 
-    def list(self, request, *args, **kwargs):
-        """
-        List all tokens for the agent.
+        # Validate environment_id belongs to organization if provided
+        environment_id = serializer.validated_data.get("environment_id")
+        if not environment_id:
+            raise ValidationError("environment_id is required")
         
-        Returns:
-            List of token metadata (without token values)
-        """
-        queryset = self.filter_queryset(self.get_queryset())
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
-    @action(detail=True, methods=["post"], url_path="revoke")
-    def revoke(self, request, org_id=None, agent_id=None, jti=None):
-        """
-        Revoke a token by jti.
-        
-        Returns:
-            Updated token metadata
-        """
-        token = self.get_object()
-        
-        if token.revoked_at:
-            return Response(
-                {"error": "already_revoked", "message": "Token is already revoked"},
-                status=status.HTTP_400_BAD_REQUEST,
+        if not Environment.objects.filter(id=environment_id, organization_id=org_id).exists():
+            raise ValidationError(
+                f"Environment {environment_id} does not belong to organization {org_id}"
             )
         
-        try:
-            revoked_token = revoke_token_service(token.jti, revoked_by=request.user if request.user.is_authenticated else None)
-            serializer = IssuedTokenSerializer(revoked_token)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except ValueError as e:
-            return Response(
-                {"error": "validation_error", "message": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # Validate connection_id if provided (for RUNNER mode)
+        connection_id = serializer.validated_data.get("connection_id")
+        if connection_id:
+            from apps.connections.models import Connection
+            if not Connection.objects.filter(
+                id=connection_id,
+                organization_id=org_id,
+                environment_id=environment_id
+            ).exists():
+                raise ValidationError(
+                    f"Connection {connection_id} does not belong to organization {org_id} and environment {environment_id}"
+                )
 
-    def destroy(self, request, *args, **kwargs):
-        """
-        Delete a token (only if revoked or expired).
-        
-        For security, active tokens should be revoked first, not deleted.
-        """
-        token = self.get_object()
-        
-        if not token.revoked_at and not token.is_expired:
-            return Response(
-                {
-                    "error": "cannot_delete_active_token",
-                    "message": "Cannot delete active token. Revoke it first.",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        
-        return super().destroy(request, *args, **kwargs)
-
+        serializer.save(organization_id=org_id, environment_id=environment_id)
