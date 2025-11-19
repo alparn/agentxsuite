@@ -380,11 +380,15 @@ AgentxSuite includes built-in system tools for management:
 
 System tools are accessed via the special connection endpoint: `agentxsuite://system`
 
+**Developer Documentation:**
+- [Token Usage Tracking](backend/apps/system_tools/README_USAGE_TRACKING.md) - How to implement token usage tracking and cost calculation in system tools and external MCP servers
+
 ## 🌟 Features
 
 - **Multi-tenant architecture** - Organizations & Environments with complete isolation
 - **Policy-based access control** - Wildcard support, default-deny model, environment-specific rules
 - **System Tools** - Built-in management tools for agents, runs, connections, and tools
+- **Token Usage Tracking** - Automatic token usage and cost calculation for LLM-powered tools
 - **MCP-compatible FastAPI gateway** - Standard MCP endpoints with JWT authentication
 - **Connection Types** - Support for system tools, own MCP Fabric, and external MCP servers
 - **Tool Execution Results** - MCP-formatted responses with run_id, duration, and content
@@ -392,6 +396,10 @@ System tools are accessed via the special connection endpoint: `agentxsuite://sy
 - **Service-layer architecture** - Clean separation of concerns, business logic in services
 - **High test coverage** - Comprehensive test suite with pytest
 - **Strict type checking** - Full mypy support for type safety
+
+## 📚 Documentation
+
+- [Token Usage Tracking](backend/apps/system_tools/README_USAGE_TRACKING.md) - Guide for implementing automatic token usage and cost tracking in system tools and external MCP servers
 
 ## 📄 License
 
