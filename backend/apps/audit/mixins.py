@@ -175,4 +175,3 @@ class AuditLoggingMixin:
             event_data=event_data,
             user=user,
         )
-

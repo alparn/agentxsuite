@@ -264,15 +264,15 @@ export function ToolRunDialog({
             }
             
             return (
-              <div key={key}>
-                <label className="block text-sm font-medium mb-1 text-slate-300">
+            <div key={key}>
+              <label className="block text-sm font-medium mb-1 text-slate-300">
                   {prop.title || (isStatusField && isQueryTool ? "Filter by Status" : key)}
-                  {required.includes(key) && (
-                    <span className="text-red-500 ml-1">*</span>
-                  )}
-                </label>
-                {renderSchemaField(key, prop, args, updateArg, required)}
-              </div>
+                {required.includes(key) && (
+                  <span className="text-red-500 ml-1">*</span>
+                )}
+              </label>
+              {renderSchemaField(key, prop, args, updateArg, required)}
+            </div>
             );
           })}
 

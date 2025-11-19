@@ -87,10 +87,20 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Using agent: {agent.name} (ID: {agent.id})")
 
+        # Get system user (first superuser)
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        system_user = User.objects.filter(is_superuser=True).first()
+        if not system_user:
+            raise CommandError("No superuser found. Please create a superuser first.")
+        
         # Generate token
         try:
             token_string, issued_token = generate_token_for_agent(
                 agent,
+                user=system_user,
+                name=f"Token for {connection.name}",
+                purpose="api",
                 ttl_minutes=ttl_minutes,
                 scopes=scopes,
             )

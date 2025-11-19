@@ -192,18 +192,13 @@ class MCPServerRegistrationViewSet(AuditLoggingMixin, ModelViewSet):
         
         Query params:
         - env_id: Environment ID (optional, uses default if not provided)
-        - token_id: Specific token to use (optional)
-        - create_token: Auto-create token if true (default: false)
+        - token: Agent Token (REQUIRED)
         
         Returns a ready-to-use claude_desktop_config.json structure including:
         1. AgentxSuite itself (with stdio adapter)
         2. All registered external MCP servers
         """
-        from apps.agents.models import IssuedToken
         from apps.tenants.models import Environment
-        from apps.agents.services import generate_mcp_token
-        from datetime import timedelta
-        import uuid
         
         # Get environment
         env_id = request.query_params.get("env_id")
@@ -224,19 +219,32 @@ class MCPServerRegistrationViewSet(AuditLoggingMixin, ModelViewSet):
         
         config = {"mcpServers": {}}
         
-        # 1. Add AgentxSuite as primary MCP server (with stdio adapter)
-        token_string = self._get_or_create_token(request, org_id, environment)
+        # 1. Add AgentxSuite as primary MCP server (with HTTP bridge)
+        # Using HTTP bridge instead of stdio adapter to avoid database/path issues
+        token_string = self._get_token_from_request(request)
+        
+        # Get MCP Fabric Base URL
+        from mcp_fabric.deps import MCP_FABRIC_BASE_URL
+        mcp_fabric_url = f"{MCP_FABRIC_BASE_URL.rstrip('/')}/.well-known/mcp"
+        
+        # Get path to mcp-http-bridge.js (relative to project root)
+        from pathlib import Path
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
+        bridge_path = project_root / "docs" / "mcp-http-bridge.js"
         
         config["mcpServers"]["agentxsuite"] = {
-            "command": "python",
+            "command": "node",
             "args": [
-                "-m",
-                "mcp_fabric.stdio_adapter",
-                "--token",
-                token_string,
+                str(bridge_path),
+                mcp_fabric_url,
+                "--header",
+                f"Authorization: Bearer {token_string}",
             ],
+            "env": {
+                "DEBUG": "1",
+            },
             # Optional: Add comment for user
-            "_comment": "AgentxSuite MCP Server (native stdio adapter)",
+            "_comment": "AgentxSuite MCP Server (HTTP bridge)",
         }
         
         # 2. Add registered external MCP servers
@@ -280,96 +288,21 @@ class MCPServerRegistrationViewSet(AuditLoggingMixin, ModelViewSet):
         
         return Response(config)
     
-    def _get_or_create_token(self, request, org_id, environment):
+    def _get_token_from_request(self, request):
         """
-        Get or create a token for AgentxSuite MCP access.
+        Get token from request query params.
         
-        Priority:
-        1. Use token_id from query params (if provided)
-        2. Create new token if create_token=true
-        3. Use existing claude-desktop token
-        4. Error (user must create token first)
+        Requires ?token=... parameter.
+        Does NOT create new tokens or look up existing ones.
         """
-        from apps.agents.models import IssuedToken
-        from apps.agents.services import generate_mcp_token
-        from datetime import timedelta
-        import uuid
-        from django.utils import timezone
+        token = request.query_params.get("token")
         
-        token_id = request.query_params.get("token_id")
-        create_token = request.query_params.get("create_token") == "true"
-        
-        if token_id:
-            # Use specific token
-            token = IssuedToken.objects.filter(
-                id=token_id,
-                organization_id=org_id,
-                revoked_at__isnull=True
-            ).first()
-            if not token:
-                raise ValidationError(f"Token {token_id} not found or revoked")
-            
-            # Generate new token string with same jti (for reference)
-            # Note: We can't retrieve the original token string!
+        if not token:
             raise ValidationError(
-                "Cannot use existing token. Please create a new token or use create_token=true"
-            )
-        
-        elif create_token:
-            # Auto-create new claude-desktop token
-            jti = str(uuid.uuid4())
-            expires_at = timezone.now() + timedelta(days=365)
-            
-            token_claims = {
-                "org_id": org_id,
-                "env_id": str(environment.id),
-                "sub": f"user:{request.user.id}",
-                "iss": "agentxsuite",
-                "jti": jti,
-                "scope": ["mcp:tools", "mcp:resources", "mcp:prompts"],
-                "purpose": "claude-desktop",
-            }
-            
-            token_string = generate_mcp_token(
-                claims=token_claims,
-                expires_in=timedelta(days=365),
+                "Token is required. Please provide a valid Agent Token via ?token=..."
             )
             
-            # Store token metadata
-            IssuedToken.objects.create(
-                organization_id=org_id,
-                environment=environment,
-                name=f"Claude Desktop (auto-created {timezone.now().strftime('%Y-%m-%d')})",
-                purpose="claude-desktop",
-                issued_to=request.user,
-                jti=jti,
-                expires_at=expires_at,
-                scopes=["mcp:tools", "mcp:resources", "mcp:prompts"],
-                metadata={
-                    "auto_created": True,
-                    "created_via": "claude_config_endpoint",
-                },
-            )
-            
-            return token_string
-        
-        else:
-            # Try to find existing claude-desktop token
-            token = IssuedToken.objects.filter(
-                organization_id=org_id,
-                purpose="claude-desktop",
-                revoked_at__isnull=True
-            ).first()
-            
-            if not token:
-                raise ValidationError(
-                    "No token available. Either create a token first or use ?create_token=true"
-                )
-            
-            # Cannot retrieve token string from database!
-            raise ValidationError(
-                "Cannot retrieve existing token. Please use ?create_token=true to generate a new one"
-            )
+        return token
     
     def _resolve_secrets(self, env_vars: dict, org_id: str) -> dict:
         """
@@ -423,7 +356,7 @@ class MCPServerRegistrationViewSet(AuditLoggingMixin, ModelViewSet):
         Download Claude Desktop configuration as JSON file.
         
         Same as claude_config but returns as downloadable file.
-        Query params: Same as claude_config (env_id, create_token)
+        Query params: Same as claude_config (env_id, token)
         """
         from django.http import HttpResponse
         import json
@@ -440,4 +373,3 @@ class MCPServerRegistrationViewSet(AuditLoggingMixin, ModelViewSet):
         response["Content-Disposition"] = 'attachment; filename="claude_desktop_config.json"'
         
         return response
-

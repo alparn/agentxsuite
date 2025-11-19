@@ -44,6 +44,7 @@ class AgentSerializer(serializers.ModelSerializer):
             "inbound_secret_ref",
             "capabilities",
             "tags",
+            "service_account",
             "default_budget_cents",
             "default_max_depth",
             "default_ttl_seconds",
@@ -61,7 +62,7 @@ class AgentSerializer(serializers.ModelSerializer):
         from apps.tenants.models import Environment
 
         if not Environment.objects.filter(id=value, organization_id=org_id).exists():
-            raise serializers.ValidationError(
+                            raise serializers.ValidationError(
                 f"Environment does not belong to organization"
             )
 
@@ -81,6 +82,8 @@ class IssuedTokenSerializer(serializers.ModelSerializer):
     environment_id = serializers.UUIDField(write_only=True)
     issued_to_email = serializers.EmailField(source="issued_to.email", read_only=True)
     status = serializers.CharField(read_only=True)  # Computed property
+    is_revoked = serializers.BooleanField(read_only=True)  # Computed property
+    is_expired = serializers.BooleanField(read_only=True)  # Computed property
 
     class Meta:
         model = IssuedToken
@@ -99,6 +102,8 @@ class IssuedTokenSerializer(serializers.ModelSerializer):
             "revoked_by",
             "scopes",
             "status",
+            "is_revoked",
+            "is_expired",
             "last_used_at",
             "use_count",
             "created_at",
@@ -160,7 +165,7 @@ class TokenCreateSerializer(serializers.Serializer):
     )
     expires_in_days = serializers.IntegerField(
         default=90, 
-        min_value=1, 
+        min_value=1,
         max_value=3650,  # Max 10 years
         help_text="Token lifetime in days"
     )

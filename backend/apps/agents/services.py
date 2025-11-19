@@ -67,6 +67,9 @@ def _get_public_key() -> rsa.RSAPublicKey:
 def generate_token_for_agent(
     agent: Agent,
     *,
+    user=None,
+    name: str | None = None,
+    purpose: str = "api",
     ttl_minutes: int | None = None,
     scopes: list[str] | None = None,
     metadata: dict | None = None,
@@ -76,6 +79,9 @@ def generate_token_for_agent(
     
     Args:
         agent: Agent instance
+        user: User who is creating the token (required)
+        name: Token name (optional, will be auto-generated if not provided)
+        purpose: Token purpose (default: "api")
         ttl_minutes: Token TTL in minutes (default: MCP_TOKEN_MAX_TTL_MINUTES)
         scopes: List of scopes to grant (default: ["mcp:run", "mcp:tools"])
         metadata: Additional metadata to store with token
@@ -85,6 +91,9 @@ def generate_token_for_agent(
     """
     if not agent.service_account:
         raise ValueError("Agent must have a ServiceAccount to generate tokens")
+    
+    if not user:
+        raise ValueError("User is required to generate tokens")
     
     sa = agent.service_account
     
@@ -135,9 +144,18 @@ def generate_token_for_agent(
     private_key = _get_signing_key()
     token_string = jwt.encode(claims, private_key, algorithm=JWT_ALGORITHM)
     
+    # Generate token name if not provided
+    if not name:
+        name = f"Token for {agent.name} ({django_timezone.now().strftime('%Y-%m-%d %H:%M')})"
+    
     # Store token metadata
     issued_token = IssuedToken.objects.create(
         agent=agent,
+        organization=agent.organization,
+        environment=agent.environment,
+        name=name,
+        purpose=purpose,
+        issued_to=user,  # Can be None for system-generated tokens
         jti=jti,
         expires_at=datetime.fromtimestamp(exp, tz=ZoneInfo("UTC")),
         scopes=scopes,
@@ -388,8 +406,31 @@ def create_axcore_agent(
     )
     
     # 4. Initial Token generieren
+    # Get system user (first superuser or get/create a system user)
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    system_user = User.objects.filter(is_superuser=True).first()
+    if not system_user:
+        # Try to get or create a system user (for automated token generation)
+        system_user, created = User.objects.get_or_create(
+            username="system",
+            defaults={
+                "email": "system@agentxsuite.local",
+                "is_superuser": True,
+                "is_staff": True,
+            }
+        )
+        if not system_user.is_superuser:
+            # Update if user exists but is not superuser
+            system_user.is_superuser = True
+            system_user.is_staff = True
+            system_user.save()
+    
     token_string, issued_token = generate_token_for_agent(
         agent,
+        user=system_user,
+        name=f"Initial token for {name}",
+        purpose="api",
         ttl_minutes=60,  # 1 Stunde
         scopes=["mcp:run", "mcp:tools", "mcp:manifest"],
         metadata={"created_by": "axcore_setup", "initial": True},
