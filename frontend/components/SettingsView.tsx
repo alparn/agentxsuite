@@ -1,12 +1,28 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { Globe } from "lucide-react";
 import { TokenManagementView } from "./TokenManagementView";
 import { ProfileView } from "./ProfileView";
 
 export function SettingsView() {
   const t = useTranslations();
+  const params = useParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  
+  const currentLocale = (params?.locale as string) || "en";
+
+  const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newLocale = e.target.value;
+    
+    // Extract path without locale (e.g., "/en/settings" -> "/settings")
+    const pathWithoutLocale = pathname.replace(`/${currentLocale}`, "") || "/";
+    
+    // Navigate to new locale with same path
+    router.push(`/${newLocale}${pathWithoutLocale}`);
+  };
 
   return (
     <div className="space-y-6">
@@ -26,7 +42,11 @@ export function SettingsView() {
           <p className="text-slate-400 text-sm mb-4">
             Change your preferred language
           </p>
-          <select className="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+          <select 
+            value={currentLocale}
+            onChange={handleLanguageChange}
+            className="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+          >
             <option value="en">English</option>
             <option value="de">Deutsch</option>
           </select>

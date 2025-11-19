@@ -44,6 +44,8 @@ export interface CanvasNodeData extends Record<string, unknown> {
   groupId?: string;
   // Metadata
   metadata?: Record<string, any>;
+  // Position tracking (internal)
+  dirty?: boolean; // true if user has moved this node
   // Callback for creating new nodes
   onCreateNode?: (type: CanvasNodeType, position: { x: number; y: number }, side: "left" | "right", sourceNodeId?: string) => void;
   // Callback for node actions (test, sync, run, etc.)

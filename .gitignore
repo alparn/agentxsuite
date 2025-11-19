@@ -138,6 +138,13 @@ Thumbs.db
 # Local test application (nicht ins Git)
 local_test/
 
+# Local test MCP servers (nicht ins Git - nur für lokale Tests)
+backend/dev/test_mcp_server_with_auth.py
+backend/dev/generate_test_secret.py
+backend/dev/start_test_mcp_server.sh
+backend/dev/test_mcp_secrets.txt
+backend/dev/README_TEST_MCP_SERVER.md
+
 # Documentation
 # Ignore .md files in docs/, but allow images
 docs/*.md

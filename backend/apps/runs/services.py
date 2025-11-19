@@ -191,24 +191,27 @@ def resolve_tool(
     
     try:
         if is_uuid:
-            return Tool.objects.get(
+            tool = Tool.objects.get(
                 id=tool_identifier,
                 organization=organization,
                 environment=environment,
-                enabled=True,
             )
         else:
-            return Tool.objects.get(
+            tool = Tool.objects.get(
                 name=tool_identifier,
                 organization=organization,
                 environment=environment,
-                enabled=True,
             )
+            
+        if not tool.enabled:
+            raise ValueError(f"Tool '{tool.name}' is disabled")
+            
+        return tool
+            
     except Tool.DoesNotExist:
         identifier_type = "ID" if is_uuid else "name"
         raise ValueError(
-            f"Tool with {identifier_type} '{tool_identifier}' not found "
-            "or not enabled in this org/env"
+            f"Tool with {identifier_type} '{tool_identifier}' not found in this org/env"
         )
 
 

@@ -15,6 +15,7 @@ import {
   Connection,
   Edge,
   Node,
+  NodeChange,
   ReactFlowProvider,
   useReactFlow,
 } from "@xyflow/react";
@@ -1034,6 +1035,12 @@ export function CanvasView() {
   const loadCanvasState = useCallback(() => {
     // Prefer backend state
     if (savedCanvasState) {
+      // Debug logging (development only)
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Loading positions from backend:", 
+          savedCanvasState.nodes?.map((n: any) => ({ id: n.id, pos: n.position }))
+        );
+      }
       return savedCanvasState;
     }
     
@@ -1043,6 +1050,14 @@ export function CanvasView() {
       const saved = localStorage.getItem(`canvas-state-${effectiveOrgId}`);
       if (saved) {
         const state = JSON.parse(saved);
+        
+        // Debug logging (development only)
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Loading positions from localStorage:", 
+            state.nodes?.map((n: any) => ({ id: n.id, pos: n.position }))
+          );
+        }
+        
         return state;
       }
     } catch (error) {
@@ -1085,10 +1100,21 @@ export function CanvasView() {
   const saveCanvasState = useCallback((nodesToSave: Node<CanvasNodeData>[], edgesToSave: Edge<CanvasEdgeData>[]) => {
     if (!effectiveOrgId) return;
     
+    // Debug logging (development only)
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Saving positions:", 
+        nodesToSave.map(n => ({ 
+          id: n.id, 
+          pos: n.position, 
+          dirty: n.data.dirty 
+        }))
+      );
+    }
+    
     const state = {
       nodes: nodesToSave.map((n) => ({
         id: n.id,
-        position: n.position,
+        position: n.position || { x: 0, y: 0 }, // Ensure position exists
         data: {
           type: n.data.type,
           agentId: n.data.agentId,
@@ -1099,6 +1125,7 @@ export function CanvasView() {
           connectionId: n.data.connectionId,
           environmentId: n.data.environmentId,
           organizationId: n.data.organizationId,
+          // Note: dirty flag is NOT saved to backend (it's local state only)
         },
       })),
       edges: edgesToSave.map((e) => ({
@@ -1212,8 +1239,34 @@ export function CanvasView() {
     return edgesToUse;
   }, [mergedNodes, initialEdges, loadCanvasState]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(mergedNodes);
+  const [nodes, setNodes, onNodesChangeInternal] = useNodesState(mergedNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge<CanvasEdgeData>>(initialEdgesComputed);
+
+  // Enhanced onNodesChange with dirty flag tracking
+  const onNodesChange = useCallback((changes: NodeChange<Node<CanvasNodeData>>[]) => {
+    // Track position changes and mark nodes as dirty
+    const positionChangeIds = new Set<string>();
+    
+    changes.forEach((change) => {
+      if (change.type === 'position' && change.id) {
+        positionChangeIds.add(change.id);
+      }
+    });
+    
+    // Mark nodes as dirty if their position changed
+    if (positionChangeIds.size > 0) {
+      setNodes((currentNodes) =>
+        currentNodes.map((node) =>
+          positionChangeIds.has(node.id)
+            ? { ...node, data: { ...node.data, dirty: true } }
+            : node
+        )
+      );
+    }
+    
+    // Call React Flow's internal handler
+    onNodesChangeInternal(changes);
+  }, [onNodesChangeInternal, setNodes]);
 
   // Filter nodes and edges based on filter settings
   const filteredNodes = useMemo(() => {
@@ -1582,78 +1635,83 @@ export function CanvasView() {
     return () => clearTimeout(timeoutId);
   }, [nodes, edges, saveCanvasState]);
 
-  // Initialize nodes on mount and when mergedNodes change
-  const nodesInitializedRef = useRef(false);
-  const prevMergedNodesRef = useRef<Node<CanvasNodeData>[]>([]);
+  // Track initial load state
+  const initialLoadDoneRef = useRef(false);
   
-  useEffect(() => {
-    // Check if mergedNodes actually changed
-    const prevIds = new Set(prevMergedNodesRef.current.map((n) => n.id));
-    const currentIds = new Set(mergedNodes.map((n) => n.id));
-    const idsChanged = 
-      prevIds.size !== currentIds.size ||
-      Array.from(currentIds).some((id) => !prevIds.has(id)) ||
-      Array.from(prevIds).some((id) => !currentIds.has(id));
-    
-    // Only update if mergedNodes changed or we haven't initialized yet
-    if (!idsChanged && nodesInitializedRef.current && prevMergedNodesRef.current.length > 0) {
-      return; // No change, skip
-    }
-    
-    // Update refs
-    prevMergedNodesRef.current = mergedNodes;
-    
-    setNodes((currentNodes) => {
-      // If we haven't initialized yet or nodes are empty, use mergedNodes directly
-      // mergedNodes already contains saved positions from backend
-      if (!nodesInitializedRef.current || currentNodes.length === 0) {
-        nodesInitializedRef.current = true;
-        return mergedNodes.length > 0 ? mergedNodes : currentNodes;
+  // Robust merge function
+  const mergeFromBackend = useCallback((
+    currentNodes: Node<CanvasNodeData>[],
+    backendNodes: Node<CanvasNodeData>[],
+    options: { overwritePosition: boolean }
+  ): Node<CanvasNodeData>[] => {
+    return backendNodes.map((backendNode) => {
+      const localNode = currentNodes.find((n) => n.id === backendNode.id);
+      
+      if (!localNode) {
+        // Node is new → use position from backend, mark as clean
+        return { 
+          ...backendNode, 
+          data: { ...backendNode.data, dirty: false }
+        };
       }
       
-      // Otherwise, merge: prefer saved positions from mergedNodes (backend), 
-      // but keep current positions if user is actively dragging
-      const updatedNodes = mergedNodes.map((node) => {
-        // Use saved position from mergedNodes (from backend) as primary source
-        // mergedNodes already has the correct saved positions merged
-        const savedPosition = node.position;
+      if (options.overwritePosition && !localNode.data.dirty) {
+        // Initial load: overwrite position only if user never moved it
+        return { 
+          ...backendNode, 
+          position: backendNode.position || localNode.position,
+          data: { ...backendNode.data, dirty: false }
+        };
+      }
+      
+      // Ongoing operation: NEVER overwrite position
+      // Keep local position and dirty flag
+      return { 
+        ...backendNode, 
+        position: localNode.position,
+        data: { ...backendNode.data, dirty: localNode.data.dirty ?? false }
+      };
+    });
+  }, []);
+
+  // Initialize nodes on mount and when mergedNodes change
+  useEffect(() => {
+    setNodes((currentNodes) => {
+      if (!initialLoadDoneRef.current || currentNodes.length === 0) {
+        // Initial load: merge with position overwrite
+        initialLoadDoneRef.current = true;
+        const merged = mergeFromBackend(currentNodes, mergedNodes, { overwritePosition: true });
         
-        // Only use current position if it's different (user is actively editing)
-        // and if it's a valid position
-        const currentNode = currentNodes.find((n) => n.id === node.id);
-        if (currentNode) {
-          const currentPos = currentNode.position;
-          // If current position is valid and different from saved, user is editing
-          if (currentPos && typeof currentPos.x === 'number' && typeof currentPos.y === 'number' &&
-              !isNaN(currentPos.x) && !isNaN(currentPos.y) &&
-              (currentPos.x !== savedPosition?.x || currentPos.y !== savedPosition?.y)) {
-            // User is actively editing - keep current position
-            return { ...node, position: currentPos };
+        // Debug logging (development only)
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Initial load - Merging positions from backend:", 
+            merged.map(n => ({ id: n.id, pos: n.position, dirty: n.data.dirty }))
+          );
+        }
+        
+        return merged.length > 0 ? merged : currentNodes;
+      } else {
+        // Subsequent updates: merge WITHOUT position overwrite
+        const merged = mergeFromBackend(currentNodes, mergedNodes, { overwritePosition: false });
+        
+        // Add any new nodes that don't exist yet (user-created nodes)
+        const existingIds = new Set(merged.map((n) => n.id));
+        const newNodes = currentNodes.filter((n) => !existingIds.has(n.id));
+        
+        // Debug logging (development only)
+        if (process.env.NODE_ENV === 'development') {
+          const dirtyNodes = merged.filter(n => n.data.dirty);
+          if (dirtyNodes.length > 0) {
+            console.log("Preserving dirty node positions:", 
+              dirtyNodes.map(n => ({ id: n.id, pos: n.position }))
+            );
           }
         }
         
-        // Use saved position from backend (mergedNodes)
-        if (savedPosition && typeof savedPosition.x === 'number' && typeof savedPosition.y === 'number' &&
-            !isNaN(savedPosition.x) && !isNaN(savedPosition.y)) {
-          return { ...node, position: savedPosition };
-        }
-        
-        // Fallback: ensure node position is valid
-        const nodePos = node.position || { x: 0, y: 0 };
-        if (typeof nodePos.x !== 'number' || typeof nodePos.y !== 'number' ||
-            isNaN(nodePos.x) || isNaN(nodePos.y)) {
-          return { ...node, position: { x: 0, y: 0 } };
-        }
-        return node;
-      });
-      
-      // Add any new nodes that don't exist yet (user-created nodes)
-      const existingIds = new Set(updatedNodes.map((n) => n.id));
-      const newNodes = currentNodes.filter((n) => !existingIds.has(n.id));
-      
-      return [...updatedNodes, ...newNodes];
+        return [...merged, ...newNodes];
+      }
     });
-  }, [mergedNodes, setNodes]);
+  }, [mergedNodes, setNodes, mergeFromBackend]);
 
   // Update edges when initial edges change (merge with saved edges)
   useEffect(() => {

@@ -223,10 +223,33 @@ def _fetch_mcp_manifest(conn: Connection) -> dict | None:
         urljoin(conn.endpoint.rstrip("/") + "/", "mcp.json"),
     ]
 
+    # Prepare headers from connection auth_method
+    headers = {}
+    if conn.auth_method == "bearer" and conn.secret_ref:
+        try:
+            from libs.secretstore import get_secretstore
+            secret_store = get_secretstore()
+            token = secret_store.get_secret(conn.secret_ref, check_permissions=False)
+            headers["Authorization"] = f"Bearer {token}"
+        except Exception as e:
+            logger.warning(f"Could not retrieve auth token for manifest: {e}")
+    elif conn.auth_method == "basic" and conn.secret_ref:
+        try:
+            import base64
+            from libs.secretstore import get_secretstore
+            secret_store = get_secretstore()
+            # Secret is stored as "username:password" format
+            credentials = secret_store.get_secret(conn.secret_ref, check_permissions=False)
+            # Encode as Base64 for Basic Auth
+            encoded = base64.b64encode(credentials.encode()).decode()
+            headers["Authorization"] = f"Basic {encoded}"
+        except Exception as e:
+            logger.warning(f"Could not retrieve basic auth credentials for manifest: {e}")
+
     for manifest_url in manifest_urls:
         try:
             with httpx.Client(timeout=5.0) as client:
-                response = client.get(manifest_url)
+                response = client.get(manifest_url, headers=headers)
                 if response.status_code == 200:
                     try:
                         data = response.json()
@@ -437,6 +460,18 @@ def _verify_external_mcp_server(conn: Connection) -> bool:
             headers["Authorization"] = f"Bearer {token}"
         except Exception as e:
             logger.warning(f"Could not retrieve auth token for connection: {e}")
+    elif conn.auth_method == "basic" and conn.secret_ref:
+        try:
+            import base64
+            from libs.secretstore import get_secretstore
+            secret_store = get_secretstore()
+            # Secret is stored as "username:password" format
+            credentials = secret_store.get_secret(conn.secret_ref, check_permissions=False)
+            # Encode as Base64 for Basic Auth
+            encoded = base64.b64encode(credentials.encode()).decode()
+            headers["Authorization"] = f"Basic {encoded}"
+        except Exception as e:
+            logger.warning(f"Could not retrieve basic auth credentials for connection: {e}")
 
     # Track if we got 401 responses (server exists but needs auth)
     got_auth_required = False
@@ -648,6 +683,18 @@ def _fetch_tools_with_validation(conn: Connection) -> dict | None:
             headers["Authorization"] = f"Bearer {token}"
         except Exception as e:
             logger.warning(f"Could not retrieve auth token for connection: {e}")
+    elif conn.auth_method == "basic" and conn.secret_ref:
+        try:
+            import base64
+            from libs.secretstore import get_secretstore
+            secret_store = get_secretstore()
+            # Secret is stored as "username:password" format
+            credentials = secret_store.get_secret(conn.secret_ref, check_permissions=False)
+            # Encode as Base64 for Basic Auth
+            encoded = base64.b64encode(credentials.encode()).decode()
+            headers["Authorization"] = f"Basic {encoded}"
+        except Exception as e:
+            logger.warning(f"Could not retrieve basic auth credentials for connection: {e}")
 
     for tools_url in tools_urls:
         try:

@@ -105,30 +105,38 @@ export function ConnectionDialog({
         environment_id: data.environment_id,
       };
 
-      // Include secret_ref if auth_method requires it
-      if (data.auth_method !== "none") {
-        if (!secretRef) {
-          throw new Error("Secret value or reference is required for bearer or basic auth");
-        }
-        payload.secret_ref = secretRef;
-      }
-
       // Only treat as update if connection has an id
       if (connection?.id) {
-        // For updates, only send secret_ref if a new secret_value was provided
-        // If neither secret_value nor secret_ref is provided, don't send secret_ref (keeps existing)
+        // For updates:
+        // - If new secret_value provided: use new secretRef
+        // - If no new secret_value but connection has existing secret_ref: use existing
+        // - If auth_method is "none": don't include secret_ref
         const updatePayload: any = {
           name: payload.name,
           endpoint: payload.endpoint,
           auth_method: payload.auth_method,
           environment_id: payload.environment_id,
         };
-        // Only include secret_ref if user provided a new secret value
-        if (secretRef) {
-          updatePayload.secret_ref = secretRef;
+        
+        if (data.auth_method !== "none") {
+          // Use new secretRef if provided, otherwise use existing connection secret_ref
+          const finalSecretRef = secretRef || connection.secret_ref;
+          if (finalSecretRef) {
+            updatePayload.secret_ref = finalSecretRef;
+          }
+          // If no secret_ref at all (neither new nor existing), backend will validate
         }
+        // If auth_method is "none", don't include secret_ref (allows removing auth)
+        
         return api.put(`/orgs/${orgId}/connections/${connection.id}/`, updatePayload);
       } else {
+        // For new connections, secret_ref is required if auth_method is not "none"
+        if (data.auth_method !== "none") {
+          if (!secretRef) {
+            throw new Error("Secret value or reference is required for bearer or basic auth");
+          }
+          payload.secret_ref = secretRef;
+        }
         // organization_id is automatically set by backend from URL
         return api.post(`/orgs/${orgId}/connections/`, payload);
       }

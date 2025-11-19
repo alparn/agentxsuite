@@ -118,10 +118,10 @@ export function ToolsView() {
   const { data: systemToolsData } = useQuery({
     queryKey: ["system-tools", orgId, envId, agentTokenData],
     queryFn: async () => {
-      if (!orgId || !envId) return [];
+      if (!orgId || !envId || !agentTokenData) return [];
       try {
         const { mcpFabric } = await import("@/lib/mcpFabric");
-        const response = await mcpFabric.getTools(orgId, envId, agentTokenData || undefined);
+        const response = await mcpFabric.getTools(orgId, envId, agentTokenData);
         const allTools = Array.isArray(response) ? response : (Array.isArray(response?.tools) ? response.tools : []);
         // Filter for system tools (agentxsuite_*)
         return allTools.filter((tool: any) => tool.name?.startsWith("agentxsuite_"));
