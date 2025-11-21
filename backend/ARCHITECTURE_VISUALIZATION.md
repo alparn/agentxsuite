@@ -1,4 +1,4 @@
-# 🏗️ AgentxSuite - Architektur-Visualisierung
+# 🏗️ AgentxSuite - Architecture Visualization
 
 ## 📊 Entity-Relationship Diagram (Models)
 
@@ -213,152 +213,152 @@ erDiagram
     }
 ```
 
-## 🔌 API-Endpoints Übersicht
+## 🔌 API Endpoints Overview
 
 ### 🔐 Authentication (`/api/v1/auth/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `POST` | `/api/v1/auth/register/` | User registrieren | ❌ |
-| `POST` | `/api/v1/auth/login/` | User login & Token erhalten | ❌ |
-| `POST` | `/api/v1/auth/logout/` | User logout & Token löschen | ✅ |
-| `GET` | `/api/v1/auth/me/` | Aktueller User & Organization | ✅ |
-| `PUT/PATCH` | `/api/v1/auth/me/` | User Profil aktualisieren | ✅ |
-| `GET` | `/api/v1/auth/me/orgs/` | User Organizations auflisten | ✅ |
-| `POST` | `/api/v1/auth/me/orgs/` | User zu Organization hinzufügen | ✅ |
+| `POST` | `/api/v1/auth/register/` | Register user | ❌ |
+| `POST` | `/api/v1/auth/login/` | User login & get token | ❌ |
+| `POST` | `/api/v1/auth/logout/` | User logout & delete token | ✅ |
+| `GET` | `/api/v1/auth/me/` | Current user & organization | ✅ |
+| `PUT/PATCH` | `/api/v1/auth/me/` | Update user profile | ✅ |
+| `GET` | `/api/v1/auth/me/orgs/` | List user organizations | ✅ |
+| `POST` | `/api/v1/auth/me/orgs/` | Add user to organization | ✅ |
 
 ### 🏢 Organizations & Environments (`/api/v1/orgs/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/orgs/` | Organizations auflisten | ✅ |
-| `POST` | `/api/v1/orgs/` | Organization erstellen | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/` | Organization Details | ✅ |
-| `PUT/PATCH` | `/api/v1/orgs/{org_id}/` | Organization aktualisieren | ✅ |
-| `DELETE` | `/api/v1/orgs/{org_id}/` | Organization löschen | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/environments/` | Environments auflisten | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/environments/` | Environment erstellen | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/environments/{env_id}/` | Environment Details | ✅ |
-| `PUT/PATCH` | `/api/v1/orgs/{org_id}/environments/{env_id}/` | Environment aktualisieren | ✅ |
-| `DELETE` | `/api/v1/orgs/{org_id}/environments/{env_id}/` | Environment löschen | ✅ |
+| `GET` | `/api/v1/orgs/` | List organizations | ✅ |
+| `POST` | `/api/v1/orgs/` | Create organization | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/` | Organization details | ✅ |
+| `PUT/PATCH` | `/api/v1/orgs/{org_id}/` | Update organization | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/` | Delete organization | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/environments/` | List environments | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/environments/` | Create environment | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/environments/{env_id}/` | Environment details | ✅ |
+| `PUT/PATCH` | `/api/v1/orgs/{org_id}/environments/{env_id}/` | Update environment | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/environments/{env_id}/` | Delete environment | ✅ |
 
 ### 🔗 Connections (`/api/v1/orgs/{org_id}/connections/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/orgs/{org_id}/connections/` | Connections auflisten | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/connections/` | Connection erstellen | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/connections/{id}/` | Connection Details | ✅ |
-| `PUT/PATCH` | `/api/v1/orgs/{org_id}/connections/{id}/` | Connection aktualisieren | ✅ |
-| `DELETE` | `/api/v1/orgs/{org_id}/connections/{id}/` | Connection löschen | ✅ |
-| `POST` | `/api/v1/connections/{id}/test/` | Connection testen | ✅ |
-| `POST` | `/api/v1/connections/{id}/sync/` | Tools von Connection synchronisieren | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/connections/store-secret/` | Secret im SecretStore speichern | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/connections/` | List connections | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/connections/` | Create connection | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/connections/{id}/` | Connection details | ✅ |
+| `PUT/PATCH` | `/api/v1/orgs/{org_id}/connections/{id}/` | Update connection | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/connections/{id}/` | Delete connection | ✅ |
+| `POST` | `/api/v1/connections/{id}/test/` | Test connection | ✅ |
+| `POST` | `/api/v1/connections/{id}/sync/` | Sync tools from connection | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/connections/store-secret/` | Store secret in SecretStore | ✅ |
 
 ### 🤖 Agents (`/api/v1/orgs/{org_id}/agents/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/orgs/{org_id}/agents/` | Agents auflisten | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/agents/` | Agent erstellen | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/agents/{id}/` | Agent Details | ✅ |
-| `PUT/PATCH` | `/api/v1/orgs/{org_id}/agents/{id}/` | Agent aktualisieren | ✅ |
-| `DELETE` | `/api/v1/orgs/{org_id}/agents/{id}/` | Agent löschen | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/agents/{id}/ping/` | Agent Status & Connection testen | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/agents/{id}/tokens/` | Tokens auflisten | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/agents/{id}/tokens/` | Token generieren | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/agents/{id}/tokens/{jti}/revoke/` | Token widerrufen | ✅ |
-| `DELETE` | `/api/v1/orgs/{org_id}/agents/{id}/tokens/{jti}/` | Token löschen (nur wenn revoked/expired) | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/agents/create-axcore/` | AxCore-Agent vollständig erstellen | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/agents/` | List agents | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/agents/` | Create agent | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/agents/{id}/` | Agent details | ✅ |
+| `PUT/PATCH` | `/api/v1/orgs/{org_id}/agents/{id}/` | Update agent | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/agents/{id}/` | Delete agent | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/agents/{id}/ping/` | Test agent status & connection | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/agents/{id}/tokens/` | List tokens | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/agents/{id}/tokens/` | Generate token | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/agents/{id}/tokens/{jti}/revoke/` | Revoke token | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/agents/{id}/tokens/{jti}/` | Delete token (only if revoked/expired) | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/agents/create-axcore/` | Create AxCore agent completely | ✅ |
 
 ### 🛠️ Tools (`/api/v1/orgs/{org_id}/tools/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/orgs/{org_id}/tools/` | Tools auflisten | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/tools/` | Tool erstellen | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/tools/{id}/` | Tool Details | ✅ |
-| `PUT/PATCH` | `/api/v1/orgs/{org_id}/tools/{id}/` | Tool aktualisieren | ✅ |
-| `DELETE` | `/api/v1/orgs/{org_id}/tools/{id}/` | Tool löschen | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/tools/` | List tools | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/tools/` | Create tool | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/tools/{id}/` | Tool details | ✅ |
+| `PUT/PATCH` | `/api/v1/orgs/{org_id}/tools/{id}/` | Update tool | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/tools/{id}/` | Delete tool | ✅ |
 
 ### ▶️ Runs (`/api/v1/orgs/{org_id}/runs/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/orgs/{org_id}/runs/` | Runs auflisten | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/runs/{id}/` | Run Details | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/runs/{id}/steps/` | Run Steps auflisten | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/runs/execute/` | **Unified Tool Execution** (empfohlen) | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/runs/` | List runs | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/runs/{id}/` | Run details | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/runs/{id}/steps/` | List run steps | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/runs/execute/` | **Unified Tool Execution** (recommended) | ✅ |
 
 ### 🔒 Policies (`/api/v1/orgs/{org_id}/policies/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/orgs/{org_id}/policies/` | Policies auflisten | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/policies/` | Policy erstellen | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/policies/{id}/` | Policy Details | ✅ |
-| `PUT/PATCH` | `/api/v1/orgs/{org_id}/policies/{id}/` | Policy aktualisieren | ✅ |
-| `DELETE` | `/api/v1/orgs/{org_id}/policies/{id}/` | Policy löschen | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/policies/{id}/rules/` | Rule zu Policy hinzufügen | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/policies/evaluate/` | Policy evaluieren | ✅ |
-| `POST` | `/api/v1/policies/evaluate/` | Policy evaluieren (global) | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/policies/` | List policies | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/policies/` | Create policy | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/policies/{id}/` | Policy details | ✅ |
+| `PUT/PATCH` | `/api/v1/orgs/{org_id}/policies/{id}/` | Update policy | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/policies/{id}/` | Delete policy | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/policies/{id}/rules/` | Add rule to policy | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/policies/evaluate/` | Evaluate policy | ✅ |
+| `POST` | `/api/v1/policies/evaluate/` | Evaluate policy (global) | ✅ |
 
 #### Policy Rules (`/api/v1/policies/rules/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/policies/rules/` | Rules auflisten | ✅ |
-| `POST` | `/api/v1/policies/rules/` | Rule erstellen | ✅ |
-| `GET` | `/api/v1/policies/rules/{id}/` | Rule Details | ✅ |
-| `PUT/PATCH` | `/api/v1/policies/rules/{id}/` | Rule aktualisieren | ✅ |
-| `DELETE` | `/api/v1/policies/rules/{id}/` | Rule löschen | ✅ |
+| `GET` | `/api/v1/policies/rules/` | List rules | ✅ |
+| `POST` | `/api/v1/policies/rules/` | Create rule | ✅ |
+| `GET` | `/api/v1/policies/rules/{id}/` | Rule details | ✅ |
+| `PUT/PATCH` | `/api/v1/policies/rules/{id}/` | Update rule | ✅ |
+| `DELETE` | `/api/v1/policies/rules/{id}/` | Delete rule | ✅ |
 
 #### Policy Bindings (`/api/v1/policies/bindings/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/policies/bindings/` | Bindings auflisten | ✅ |
-| `POST` | `/api/v1/policies/bindings/` | Binding erstellen | ✅ |
-| `GET` | `/api/v1/policies/bindings/{id}/` | Binding Details | ✅ |
-| `PUT/PATCH` | `/api/v1/policies/bindings/{id}/` | Binding aktualisieren | ✅ |
-| `DELETE` | `/api/v1/policies/bindings/{id}/` | Binding löschen | ✅ |
+| `GET` | `/api/v1/policies/bindings/` | List bindings | ✅ |
+| `POST` | `/api/v1/policies/bindings/` | Create binding | ✅ |
+| `GET` | `/api/v1/policies/bindings/{id}/` | Binding details | ✅ |
+| `PUT/PATCH` | `/api/v1/policies/bindings/{id}/` | Update binding | ✅ |
+| `DELETE` | `/api/v1/policies/bindings/{id}/` | Delete binding | ✅ |
 
 ### 🔍 Audit (`/api/v1/orgs/{org_id}/audit/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/orgs/{org_id}/audit/` | Audit Events auflisten (mit Filtern) | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/audit/{id}/` | Audit Event Details | ✅ |
-| `GET` | `/api/v1/audit/` | Global Audit Events (letzte 24h) | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/audit/` | List audit events (with filters) | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/audit/{id}/` | Audit event details | ✅ |
+| `GET` | `/api/v1/audit/` | Global audit events (last 24h) | ✅ |
 
-**Filter-Parameter:**
-- `subject` - Filter nach Subject (Agent/User/Client)
-- `action` - Filter nach Action (z.B. `tool.invoke`)
-- `target` - Filter nach Target (z.B. `tool:pdf/read`)
-- `decision` - Filter nach Decision (`allow`/`deny`)
-- `ts_from` - Zeitfenster Start
-- `ts_to` - Zeitfenster Ende
+**Filter Parameters:**
+- `subject` - Filter by subject (Agent/User/Client)
+- `action` - Filter by action (e.g., `tool.invoke`)
+- `target` - Filter by target (e.g., `tool:pdf/read`)
+- `decision` - Filter by decision (`allow`/`deny`)
+- `ts_from` - Time window start
+- `ts_to` - Time window end
 
 ### 👤 Service Accounts (`/api/v1/orgs/{org_id}/service-accounts/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/orgs/{org_id}/service-accounts/` | Service Accounts auflisten | ✅ |
-| `POST` | `/api/v1/orgs/{org_id}/service-accounts/` | Service Account erstellen | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/service-accounts/{id}/` | Service Account Details | ✅ |
-| `PUT/PATCH` | `/api/v1/orgs/{org_id}/service-accounts/{id}/` | Service Account aktualisieren | ✅ |
-| `DELETE` | `/api/v1/orgs/{org_id}/service-accounts/{id}/` | Service Account löschen | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/service-accounts/` | List service accounts | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/service-accounts/` | Create service account | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/service-accounts/{id}/` | Service account details | ✅ |
+| `PUT/PATCH` | `/api/v1/orgs/{org_id}/service-accounts/{id}/` | Update service account | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/service-accounts/{id}/` | Delete service account | ✅ |
 
 ### 🌐 MCP Extensions (`/api/v1/orgs/{org_id}/mcp/`)
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/resources/` | MCP Resources auflisten | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/resources/{uri}/` | MCP Resource Details | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/prompts/` | MCP Prompts auflisten | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/prompts/{name}/` | MCP Prompt Details | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/resources/` | List MCP resources | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/resources/{uri}/` | MCP resource details | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/prompts/` | List MCP prompts | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/prompts/{name}/` | MCP prompt details | ✅ |
 
-## 🔄 Datenfluss-Diagramm
+## 🔄 Data Flow Diagram
 
 ```mermaid
 sequenceDiagram
@@ -394,7 +394,7 @@ sequenceDiagram
     end
 ```
 
-## 🏛️ Architektur-Schichten
+## 🏛️ Architecture Layers
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -456,62 +456,61 @@ graph TD
     M --> N[Response]
 ```
 
-## 📝 Wichtige Constraints & Validierungen
+## 📝 Important Constraints & Validations
 
 ### Model Constraints
 
 1. **Organization**
-   - `name` ist unique
+   - `name` is unique
 
 2. **Environment**
-   - `(organization, name)` ist unique
+   - `(organization, name)` is unique
 
 3. **Connection**
-   - `(organization, environment, name)` ist unique
+   - `(organization, environment, name)` is unique
 
 4. **Tool**
-   - `(organization, environment, name, version)` ist unique
+   - `(organization, environment, name, version)` is unique
 
 5. **Agent**
-   - `(organization, environment, name)` ist unique
-   - `(organization, environment, slug)` ist unique (case-insensitive)
-   - `RUNNER` mode erfordert `connection`
-   - `BEARER` auth erfordert `bearer_secret_ref` oder `inbound_secret_ref`
-   - `MTLS` auth erfordert `mtls_cert_ref` und `mtls_key_ref`
+   - `(organization, environment, name)` is unique
+   - `(organization, environment, slug)` is unique (case-insensitive)
+   - `RUNNER` mode requires `connection`
+   - `BEARER` auth requires `bearer_secret_ref` or `inbound_secret_ref`
+   - `MTLS` auth requires `mtls_cert_ref` and `mtls_key_ref`
 
 6. **Policy**
-   - `(organization, name)` ist unique
+   - `(organization, name)` is unique
 
 7. **ServiceAccount**
-   - `(organization, name)` ist unique
-   - `(subject, issuer)` ist unique
+   - `(organization, name)` is unique
+   - `(subject, issuer)` is unique
 
 8. **IssuedToken**
-   - `jti` ist unique
+   - `jti` is unique
 
-### API Validierungen
+### API Validations
 
 - **Cross-Field Validation**: `environment.organization == organization` (in Serializers)
-- **Policy Evaluation**: Vor jedem Tool-Run
-- **JSON Schema Validation**: Tool Inputs werden gegen `schema_json` validiert
-- **Rate Limiting**: Pro `agent_id + tool_id` (Redis Token Bucket)
-- **Timeout**: Konfigurierbar pro Run (Standard: 30s)
+- **Policy Evaluation**: Before every tool run
+- **JSON Schema Validation**: Tool inputs are validated against `schema_json`
+- **Rate Limiting**: Per `agent_id + tool_id` (Redis Token Bucket)
+- **Timeout**: Configurable per run (default: 30s)
 
 ## 🎯 Multi-Tenancy
 
-Alle Ressourcen sind **organization-scoped**:
+All resources are **organization-scoped**:
 - URLs: `/api/v1/orgs/{org_id}/...`
 - Models: `organization` + `environment` ForeignKeys
-- Filtering: Automatisch nach `org_id` aus URL
+- Filtering: Automatically by `org_id` from URL
 
-**Ausnahmen:**
-- `/api/v1/auth/` - User-spezifisch
-- `/api/v1/policies/evaluate/` - Kann ohne `org_id` aufgerufen werden
-- `/api/v1/audit/` - Global verfügbar (letzte 24h)
+**Exceptions:**
+- `/api/v1/auth/` - User-specific
+- `/api/v1/policies/evaluate/` - Can be called without `org_id`
+- `/api/v1/audit/` - Globally available (last 24h)
 
 ---
 
-**Erstellt:** 2025-01-27  
+**Created:** 2025-01-27  
 **Version:** 1.0  
-**Status:** Aktuell für AgentxSuite MVP
-
+**Status:** Current for AgentxSuite MVP

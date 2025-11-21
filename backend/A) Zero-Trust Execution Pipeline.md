@@ -1,6 +1,6 @@
 A) Zero-Trust Execution Pipeline
 
-(Ersetzt das alte Flowchart — deutlich präziser für AgentxSuite)
+(Replaces the old flowchart — much more precise for AgentxSuite)
 
 flowchart TD
 
@@ -29,7 +29,7 @@ I --> J[Audit Log (success/fail)]
 J --> K[Return Response]
 
 
-Neue Schichten:
+New Layers:
 
 Capability Check
 
@@ -47,11 +47,11 @@ E -->|audited as root_agent| F[Audit Log]
 B -->|cannot elevate| C
 
 
-Wichtig:
+Important:
 
-Worker-Agent kann keine stärkeren Rechte haben als der Orchestrator.
+Worker-Agent cannot have stronger permissions than the Orchestrator.
 
-Root-Agent wird über die gesamte Pipeline mitgeführt.
+Root-Agent is carried through the entire pipeline.
 
 C) Shadow-Agent Prevention
 flowchart LR
@@ -70,18 +70,18 @@ device ID
 
 agent signature
 
-2) Konkrete Backend-Änderungsvorschläge
+2) Concrete Backend Change Proposals
 
-Ich liste dir Änderungen auf, die du in AgentxSuite sofort umsetzen kannst, ohne dein MVP zu zerstören.
+I'm listing changes that you can implement in AgentxSuite immediately without breaking your MVP.
 
-✅ A) ServiceAccount erweitern um "capabilities"
+✅ A) Extend ServiceAccount with "capabilities"
 
-Neues Feld:
+New field:
 
 capabilities = JSONField(default=dict)
 
 
-Beispiele:
+Examples:
 
 {
   "tools_allow": ["pdf.read", "storage.list"],
@@ -91,9 +91,9 @@ Beispiele:
   "deny_http_urls": ["169.254.169.254"]
 }
 
-✅ B) ExecutionContext erweitern
+✅ B) Extend ExecutionContext
 
-Neues Attribut:
+New attribute:
 
 ExecutionContext(
     root_agent_id,
@@ -104,11 +104,11 @@ ExecutionContext(
 )
 
 
-Damit kannst du multi-agent workflows absichern.
+This allows you to secure multi-agent workflows.
 
-✅ C) Output-Sanitizer im Backend
+✅ C) Output-Sanitizer in Backend
 
-In deiner execute_tool_run Pipeline:
+In your execute_tool_run pipeline:
 
 def sanitize_output(output_json):
     if contains_secrets(output_json):
@@ -124,15 +124,15 @@ AWS Keys
 
 DB Connection Strings
 
-IP der Runtime
+Runtime IP
 
-URLs außerhalb Allowed Domains
+URLs outside Allowed Domains
 
-✅ D) PDP auf Resource-, Prompt- und Metadata-Level
+✅ D) PDP at Resource-, Prompt- and Metadata-Level
 
-Du hast Policies heute vor Tool-Execution.
+You currently have Policies before Tool-Execution.
 
-Erweitere folgende Endpoints:
+Extend the following endpoints:
 
 /mcp/**/resources/
 
@@ -140,42 +140,42 @@ Erweitere folgende Endpoints:
 
 /connections/**/sync/
 
-Alle bekommen:
+All get:
 
 pdp.evaluate("resource.read", resource_uri)
 
 ✅ E) Forbidden Input Patterns
 
-Im Service Layer:
+In Service Layer:
 
 if input_json.matches(forbidden_patterns):
     deny
 
 
-Beispiele:
+Examples:
 
 <script>
 
-base64 payloads über N KB
+base64 payloads over N KB
 
-URLs außerhalb allowlist
+URLs outside allowlist
 
-✅ F) Token + mTLS Binding (Optional für Enterprise)
+✅ F) Token + mTLS Binding (Optional for Enterprise)
 
-Im ServiceAccount:
+In ServiceAccount:
 
 allowed_client_cert_fingerprints
 
 
-Validiere:
+Validate:
 
 incoming_cert_hash in allowed_client_cert_fingerprints
 
-3) Verbesserungen im ERD für granularere Policies
+3) ERD Improvements for More Granular Policies
 
-Unten eine saubere Erweiterung deines ERD für Policies.
+Below is a clean extension of your ERD for Policies.
 
-A) Neue Tabelle: AgentCapability
+A) New Table: AgentCapability
 erDiagram
     Agent ||--o{ AgentCapability : "has"
     AgentCapability {
@@ -188,22 +188,22 @@ erDiagram
     }
 
 
-Das erlaubt z. B.:
+This allows, for example:
 
-Agent darf nur pdf.read
+Agent may only use pdf.read
 
-Agent darf keine storage.write
+Agent may not use storage.write
 
-Agent darf nur resources unter projectX/**
+Agent may only access resources under projectX/**
 
-B) PolicyRule granularer
+B) More Granular PolicyRule
 
-Heute:
+Currently:
 
 action, target, effect
 
 
-Erweitert um:
+Extended with:
 
 limit_per_minute
 max_payload_size
@@ -212,7 +212,7 @@ allow_params (regex)
 deny_params (regex)
 
 
-ERD-Erweiterung:
+ERD Extension:
 
 erDiagram
 PolicyRule {
@@ -221,11 +221,11 @@ PolicyRule {
     string action
     string target
     string effect
-    json conditions         // bleibt
-    json limits             // neu
+    json conditions         // remains
+    json limits             // new
 }
 
-C) Neue Tabelle: ExecutionTrace
+C) New Table: ExecutionTrace
 erDiagram
 Run ||--o{ ExecutionTrace : "has"
 ExecutionTrace {
@@ -239,9 +239,9 @@ ExecutionTrace {
 }
 
 
-Das brauchst du für echte Orchestration.
+You need this for real orchestration.
 
-D) Resource Access Control separat speichern
+D) Store Resource Access Control Separately
 erDiagram
 Policy ||--o{ ResourceRule : "contains"
 ResourceRule {
@@ -252,4 +252,4 @@ ResourceRule {
 }
 
 
-So musst du nicht Tool-Rules missbrauchen
+This way you don't have to misuse Tool-Rules
