@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     "apps.mcp_ext",
     "apps.system_tools",
     "apps.canvas",
+    "apps.claude_agent",
 ]
 
 MIDDLEWARE = [
