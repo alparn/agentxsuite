@@ -396,6 +396,87 @@ System tools are accessed via the special connection endpoint: `agentxsuite://sy
 - **Service-layer architecture** - Clean separation of concerns, business logic in services
 - **High test coverage** - Comprehensive test suite with pytest
 - **Strict type checking** - Full mypy support for type safety
+- **Agent Designer** - Visual workflow editor with node-based diagram for designing agent architectures
+- **Audit & Logs** - Comprehensive audit logging system for tracking all system events and actions
+- **Cost Analytics** - Advanced cost tracking and analytics dashboard with detailed breakdowns and visualizations
+
+## 🎨 User Interface Features
+
+### Agent Designer
+
+![Agent Designer](docs/Agent%20Designer.png)
+
+The **Agent Designer** provides a powerful visual workflow editor for designing and managing agent architectures. This node-based interface allows you to:
+
+- **Visual Architecture Design**: Create and visualize complex agent workflows using an intuitive node-based diagram editor
+- **Component Management**: Add and connect agents, environments, policies, and system components through drag-and-drop interactions
+- **Relationship Mapping**: Visualize connections and dependencies between different components with interactive connection lines
+- **Auto-Arrangement**: Automatically organize and align nodes for better readability
+- **Export Capabilities**: Export your designs for documentation or sharing
+- **Filtering & Grouping**: Organize and filter components by type, environment, or custom criteria
+- **Interactive Navigation**: Zoom, pan, and navigate large diagrams with a minimap overview
+
+The designer supports multiple node types including:
+- **Agents** - AI agent definitions and configurations
+- **Environments** - Deployment environments (staging, production, development)
+- **Policies** - Access control and security policies
+- **System Components** - Core system services and infrastructure
+
+### Audit & Logs
+
+![Audit Log](docs/audit-log.png)
+
+The **Audit & Logs** system provides comprehensive tracking and monitoring of all system events and actions:
+
+- **Complete Event History**: Track all system events including tool executions, policy decisions, agent actions, and administrative changes
+- **Detailed Event Information**: Each log entry includes:
+  - **Timestamp** - Precise time of the event
+  - **Subject** - Entity that triggered the action (e.g., `agent:AgentCore@ITO/dev`)
+  - **Actor** - User or agent that performed the action
+  - **Action** - Type of action (e.g., `tool.run.success`, `policy.check`)
+  - **Target** - Resource or entity affected by the action
+  - **Decision** - Policy decision (ALLOW/DENY)
+  - **Rule ID** - Policy rule that was evaluated
+  - **Details** - Complete context including run IDs, agent IDs, tool IDs, organization/environment IDs, and request IDs
+- **Filtering & Search**: Filter logs by time range, actor, action type, or decision
+- **Export Functionality**: Export audit logs for compliance, analysis, or archival purposes
+- **Real-time Monitoring**: View system activity as it happens
+
+This comprehensive audit trail ensures full transparency and compliance for all operations within AgentxSuite.
+
+### Cost Analytics
+
+![Cost Analytics](docs/cost-analytics.png)
+
+The **Cost Analytics** dashboard provides detailed insights into AI agent costs and resource usage:
+
+- **Key Metrics Overview**:
+  - **Total Cost** - Overall spending with input/output cost breakdown
+  - **Total Runs** - Number of executions with success rate tracking
+  - **Total Tokens** - Token consumption with input/output token counts
+  - **Average Cost per Run** - Cost efficiency metrics per execution
+
+- **Flexible Time Ranges**: Analyze costs over 7, 30, or 90-day periods
+
+- **Multi-Dimensional Analysis**: View costs grouped by:
+  - **By Agent** - Cost breakdown per agent
+  - **By Environment** - Cost distribution across environments (Production, Development, Staging)
+  - **By Model** - Costs per AI model used
+  - **By Tool** - Tool-specific cost analysis
+
+- **Visual Analytics**:
+  - **Bar Charts** - Horizontal progress bars showing cost distribution
+  - **Pie Charts** - Percentage breakdown of costs across categories
+  - **Trend Indicators** - Visual trend graphs showing cost changes over time
+
+- **Detailed Breakdowns**: For each category, view:
+  - Total cost
+  - Number of runs
+  - Token usage (input and output)
+  - Success rates
+  - Cost per execution
+
+The Cost Analytics dashboard helps you optimize spending, identify cost drivers, and make informed decisions about resource allocation across your AI agent infrastructure.
 
 ## 📚 Documentation
 
