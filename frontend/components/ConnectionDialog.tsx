@@ -123,7 +123,7 @@ export function ConnectionDialog({
           const finalSecretRef = secretRef || connection.secret_ref;
           if (finalSecretRef) {
             updatePayload.secret_ref = finalSecretRef;
-          }
+        }
           // If no secret_ref at all (neither new nor existing), backend will validate
         }
         // If auth_method is "none", don't include secret_ref (allows removing auth)

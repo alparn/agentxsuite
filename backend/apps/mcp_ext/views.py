@@ -3,16 +3,18 @@ Views for mcp_ext app.
 """
 from __future__ import annotations
 
+from django.db.models import Q
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from apps.mcp_ext.models import MCPServerRegistration, Prompt, Resource
+from apps.mcp_ext.models import MCPServerRegistration, Prompt, Resource, MCPHubServer
 from apps.mcp_ext.serializers import (
     MCPServerRegistrationSerializer,
     PromptSerializer,
     ResourceSerializer,
+    MCPHubServerSerializer,
 )
 from apps.tenants.models import Environment
 from apps.audit.mixins import AuditLoggingMixin
@@ -373,3 +375,71 @@ class MCPServerRegistrationViewSet(AuditLoggingMixin, ModelViewSet):
         response["Content-Disposition"] = 'attachment; filename="claude_desktop_config.json"'
         
         return response
+
+
+class MCPHubServerViewSet(ModelViewSet):
+    """
+    ViewSet for MCPHubServer (GitHub-discovered MCP servers).
+    
+    This is a read-only endpoint (no create/update/delete) as servers
+    are synced from GitHub via management command.
+    """
+
+    queryset = MCPHubServer.objects.filter(is_active=True)
+    serializer_class = MCPHubServerSerializer
+    http_method_names = ["get", "head", "options"]  # Read-only
+
+    def get_queryset(self):
+        """Filter and order servers."""
+        queryset = super().get_queryset()
+        
+        # Filter by language
+        language = self.request.query_params.get("language")
+        if language:
+            queryset = queryset.filter(language=language)
+        
+        # Filter by min stars
+        min_stars = self.request.query_params.get("min_stars")
+        if min_stars:
+            try:
+                queryset = queryset.filter(stargazers_count__gte=int(min_stars))
+            except ValueError:
+                pass
+        
+        # Filter by max stars
+        max_stars = self.request.query_params.get("max_stars")
+        if max_stars:
+            try:
+                queryset = queryset.filter(stargazers_count__lte=int(max_stars))
+            except ValueError:
+                pass
+        
+        # Filter by topics (at least one topic must match)
+        topics = self.request.query_params.getlist("topic")
+        if topics:
+            queryset = queryset.filter(topics__overlap=topics)
+        
+        # Search query
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) |
+                Q(description__icontains=search) |
+                Q(full_name__icontains=search) |
+                Q(topics__icontains=search)
+            )
+        
+        # Ordering
+        sort_by = self.request.query_params.get("sort", "stargazers_count")
+        if sort_by == "stargazers_count":
+            queryset = queryset.order_by("-stargazers_count")
+        elif sort_by == "forks_count":
+            queryset = queryset.order_by("-forks_count")
+        elif sort_by == "updated_at_github":
+            queryset = queryset.order_by("-updated_at_github")
+        elif sort_by == "name":
+            queryset = queryset.order_by("name")
+        else:
+            queryset = queryset.order_by("-stargazers_count")
+        
+        return queryset

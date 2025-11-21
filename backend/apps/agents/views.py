@@ -33,7 +33,7 @@ class AgentViewSet(AuditLoggingMixin, viewsets.ModelViewSet):
         context = super().get_serializer_context()
         context["org_id"] = self.kwargs.get("org_id")
         return context
-    
+
     def perform_create(self, serializer):
         """Set organization from URL parameter and validate environment."""
         org_id = self.kwargs.get("org_id")
@@ -49,7 +49,7 @@ class AgentViewSet(AuditLoggingMixin, viewsets.ModelViewSet):
             raise ValidationError(
                 f"Environment {environment_id} does not belong to organization {org_id}"
             )
-        
+            
         # Validate connection_id if provided (for RUNNER mode)
         connection_id = serializer.validated_data.get("connection_id")
         if connection_id:
@@ -64,7 +64,7 @@ class AgentViewSet(AuditLoggingMixin, viewsets.ModelViewSet):
                 )
 
         serializer.save(organization_id=org_id, environment_id=environment_id)
-    
+
     @action(detail=True, methods=["get", "post"], url_path="tokens")
     def tokens(self, request, org_id=None, pk=None):
         """
@@ -95,30 +95,30 @@ class AgentViewSet(AuditLoggingMixin, viewsets.ModelViewSet):
             metadata = request.data.get("metadata")
             name = request.data.get("name")
             purpose = request.data.get("purpose", "api")
-            
-            try:
-                token_string, issued_token = generate_token_for_agent(
-                    agent,
+        
+        try:
+            token_string, issued_token = generate_token_for_agent(
+                agent,
                     user=request.user,
                     name=name,
                     purpose=purpose,
                     ttl_minutes=ttl_minutes,
                     scopes=scopes,
                     metadata=metadata,
-                )
-                
+            )
+            
                 token_serializer = IssuedTokenSerializer(issued_token)
                 
                 return Response(
-                    {
-                        "token": token_string,
+                {
+                    "token": token_string,
                         "token_info": token_serializer.data,
                     },
                     status=status.HTTP_201_CREATED,
-                )
-            except ValueError as e:
+            )
+        except ValueError as e:
                 raise ValidationError(str(e))
-    
+
     @action(detail=True, methods=["post"], url_path="tokens/(?P<jti>[^/.]+)/revoke")
     def revoke_token(self, request, org_id=None, pk=None, jti=None):
         """
@@ -139,11 +139,11 @@ class AgentViewSet(AuditLoggingMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         
-        revoked_token = revoke_token_service(jti, revoked_by=request.user if request.user.is_authenticated else None)
-        serializer = IssuedTokenSerializer(revoked_token)
+            revoked_token = revoke_token_service(jti, revoked_by=request.user if request.user.is_authenticated else None)
+            serializer = IssuedTokenSerializer(revoked_token)
         
         return Response(serializer.data)
-    
+
     @action(detail=True, methods=["delete"], url_path="tokens/(?P<jti>[^/.]+)")
     def delete_token(self, request, org_id=None, pk=None, jti=None):
         """
@@ -160,7 +160,7 @@ class AgentViewSet(AuditLoggingMixin, viewsets.ModelViewSet):
         
         token.delete()
         
-        return Response(
+            return Response(
             {"message": f"Token '{jti}' deleted"},
             status=status.HTTP_204_NO_CONTENT,
         )

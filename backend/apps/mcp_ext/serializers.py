@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from apps.mcp_ext.models import MCPServerRegistration, Prompt, Resource
+from apps.mcp_ext.models import MCPServerRegistration, Prompt, Resource, MCPHubServer
 from apps.tenants.serializers import EnvironmentSerializer, OrganizationSerializer
 
 
@@ -156,4 +156,39 @@ class MCPServerRegistrationSerializer(serializers.ModelSerializer):
                 )
 
         return attrs
+
+
+class MCPHubServerSerializer(serializers.ModelSerializer):
+    """Serializer for MCPHubServer (GitHub-discovered MCP servers)."""
+
+    topics = serializers.JSONField(required=False, allow_null=False)
+
+    class Meta:
+        model = MCPHubServer
+        fields = [
+            "id",
+            "github_id",
+            "full_name",
+            "name",
+            "description",
+            "html_url",
+            "stargazers_count",
+            "forks_count",
+            "language",
+            "topics",
+            "owner_login",
+            "owner_avatar_url",
+            "updated_at_github",
+            "last_synced_at",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "github_id",
+            "created_at",
+            "updated_at",
+            "last_synced_at",
+        ]
 

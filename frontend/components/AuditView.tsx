@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { auditApi, api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
-import { Download, FileText, X } from "lucide-react";
+import { Download, FileText, X, Eye, Info, Clock, User, Target, Activity, CheckCircle, XCircle, Search } from "lucide-react";
 import type { AuditEvent } from "@/lib/types";
 
 export function AuditView() {
@@ -20,6 +20,8 @@ export function AuditView() {
     ts_to: "",
   });
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<AuditEvent | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Fetch organizations and auto-select first one if none selected
   const { data: orgsResponse } = useQuery({
@@ -84,6 +86,22 @@ export function AuditView() {
 
   const auditLogs = Array.isArray(auditLogsData) ? auditLogsData : [];
 
+  // Filter audit logs based on search query
+  const filteredAuditLogs = auditLogs.filter((log: AuditEvent) => {
+    if (!searchQuery) return true;
+    
+    const query = searchQuery.toLowerCase();
+    return (
+      log.subject?.toLowerCase().includes(query) ||
+      log.action?.toLowerCase().includes(query) ||
+      log.target?.toLowerCase().includes(query) ||
+      log.actor?.toLowerCase().includes(query) ||
+      log.decision?.toLowerCase().includes(query) ||
+      log.details?.toLowerCase().includes(query) ||
+      JSON.stringify(log.context || {}).toLowerCase().includes(query)
+    );
+  });
+
   const resetFilters = () => {
     setFilters({
       subject: "",
@@ -123,6 +141,28 @@ export function AuditView() {
             <Download className="w-5 h-5" />
             {t("audit.export")}
           </button>
+        </div>
+      </div>
+
+      {/* Search Bar */}
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search in subject, action, target, actor, decision, details..."
+            className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-300 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-300"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -269,14 +309,14 @@ export function AuditView() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
-                {auditLogs?.length === 0 ? (
+                {filteredAuditLogs?.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
-                      {t("common.noData")}
+                      {searchQuery ? "No results found for your search" : t("common.noData")}
                     </td>
                   </tr>
                 ) : (
-                  auditLogs?.map((log: AuditEvent) => (
+                  filteredAuditLogs?.map((log: AuditEvent) => (
                     <tr key={log.id} className="hover:bg-slate-800/50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-300">
                         {log.ts ? new Date(log.ts).toLocaleString() : new Date(log.created_at).toLocaleString()}
@@ -316,26 +356,251 @@ export function AuditView() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-300">
-                        <div className="max-w-md">
-                          {log.context && Object.keys(log.context).length > 0 ? (
-                            <details className="cursor-pointer">
-                              <summary className="text-purple-400 hover:text-purple-300">
-                                View Context
-                              </summary>
-                              <pre className="mt-2 p-2 bg-slate-800 rounded text-xs overflow-x-auto">
-                                {JSON.stringify(log.context, null, 2)}
-                              </pre>
-                            </details>
-                          ) : (
-                            log.details || "-"
-                          )}
-                        </div>
+                        <button
+                          onClick={() => setSelectedLog(log)}
+                          className="flex items-center gap-2 text-purple-400 hover:text-purple-300"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View Details
+                        </button>
                       </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Details Modal */}
+      {selectedLog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-800">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Info className="w-6 h-6 text-purple-400" />
+                Audit Event Details
+              </h2>
+              <button
+                onClick={() => setSelectedLog(null)}
+                className="text-slate-400 hover:text-slate-300"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Time and Decision */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-slate-400 mb-2">
+                    <Clock className="w-4 h-4" />
+                    <span className="text-sm font-medium">Timestamp</span>
+                  </div>
+                  <p className="text-slate-200">
+                    {selectedLog.ts 
+                      ? new Date(selectedLog.ts).toLocaleString() 
+                      : new Date(selectedLog.created_at).toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-slate-400 mb-2">
+                    {selectedLog.decision === 'allow' ? (
+                      <CheckCircle className="w-4 h-4" />
+                    ) : (
+                      <XCircle className="w-4 h-4" />
+                    )}
+                    <span className="text-sm font-medium">Decision</span>
+                  </div>
+                  {selectedLog.decision ? (
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+                      selectedLog.decision === "allow"
+                        ? "bg-green-500/20 text-green-400"
+                        : "bg-red-500/20 text-red-400"
+                    }`}>
+                      {selectedLog.decision.toUpperCase()}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400">-</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Subject, Actor, Action, Target */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-slate-400 mb-2">
+                    <User className="w-4 h-4" />
+                    <span className="text-sm font-medium">Subject</span>
+                  </div>
+                  <p className="text-slate-200 font-mono text-sm break-all">
+                    {selectedLog.subject || "-"}
+                  </p>
+                </div>
+
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-slate-400 mb-2">
+                    <User className="w-4 h-4" />
+                    <span className="text-sm font-medium">Actor</span>
+                  </div>
+                  <p className="text-slate-200 font-mono text-sm break-all">
+                    {selectedLog.actor || "-"}
+                  </p>
+                </div>
+
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-slate-400 mb-2">
+                    <Activity className="w-4 h-4" />
+                    <span className="text-sm font-medium">Action</span>
+                  </div>
+                  <p className="text-slate-200 font-mono text-sm break-all">
+                    {selectedLog.action || "-"}
+                  </p>
+                </div>
+
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-slate-400 mb-2">
+                    <Target className="w-4 h-4" />
+                    <span className="text-sm font-medium">Target</span>
+                  </div>
+                  <p className="text-slate-200 font-mono text-sm break-all">
+                    {selectedLog.target || "-"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Rule ID */}
+              {selectedLog.rule_id && (
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-slate-400 mb-2">
+                    <FileText className="w-4 h-4" />
+                    <span className="text-sm font-medium">Rule ID</span>
+                  </div>
+                  <p className="text-purple-400 font-mono text-sm">
+                    {selectedLog.rule_id}
+                  </p>
+                </div>
+              )}
+
+              {/* Event Type & Object Type */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {selectedLog.event_type && (
+                  <div className="bg-slate-800/50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 text-slate-400 mb-2">
+                      <Activity className="w-4 h-4" />
+                      <span className="text-sm font-medium">Event Type</span>
+                    </div>
+                    <p className="text-slate-200 font-mono text-sm">
+                      {selectedLog.event_type}
+                    </p>
+                  </div>
+                )}
+
+                {selectedLog.object_type && (
+                  <div className="bg-slate-800/50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 text-slate-400 mb-2">
+                      <FileText className="w-4 h-4" />
+                      <span className="text-sm font-medium">Object Type</span>
+                    </div>
+                    <p className="text-slate-200 font-mono text-sm">
+                      {selectedLog.object_type}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Context */}
+              {selectedLog.context && Object.keys(selectedLog.context).length > 0 && (
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-slate-400 mb-3">
+                    <Info className="w-4 h-4" />
+                    <span className="text-sm font-medium">Context</span>
+                  </div>
+                  <div className="space-y-2">
+                    {Object.entries(selectedLog.context).map(([key, value]) => (
+                      <div key={key} className="bg-slate-900 rounded p-3">
+                        <div className="text-xs text-slate-400 mb-1 font-medium uppercase tracking-wider">
+                          {key.replace(/_/g, ' ')}
+                        </div>
+                        <div className="text-slate-200 font-mono text-sm break-all">
+                          {typeof value === 'object' ? (
+                            <pre className="text-xs overflow-x-auto">
+                              {JSON.stringify(value, null, 2)}
+                            </pre>
+                          ) : (
+                            String(value)
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Event Data */}
+              {selectedLog.event_data && Object.keys(selectedLog.event_data).length > 0 && (
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-slate-400 mb-3">
+                    <Activity className="w-4 h-4" />
+                    <span className="text-sm font-medium">Event Data</span>
+                  </div>
+                  <pre className="text-xs text-slate-300 overflow-x-auto bg-slate-900 rounded p-3 font-mono">
+                    {JSON.stringify(selectedLog.event_data, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {/* Details */}
+              {selectedLog.details && (
+                <div className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-slate-400 mb-2">
+                    <Info className="w-4 h-4" />
+                    <span className="text-sm font-medium">Details</span>
+                  </div>
+                  <p className="text-slate-200 text-sm">
+                    {selectedLog.details}
+                  </p>
+                </div>
+              )}
+
+              {/* IDs */}
+              <div className="bg-slate-800/50 rounded-lg p-4">
+                <div className="flex items-center gap-2 text-slate-400 mb-3">
+                  <FileText className="w-4 h-4" />
+                  <span className="text-sm font-medium">Identifiers</span>
+                </div>
+                <div className="space-y-2">
+                  <div>
+                    <div className="text-xs text-slate-400 mb-1">Event ID</div>
+                    <p className="text-slate-300 font-mono text-xs break-all">{selectedLog.id}</p>
+                  </div>
+                  {selectedLog.organization && (
+                    <div>
+                      <div className="text-xs text-slate-400 mb-1">Organization</div>
+                      <p className="text-slate-300 font-mono text-xs break-all">
+                        {typeof selectedLog.organization === 'object' 
+                          ? selectedLog.organization.name || selectedLog.organization.id 
+                          : selectedLog.organization}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-slate-800">
+              <button
+                onClick={() => setSelectedLog(null)}
+                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 transition-colors"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -149,4 +149,8 @@ backend/dev/README_TEST_MCP_SERVER.md
 # Ignore .md files in docs/, but allow images
 docs/*.md
 
+# Security analysis and test files
+SECURITY_ANALYSIS.md
+test_external_client.py
+
 landing-page/

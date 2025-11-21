@@ -227,8 +227,8 @@ export const mcpServersApi = {
   // Download Claude Desktop configuration as JSON file
   downloadConfig: async (orgId: string, params?: { env_id?: string; token?: string }) => {
     const response = await api.get(
-      `/orgs/${orgId}/mcp-servers/download_config/`, 
-      { 
+      `/orgs/${orgId}/mcp-servers/download_config/`,
+      {
         params,
         responseType: 'blob'
       }
@@ -240,6 +240,54 @@ export const mcpServersApi = {
     document.body.appendChild(link);
     link.click();
     link.remove();
+  },
+};
+
+// MCP Hub API (GitHub-discovered servers)
+export interface MCPHubServer {
+  id: string;
+  github_id: number;
+  full_name: string;
+  name: string;
+  description: string;
+  html_url: string;
+  stargazers_count: number;
+  forks_count: number;
+  language: string;
+  topics: string[];
+  owner_login: string;
+  owner_avatar_url: string;
+  updated_at_github: string;
+  last_synced_at: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const mcpHubApi = {
+  list: (params?: {
+    language?: string;
+    min_stars?: number;
+    max_stars?: number;
+    topic?: string[];
+    search?: string;
+    sort?: "stargazers_count" | "forks_count" | "updated_at_github" | "name";
+  }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.language) queryParams.append("language", params.language);
+    if (params?.min_stars) queryParams.append("min_stars", params.min_stars.toString());
+    if (params?.max_stars) queryParams.append("max_stars", params.max_stars.toString());
+    if (params?.topic) {
+      params.topic.forEach((t) => queryParams.append("topic", t));
+    }
+    if (params?.search) queryParams.append("search", params.search);
+    if (params?.sort) queryParams.append("sort", params.sort);
+    
+    const queryString = queryParams.toString();
+    // DRF returns paginated response: { count, next, previous, results: [...] }
+    return api.get<{ count: number; next: string | null; previous: string | null; results: MCPHubServer[] } | MCPHubServer[]>(
+      `/mcp-hub/hub-servers/${queryString ? `?${queryString}` : ""}`
+    );
   },
 };
 

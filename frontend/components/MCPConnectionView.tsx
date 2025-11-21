@@ -143,7 +143,7 @@ export function MCPConnectionView() {
       </div>
 
       {/* 2. Agent Token Input */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
@@ -163,13 +163,13 @@ export function MCPConnectionView() {
         </div>
 
         <div className="space-y-3">
-          <input
+              <input
             type="password"
             value={agentToken}
             onChange={(e) => setAgentToken(e.target.value)}
             placeholder="Paste your agent token (ey...)"
             className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
-          />
+              />
           {!agentToken && (
             <div className="flex items-center gap-2 text-xs text-amber-400/80">
               <AlertCircle className="w-3 h-3" />
@@ -184,110 +184,110 @@ export function MCPConnectionView() {
         <div>
           <h3 className="text-lg font-semibold text-white mb-4">3. Connect AI Clients</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Claude Desktop Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-purple-500/50 transition-colors">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
-                  <span className="text-2xl">✨</span>
-                </div>
+        {/* Claude Desktop Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-purple-500/50 transition-colors">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
+              <span className="text-2xl">✨</span>
+            </div>
                 <h4 className="text-xl font-semibold text-white">Claude Desktop</h4>
-              </div>
+          </div>
               <p className="text-slate-400 mb-4">
                 One-click configuration for Claude Desktop with native stdio support
               </p>
               <div className="space-y-3">
-                <button
+            <button
                   onClick={downloadClaudeConfig}
                   disabled={!agentToken}
                   className="w-full px-4 py-3 bg-black hover:bg-slate-900 text-white rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
+            >
                   <Download className="w-4 h-4" />
                   Download Config
-                </button>
+            </button>
                 {!agentToken && (
                   <p className="text-xs text-center text-slate-500">
                     Enter token above to enable download
                   </p>
-                )}
-              </div>
-            </div>
+              )}
+          </div>
+        </div>
 
-            {/* Claude Code Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-purple-500/50 transition-colors">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
+        {/* Claude Code Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-purple-500/50 transition-colors">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
                   <span className="text-2xl">💻</span>
-                </div>
+            </div>
                 <h4 className="text-xl font-semibold text-white">Claude Code</h4>
-              </div>
+          </div>
               <p className="text-slate-400 mb-4">
                 Command-line interface for Claude with MCP support
               </p>
-              <button
+            <button
                 onClick={() => {
                   const mcpUrl = `${process.env.NEXT_PUBLIC_MCP_FABRIC_URL || "http://localhost:8090"}/.well-known/mcp`;
                   copyToClipboard(`claude code --mcp-server agentxsuite=${mcpUrl}`, "claude-code");
                 }}
                 className="w-full px-4 py-3 bg-black hover:bg-slate-900 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
+            >
                 {copied === "claude-code" ? (
                   <><CheckCircle2 className="w-4 h-4" /> Copied!</>
-                ) : (
+              ) : (
                   <><Copy className="w-4 h-4" /> Copy Command</>
-                )}
-              </button>
-            </div>
+              )}
+            </button>
+        </div>
 
-            {/* Gemini CLI Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-purple-500/50 transition-colors">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
-                  <span className="text-2xl">💎</span>
-                </div>
+        {/* Gemini CLI Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-purple-500/50 transition-colors">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+              <span className="text-2xl">💎</span>
+            </div>
                 <h4 className="text-xl font-semibold text-white">Gemini CLI</h4>
-              </div>
+          </div>
               <p className="text-slate-400 mb-4">
                 Google Gemini command-line with MCP integration
               </p>
-              <button
+            <button
                 onClick={() => {
                   const mcpUrl = `${process.env.NEXT_PUBLIC_MCP_FABRIC_URL || "http://localhost:8090"}/.well-known/mcp`;
                   copyToClipboard(`gemini --mcp-server agentxsuite=${mcpUrl}`, "gemini");
                 }}
                 className="w-full px-4 py-3 bg-black hover:bg-slate-900 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                {copied === "gemini" ? (
+            >
+              {copied === "gemini" ? (
                   <><CheckCircle2 className="w-4 h-4" /> Copied!</>
-                ) : (
+              ) : (
                   <><Copy className="w-4 h-4" /> Copy Command</>
-                )}
-              </button>
-            </div>
+              )}
+            </button>
+        </div>
 
-            {/* Cursor Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-purple-500/50 transition-colors">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-slate-700 rounded-lg flex items-center justify-center">
-                  <span className="text-xl font-bold text-white">C</span>
-                </div>
+        {/* Cursor Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-6 hover:border-purple-500/50 transition-colors">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-slate-700 rounded-lg flex items-center justify-center">
+              <span className="text-xl font-bold text-white">C</span>
+            </div>
                 <h4 className="text-xl font-semibold text-white">Cursor IDE</h4>
-              </div>
+          </div>
               <p className="text-slate-400 mb-4">
                 AI-powered code editor with MCP protocol support
               </p>
-              <button
-                onClick={() => {
+            <button
+              onClick={() => {
                   const mcpUrl = `${process.env.NEXT_PUBLIC_MCP_FABRIC_URL || "http://localhost:8090"}/.well-known/mcp`;
                   copyToClipboard(mcpUrl, "cursor");
                 }}
                 className="w-full px-4 py-3 bg-black hover:bg-slate-900 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                {copied === "cursor" ? (
+            >
+              {copied === "cursor" ? (
                   <><CheckCircle2 className="w-4 h-4" /> Copied!</>
-                ) : (
+              ) : (
                   <><Copy className="w-4 h-4" /> Copy MCP URL</>
-                )}
-              </button>
+              )}
+            </button>
             </div>
           </div>
         </div>

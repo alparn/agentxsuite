@@ -8,6 +8,7 @@ from rest_framework.routers import DefaultRouter
 
 from apps.mcp_ext.views import (
     MCPServerRegistrationViewSet,
+    MCPHubServerViewSet,
     PromptViewSet,
     ResourceViewSet,
 )
@@ -16,6 +17,7 @@ router = DefaultRouter()
 router.register(r"resources", ResourceViewSet, basename="resource")
 router.register(r"prompts", PromptViewSet, basename="prompt")
 router.register(r"mcp-servers", MCPServerRegistrationViewSet, basename="mcpserver")
+router.register(r"hub-servers", MCPHubServerViewSet, basename="hub-server")
 
 urlpatterns = router.urls
 

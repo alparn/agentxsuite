@@ -262,6 +262,95 @@ class MCPServerRegistration(TimeStamped):
                 )
 
 
+class MCPHubServer(TimeStamped):
+    """
+    Registry of MCP servers discovered from GitHub.
+    
+    This is a global registry (not org/env-specific) that stores
+    publicly available MCP servers found via GitHub API searches.
+    """
+
+    # GitHub repository identifiers
+    github_id = models.BigIntegerField(
+        unique=True,
+        help_text="GitHub repository ID",
+    )
+    full_name = models.CharField(
+        max_length=255,
+        unique=True,
+        help_text="GitHub repository full name (e.g., 'modelcontextprotocol/server-github')",
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="Repository name",
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Repository description",
+    )
+    html_url = models.URLField(
+        max_length=500,
+        help_text="GitHub repository URL",
+    )
+
+    # GitHub stats
+    stargazers_count = models.IntegerField(
+        default=0,
+        help_text="Number of stars",
+    )
+    forks_count = models.IntegerField(
+        default=0,
+        help_text="Number of forks",
+    )
+    language = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Primary programming language",
+    )
+    topics = models.JSONField(
+        default=list,
+        help_text="GitHub topics/tags",
+    )
+
+    # Owner info
+    owner_login = models.CharField(
+        max_length=255,
+        help_text="GitHub owner username",
+    )
+    owner_avatar_url = models.URLField(
+        max_length=500,
+        blank=True,
+        help_text="Owner avatar URL",
+    )
+
+    # Metadata
+    updated_at_github = models.DateTimeField(
+        help_text="Last update time from GitHub",
+    )
+    last_synced_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last time we synced data from GitHub",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this server is still active/available",
+    )
+
+    class Meta:
+        db_table = "mcp_ext_hub_server"
+        ordering = ["-stargazers_count", "-updated_at_github"]
+        indexes = [
+            models.Index(fields=["full_name"]),
+            models.Index(fields=["language"]),
+            models.Index(fields=["stargazers_count"]),
+            models.Index(fields=["is_active", "-stargazers_count"]),
+        ]
+
+    def __str__(self) -> str:
+        return self.full_name
+
+
 
 
 

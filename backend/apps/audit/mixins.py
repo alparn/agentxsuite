@@ -26,14 +26,14 @@ class AuditLoggingMixin:
             if cls != AuditLoggingMixin and cls != ModelViewSet:
                 # Check if this class DEFINES perform_create (not just inherits it)
                 if "perform_create" in cls.__dict__:
-                    viewset_class = cls
-                    break
+                viewset_class = cls
+                break
         
         # Call ViewSet's perform_create if it exists and is different from ModelViewSet's
         if viewset_class:
             viewset_method = viewset_class.perform_create
-            # ViewSet has custom perform_create - call it
-            viewset_method(self, serializer)
+                # ViewSet has custom perform_create - call it
+                viewset_method(self, serializer)
         else:
             # No custom method, use ModelViewSet's default directly
             ModelViewSet.perform_create(self, serializer)
@@ -59,14 +59,14 @@ class AuditLoggingMixin:
             if cls != AuditLoggingMixin and cls != ModelViewSet:
                 # Check if this class DEFINES perform_update (not just inherits it)
                 if "perform_update" in cls.__dict__:
-                    viewset_class = cls
-                    break
+                viewset_class = cls
+                break
         
         # Call ViewSet's perform_update if it exists
         if viewset_class:
             viewset_method = viewset_class.perform_update
-            # ViewSet has custom perform_update - call it
-            viewset_method(self, serializer)
+                # ViewSet has custom perform_update - call it
+                viewset_method(self, serializer)
         else:
             # No custom method, use ModelViewSet's default directly
             ModelViewSet.perform_update(self, serializer)
