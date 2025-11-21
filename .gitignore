@@ -153,4 +153,7 @@ docs/*.md
 SECURITY_ANALYSIS.md
 test_external_client.py
 
+# Architecture documentation (internal)
+backend/A) Zero-Trust Execution Pipeline.md
+
 landing-page/
