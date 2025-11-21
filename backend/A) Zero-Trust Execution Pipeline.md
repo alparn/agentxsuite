@@ -5,7 +5,7 @@
 ```mermaid
 flowchart TD
 
-A[Agent Request <br/> (JWT + Context)] --> B{Token/Identity Validation}
+A["Agent Request (JWT + Context)"] --> B{Token/Identity Validation}
 B -->|Invalid| Z1[401 Unauthorized]
 
 B --> C{Capability Layer Check}
@@ -14,19 +14,19 @@ C -->|Not Allowed| Z2[403 Forbidden]
 C --> D{Policy PDP Evaluation}
 D -->|Deny| Z3[403 Forbidden + Audit]
 
-D --> E{Rate Limit <br/> agent+tool}
+D --> E{Rate Limit agent+tool}
 E -->|Exceeded| Z4[429 Too Many Requests]
 
-E --> F{Input Validation <br/> JSON Schema}
+E --> F{Input Validation JSON Schema}
 F -->|Invalid| Z5[400 Bad Input]
 
-F --> G{Execution Trace Init <br/> (root_agent, jti)}
+F --> G{Execution Trace Init root_agent, jti}
 G --> H[Execute Tool via MCP Fabric]
 
 H --> I{Output Sanitization}
 I -->|Dangerous Content| Z6[Blocked + Audit]
 
-I --> J[Audit Log (success/fail)]
+I --> J[Audit Log success/fail]
 J --> K[Return Response]
 ```
 
