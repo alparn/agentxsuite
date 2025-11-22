@@ -655,6 +655,19 @@ Authorization: Bearer <jwt-token>
 ```
 
 **JSON-RPC Example (tools/call):**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "execute_tool",
+    "arguments": {
+      "tool_identifier": "pdf/read",
+      "input_data": {"file_path": "/path/to/doc.pdf"}
+    }
+  },
+  "id": 1
+}
 ```
 
 ## 🔄 MCP Connector Data Flow
@@ -759,53 +772,7 @@ graph TB
     style EX fill:#fff5e1
 ```
 
-## 🔄 Data Flow Diagram (Original)
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant API as Django REST API
-    participant Service as Service Layer
-    participant Policy as Policy Engine (PDP)
-    participant MCP as MCP Server
-    participant Audit as Audit Log
-    
-    Client->>API: POST /runs/execute/
-    API->>Service: execute_tool_run()
-    
-    Service->>Policy: evaluate(action, target)
-    Policy-->>Service: decision: allow/deny
-    
-    alt Policy Decision: DENY
-        Service->>Audit: log(run_denied)
-        Service-->>API: ValueError("Access denied")
-        API-->>Client: 400 Bad Request
-    else Policy Decision: ALLOW
-        Service->>Service: validate_input_json()
-        Service->>Service: check_rate_limit()
-        Service->>Service: check_timeout()
-        
-        Service->>Audit: log(run_started)
-        Service->>MCP: execute_tool(tool, input)
-        MCP-->>Service: result
-        
-        Service->>Audit: log(run_finished)
-        Service-->>API: result
-        API-->>Client: 201 Created
-    endjson
-{
-  "jsonrpc": "2.0",
-  "method": "tools/call",
-  "params": {
-    "name": "execute_tool",
-    "arguments": {
-      "tool_identifier": "pdf/read",
-      "input_data": {"file_path": "/path/to/doc.pdf"}
-    }
-  },
-  "id": 1
-}
-```
 
 ### 💰 Cost Analytics & Pricing (`/api/v1/orgs/{org_id}/runs/`)
 
