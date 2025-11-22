@@ -99,22 +99,22 @@ class AgentViewSet(AuditLoggingMixin, viewsets.ModelViewSet):
         try:
             token_string, issued_token = generate_token_for_agent(
                 agent,
-                    user=request.user,
-                    name=name,
-                    purpose=purpose,
-                    ttl_minutes=ttl_minutes,
-                    scopes=scopes,
-                    metadata=metadata,
+                user=request.user,
+                name=name,
+                purpose=purpose,
+                ttl_minutes=ttl_minutes,
+                scopes=scopes,
+                metadata=metadata,
             )
             
-                token_serializer = IssuedTokenSerializer(issued_token)
-                
-                return Response(
+            token_serializer = IssuedTokenSerializer(issued_token)
+            
+            return Response(
                 {
                     "token": token_string,
-                        "token_info": token_serializer.data,
-                    },
-                    status=status.HTTP_201_CREATED,
+                    "token_info": token_serializer.data,
+                },
+                status=status.HTTP_201_CREATED,
             )
         except ValueError as e:
                 raise ValidationError(str(e))
@@ -160,7 +160,7 @@ class AgentViewSet(AuditLoggingMixin, viewsets.ModelViewSet):
         
         token.delete()
         
-            return Response(
+        return Response(
             {"message": f"Token '{jti}' deleted"},
             status=status.HTTP_204_NO_CONTENT,
         )

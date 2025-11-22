@@ -30,6 +30,7 @@ class AgentxSuiteClaudeAgent:
         environment_id: str,
         auth_token: str,
         model: str = "claude-sonnet-4-20250514",
+        mcp_servers: list[dict[str, Any]] | None = None,
     ):
         """
         Initialize the Claude agent.
@@ -40,11 +41,13 @@ class AgentxSuiteClaudeAgent:
             environment_id: AgentxSuite environment ID
             auth_token: Authentication token for AgentxSuite API
             model: Claude model to use (default: claude-sonnet-4)
+            mcp_servers: Optional list of MCP servers to connect to
         """
         self.client = Anthropic(api_key=api_key)
         self.model = model
         self.organization_id = organization_id
         self.environment_id = environment_id
+        self.mcp_servers = mcp_servers or []
 
         # Initialize tool registry and handlers
         self.registry = AgentxSuiteToolRegistry()
@@ -76,12 +79,20 @@ class AgentxSuiteClaudeAgent:
             tools = self.registry.get_tools()
 
             # Build request parameters
+            # Build request parameters
             request_params = {
                 "model": self.model,
                 "max_tokens": max_tokens,
                 "messages": messages,
                 "tools": tools,
             }
+
+            if self.mcp_servers:
+                request_params["mcp_servers"] = self.mcp_servers
+                # Add beta header for MCP
+                request_params["extra_headers"] = {
+                    "anthropic-beta": "mcp-client-2025-04-04"
+                }
 
             if system_prompt:
                 request_params["system"] = system_prompt
@@ -142,8 +153,22 @@ class AgentxSuiteClaudeAgent:
                 messages.append({"role": "user", "content": tool_results})
 
                 # Continue conversation with tool results
+                # Re-apply MCP params for subsequent calls
+                if self.mcp_servers:
+                    request_params["mcp_servers"] = self.mcp_servers
+                    request_params["extra_headers"] = {
+                        "anthropic-beta": "mcp-client-2025-04-04"
+                    }
+                
                 response = self.client.messages.create(
-                    model=self.model, max_tokens=max_tokens, messages=messages, tools=tools
+                    model=self.model, 
+                    max_tokens=max_tokens, 
+                    messages=messages, 
+                    tools=tools,
+                    **({
+                        "mcp_servers": self.mcp_servers,
+                        "extra_headers": {"anthropic-beta": "mcp-client-2025-04-04"}
+                    } if self.mcp_servers else {})
                 )
 
             # Extract final response text

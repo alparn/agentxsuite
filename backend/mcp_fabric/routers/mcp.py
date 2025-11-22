@@ -268,3 +268,182 @@ async def run(
             500,
             extra=error_extra,
         )
+
+
+@router.get("/sse")
+async def handle_sse(
+    request: Request,
+    token_claims: dict = Depends(
+        create_token_validator(required_scopes=["mcp:connect"])
+    ),
+):
+    """
+    Handle MCP SSE connection.
+    
+    Requires scope: mcp:connect
+    """
+    from sse_starlette.sse import EventSourceResponse
+    import asyncio
+    
+    # Extract org_id/env_id from token claims
+    org_id = token_claims.get("org_id")
+    env_id = token_claims.get("env_id")
+    
+    if not org_id or not env_id:
+        raise raise_mcp_http_exception(
+            ErrorCodes.AGENT_NOT_FOUND,
+            "Token missing org_id or env_id claims",
+            status.HTTP_403_FORBIDDEN,
+        )
+    
+    async def event_generator():
+        # Send the endpoint for posting messages
+        # Construct absolute URL for messages endpoint
+        base_url = str(request.base_url).rstrip("/")
+        # Handle both root and scoped routers
+        if "mcp/" in request.url.path:
+            # Scoped router: /mcp/{org}/{env}/.well-known/mcp/sse
+            messages_url = f"{base_url}/mcp/{org_id}/{env_id}/.well-known/mcp/messages"
+        else:
+            # Root router: /.well-known/mcp/sse
+            messages_url = f"{base_url}/.well-known/mcp/messages"
+            
+        yield {
+            "event": "endpoint",
+            "data": messages_url
+        }
+        
+        # Keep connection open
+        while True:
+            await asyncio.sleep(1)
+
+    return EventSourceResponse(event_generator())
+
+
+@router.post("/messages")
+async def handle_messages(
+    request: Request,
+    token_claims: dict = Depends(
+        create_token_validator(required_scopes=["mcp:connect"])
+    ),
+):
+    """
+    Handle MCP JSON-RPC messages.
+    
+    Requires scope: mcp:connect
+    """
+    import json
+    
+    # Extract org_id/env_id from token claims
+    org_id = token_claims.get("org_id")
+    env_id = token_claims.get("env_id")
+    
+    if not org_id or not env_id:
+        raise raise_mcp_http_exception(
+            ErrorCodes.AGENT_NOT_FOUND,
+            "Token missing org_id or env_id claims",
+            status.HTTP_403_FORBIDDEN,
+        )
+        
+    try:
+        body = await request.json()
+        method = body.get("method")
+        msg_id = body.get("id")
+        params = body.get("params", {})
+        
+        org, env = await sync_to_async(_resolve_org_env)(str(org_id), str(env_id))
+        
+        # Initialize MCP server
+        mcp = MCPServer(name=f"AgentxSuite MCP - {org.name}/{env.name}")
+        await sync_to_async(register_tools_for_org_env)(mcp, org=org, env=env)
+        
+        result = None
+        error = None
+        
+        if method == "initialize":
+            result = {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {"listChanged": False},
+                    "prompts": {"listChanged": False},
+                    "resources": {"listChanged": False, "subscribe": False}
+                },
+                "serverInfo": {
+                    "name": f"AgentxSuite MCP - {org.name}/{env.name}",
+                    "version": "1.0.0"
+                }
+            }
+            
+        elif method == "notifications/initialized":
+            # No response needed for notifications
+            return Response(status_code=200)
+            
+        elif method == "tools/list":
+            tools_dict = await mcp.get_tools()
+            tools_list = []
+            if tools_dict:
+                for tool in tools_dict.values():
+                    tools_list.append({
+                        "name": tool.name if hasattr(tool, "name") else str(tool),
+                        "description": getattr(tool, "description", ""),
+                        "inputSchema": getattr(tool, "parameters", {}),
+                    })
+            result = {"tools": tools_list}
+            
+        elif method == "tools/call":
+            tool_name = params.get("name")
+            tool_args = params.get("arguments", {})
+            
+            # Execute tool using unified service
+            from apps.runs.services import ExecutionContext, execute_tool_run
+            context = ExecutionContext.from_token_claims(token_claims)
+            
+            try:
+                exec_result = await sync_to_async(execute_tool_run)(
+                    organization=org,
+                    environment=env,
+                    tool_identifier=tool_name,
+                    agent_identifier=None,
+                    input_data=tool_args,
+                    context=context,
+                )
+                
+                # Format result for MCP
+                content = []
+                if "content" in exec_result:
+                    content = exec_result["content"]
+                elif "result" in exec_result:
+                    content = [{"type": "text", "text": str(exec_result["result"])}]
+                    
+                result = {
+                    "content": content,
+                    "isError": exec_result.get("isError", False)
+                }
+            except Exception as e:
+                error = {
+                    "code": -32603,
+                    "message": str(e)
+                }
+                
+        else:
+            error = {
+                "code": -32601,
+                "message": f"Method {method} not found"
+            }
+            
+        # Construct JSON-RPC response
+        response_data = {
+            "jsonrpc": "2.0",
+            "id": msg_id
+        }
+        
+        if error:
+            response_data["error"] = error
+        else:
+            response_data["result"] = result
+            
+        return response_data
+        
+    except Exception as e:
+        logger.error(f"Error handling MCP message: {e}", exc_info=True)
+        return Response(status_code=500)

@@ -423,18 +423,19 @@ def execute_agent(request: Request) -> Response:
         
         # Initialize agent
         agent = AgentxSuiteClaudeAgent(
+            api_key=getattr(settings, "ANTHROPIC_API_KEY", ""),
             organization_id=organization_id,
             environment_id=environment_id,
             auth_token=token,
-            model=request.data.get("model", "claude-sonnet-4-20250514")
+            model=request.data.get("model", "claude-sonnet-4-20250514"),
+            mcp_servers=request.data.get("mcp_servers")
         )
         
         # Execute conversation
         import asyncio
         result = asyncio.run(agent.execute_conversation(
             messages=[{"role": "user", "content": message}],
-            system_prompt=system_prompt,
-            track_costs=True
+            system_prompt=system_prompt
         ))
         
         return Response(result)
@@ -549,191 +550,5 @@ def oauth_revoke(request: Request) -> Response:
         )
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-def authorize(request: Request) -> Response:
-    """
-    OAuth authorization endpoint.
 
-    Initiates the OAuth flow for Claude agents to authenticate
-    with AgentxSuite.
-    """
-    # Extract parameters
-    client_id = request.query_params.get("client_id")
-    redirect_uri = request.query_params.get("redirect_uri")
-    response_type = request.query_params.get("response_type")
-    state = request.query_params.get("state")
-    scope = request.query_params.get("scope", "")
-
-    # Validate parameters
-    if not all([client_id, redirect_uri, response_type, state]):
-        return Response(
-            {"error": "invalid_request", "error_description": "Missing required parameters"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    if response_type != "code":
-        return Response(
-            {"error": "unsupported_response_type"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # In production, this would redirect to a consent screen
-    # For now, return authorization URL for manual flow
-    return Response(
-        {
-            "message": "Authorization required",
-            "next_step": "User must authenticate and grant access",
-            "authorization_url": f"/auth/claude-agent/consent?state={state}",
-        }
-    )
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def grant_access(request: Request) -> Response:
-    """
-    Grant access after user authentication.
-
-    This endpoint is called after the user authenticates and
-    consents to granting access to the Claude agent.
-    """
-    state = request.data.get("state")
-    organization_id = request.data.get("organization_id")
-    environment_id = request.data.get("environment_id")
-
-    # Validate state
-    state_data = oauth_manager.validate_state(state)
-    if not state_data:
-        return Response(
-            {"error": "invalid_state"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # Generate authorization code
-    code = oauth_manager.generate_authorization_code(
-        user=request.user,
-        organization_id=organization_id or state_data["organization_id"],
-        environment_id=environment_id or state_data["environment_id"],
-    )
-
-    return Response(
-        {
-            "authorization_code": code,
-            "redirect_uri": oauth_manager.redirect_uri,
-        }
-    )
-
-
-@api_view(["POST"])
-@permission_classes([AllowAny])
-def token_exchange(request: Request) -> Response:
-    """
-    OAuth token exchange endpoint.
-
-    Exchanges authorization code for access token.
-    """
-    grant_type = request.data.get("grant_type")
-    code = request.data.get("code")
-    client_id = request.data.get("client_id")
-    client_secret = request.data.get("client_secret")
-
-    # Validate grant type
-    if grant_type != "authorization_code":
-        return Response(
-            {"error": "unsupported_grant_type"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # Validate required parameters
-    if not all([code, client_id]):
-        return Response(
-            {"error": "invalid_request", "error_description": "Missing required parameters"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # Exchange code for token
-    token_data = oauth_manager.exchange_code_for_token(code, client_secret)
-
-    if not token_data:
-        return Response(
-            {"error": "invalid_grant"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    return Response(token_data)
-
-
-@api_view(["POST"])
-@permission_classes([IsAuthenticated])
-def execute_agent(request: Request) -> Response:
-    """
-    Execute Claude agent with provided message.
-
-    This endpoint allows direct agent execution for testing
-    and development purposes.
-    """
-    message = request.data.get("message")
-    organization_id = request.data.get("organization_id")
-    environment_id = request.data.get("environment_id")
-    system_prompt = request.data.get("system_prompt")
-
-    if not all([message, organization_id, environment_id]):
-        return Response(
-            {"error": "Missing required parameters: message, organization_id, environment_id"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    # Get API key from settings
-    api_key = getattr(settings, "ANTHROPIC_API_KEY", None)
-    if not api_key:
-        return Response(
-            {"error": "Anthropic API key not configured"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-
-    # Get or create auth token for user
-    from rest_framework.authtoken.models import Token
-
-    token, _ = Token.objects.get_or_create(user=request.user)
-
-    # Initialize and execute agent
-    try:
-        agent = AgentxSuiteClaudeAgent(
-            api_key=api_key,
-            organization_id=organization_id,
-            environment_id=environment_id,
-            auth_token=token.key,
-        )
-
-        # Execute message (async call in sync view - should be refactored for production)
-        import asyncio
-
-        result = asyncio.run(agent.execute_single_message(message, system_prompt))
-
-        return Response(result)
-
-    except Exception as e:
-        logger.error(f"Agent execution failed: {e}")
-        return Response(
-            {"error": f"Agent execution failed: {str(e)}"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-
-
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def list_tools(request: Request) -> Response:
-    """
-    List available tools for Claude agents.
-
-    Returns the tool registry that defines what tools
-    Claude agents can use.
-    """
-    from .agent_registry import AgentxSuiteToolRegistry
-
-    registry = AgentxSuiteToolRegistry()
-    tools = registry.get_tools()
-
-    return Response({"tools": tools, "count": len(tools)})
 

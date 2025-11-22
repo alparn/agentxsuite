@@ -29,6 +29,10 @@ AgentxSuite is a **Zero-Trust Agent Execution Platform** with the following core
 - **OAuth 2.0 Flow**: Secure authorization code flow with PKCE
 - **Agent Manifest**: Auto-generated manifest for Claude discovery
 - **OpenAPI Spec**: Dynamic OpenAPI specification for tool schemas
+- **MCP Connector Support**: 
+  - **Server Mode**: Expose AgentxSuite tools to Claude via SSE/HTTP (JSON-RPC)
+  - **Client Mode**: AgentxSuite agents can connect to external MCP servers
+  - **Bi-directional**: Claude can use AgentxSuite tools AND AgentxSuite can use external tools simultaneously
 
 ### 💰 Cost Analytics
 - **Token Usage Tracking**: Track input/output tokens for every LLM call
@@ -601,6 +605,207 @@ python manage.py sync_mcp_hub --github-token YOUR_TOKEN
 | `GET` | `/api/v1/claude-agent/tools` | List available tools | ✅ |
 | `POST` | `/api/v1/claude-agent/execute` | Execute tool via Claude Agent | ✅ |
 | `GET` | `/api/v1/claude-agent/health` | Health check | ❌ |
+
+**Execute Request (with MCP Connector):**
+```json
+{
+  "message": "Use external weather tool",
+  "organization_id": "uuid",
+  "environment_id": "uuid",
+  "mcp_servers": [
+    {
+      "type": "url",
+      "url": "https://weather-server.example.com/sse",
+      "name": "weather-mcp",
+      "authorization_token": "token"
+    }
+  ]
+}
+```
+
+### 🔌 MCP Connector (MCP Fabric Service)
+
+**Server Mode - AgentxSuite as MCP Server** (`/.well-known/mcp/`)
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/.well-known/mcp/sse` | SSE connection for MCP protocol | JWT |
+| `POST` | `/.well-known/mcp/messages` | JSON-RPC 2.0 message handler | JWT |
+| `GET` | `/.well-known/mcp/manifest.json` | MCP manifest | JWT |
+| `GET` | `/.well-known/mcp/tools` | List available tools | JWT |
+| `POST` | `/.well-known/mcp/run` | Execute tool | JWT |
+
+**Scoped Endpoints** (`/mcp/{org_id}/{env_id}/.well-known/mcp/`)
+
+Same endpoints as above, with explicit org/env in URL path.
+
+**JSON-RPC Methods Supported:**
+- `initialize` - Initialize MCP session
+- `notifications/initialized` - Initialization complete (no response)
+- `tools/list` - List available tools
+- `tools/call` - Execute a tool
+
+**SSE Protocol:**
+```
+GET /.well-known/mcp/sse
+Authorization: Bearer <jwt-token>
+
+< event: endpoint
+< data: https://agentxsuite.com/.well-known/mcp/messages
+```
+
+**JSON-RPC Example (tools/call):**
+```
+
+## 🔄 MCP Connector Data Flow
+
+### Server Mode: Claude → AgentxSuite
+
+```mermaid
+sequenceDiagram
+    participant Claude as Claude API
+    participant SSE as MCP Fabric (SSE)
+    participant Messages as MCP Fabric (Messages)
+    participant Service as Tool Execution Service
+    participant Tool as AgentxSuite Tool
+    
+    Note over Claude,SSE: Initialize Connection
+    Claude->>SSE: GET /.well-known/mcp/sse<br/>Authorization: Bearer JWT
+    SSE-->>Claude: event: endpoint<br/>data: https://.../messages
+    
+    Note over Claude,Messages: Initialize Protocol
+    Claude->>Messages: POST /messages<br/>{"method": "initialize", ...}
+    Messages-->>Claude: {"result": {"protocolVersion": "2024-11-05", ...}}
+    
+    Note over Claude,Messages: List Tools
+    Claude->>Messages: POST /messages<br/>{"method": "tools/list", ...}
+    Messages->>Service: get_tools(org, env)
+    Service-->>Messages: [tools]
+    Messages-->>Claude: {"result": {"tools": [...]}}
+    
+    Note over Claude,Tool: Execute Tool
+    Claude->>Messages: POST /messages<br/>{"method": "tools/call", "params": {...}}
+    Messages->>Service: execute_tool_run(...)
+    Service->>Tool: execute(input)
+    Tool-->>Service: result
+    Service-->>Messages: {"content": [...], "isError": false}
+    Messages-->>Claude: {"result": {"content": [...]}}
+```
+
+### Client Mode: AgentxSuite → External MCP Server
+
+```mermaid
+sequenceDiagram
+    participant User as User/API
+    participant Claude as Claude Agent SDK
+    participant Anthropic as Anthropic API
+    participant MCP as External MCP Server
+    participant AgentxSuite as AgentxSuite Tools
+    
+    User->>Claude: POST /execute<br/>{"message": "...", "mcp_servers": [...]}
+    Claude->>Anthropic: messages.create(...)<br/>extra_headers: anthropic-beta<br/>mcp_servers: [...]
+    
+    Note over Anthropic,MCP: Anthropic connects to MCP
+    Anthropic->>MCP: Initialize & List Tools
+    MCP-->>Anthropic: [external tools]
+    
+    Note over Anthropic,AgentxSuite: Claude can use both
+    Anthropic->>MCP: Execute external tool
+    MCP-->>Anthropic: result
+    
+    Anthropic->>AgentxSuite: Execute AgentxSuite tool
+    AgentxSuite-->>Anthropic: result
+    
+    Anthropic-->>Claude: Combined response
+    Claude-->>User: {"response": "...", "tool_calls": [...]}
+```
+
+### Bi-directional Flow
+
+```mermaid
+graph TB
+    subgraph "Claude Desktop/Web"
+        CA[Claude API Client]
+    end
+    
+    subgraph "AgentxSuite"
+        MF[MCP Fabric<br/>SSE + Messages]
+        CS[Claude SDK<br/>Agent Executor]
+        TS[Tool Execution<br/>Service]
+        AT[AgentxSuite<br/>Tools]
+    end
+    
+    subgraph "External Services"
+        EX[External MCP<br/>Server]
+    end
+    
+    subgraph "Anthropic"
+        AN[Anthropic API]
+    end
+    
+    CA -->|SSE/JSON-RPC| MF
+    MF -->|execute_tool_run| TS
+    TS -->|call| AT
+    
+    CS -->|mcp_servers param| AN
+    AN -->|SSE/JSON-RPC| EX
+    AN -->|tool_use blocks| CS
+    CS -->|execute| AT
+    
+    style CA fill:#e1f5ff
+    style MF fill:#ffe1e1
+    style CS fill:#ffe1e1
+    style AN fill:#e1ffe1
+    style EX fill:#fff5e1
+```
+
+## 🔄 Data Flow Diagram (Original)
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as Django REST API
+    participant Service as Service Layer
+    participant Policy as Policy Engine (PDP)
+    participant MCP as MCP Server
+    participant Audit as Audit Log
+    
+    Client->>API: POST /runs/execute/
+    API->>Service: execute_tool_run()
+    
+    Service->>Policy: evaluate(action, target)
+    Policy-->>Service: decision: allow/deny
+    
+    alt Policy Decision: DENY
+        Service->>Audit: log(run_denied)
+        Service-->>API: ValueError("Access denied")
+        API-->>Client: 400 Bad Request
+    else Policy Decision: ALLOW
+        Service->>Service: validate_input_json()
+        Service->>Service: check_rate_limit()
+        Service->>Service: check_timeout()
+        
+        Service->>Audit: log(run_started)
+        Service->>MCP: execute_tool(tool, input)
+        MCP-->>Service: result
+        
+        Service->>Audit: log(run_finished)
+        Service-->>API: result
+        API-->>Client: 201 Created
+    endjson
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "execute_tool",
+    "arguments": {
+      "tool_identifier": "pdf/read",
+      "input_data": {"file_path": "/path/to/doc.pdf"}
+    }
+  },
+  "id": 1
+}
+```
 
 ### 💰 Cost Analytics & Pricing (`/api/v1/orgs/{org_id}/runs/`)
 
