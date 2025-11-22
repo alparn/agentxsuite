@@ -155,5 +155,7 @@ test_external_client.py
 
 # Architecture documentation (internal)
 backend/A) Zero-Trust Execution Pipeline.md
+CANVAS_EDGE_VALIDATION.md
+frontend/TROUBLESHOOTING.md
 
 landing-page/
