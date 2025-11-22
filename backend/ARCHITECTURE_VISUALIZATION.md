@@ -1,5 +1,58 @@
 # 🏗️ AgentxSuite - Architecture Visualization
 
+## 🎯 Key Features
+
+AgentxSuite is a **Zero-Trust Agent Execution Platform** with the following core capabilities:
+
+### 🔐 Security & Governance
+- **Zero-Trust Policy Engine (PDP)**: Every tool execution is checked against policies before execution
+- **Secret Management**: Fernet-encrypted secrets with KMS support, never exposed in API responses
+- **Rate Limiting**: Redis-based token bucket per agent+tool
+- **Timeout Guards**: Configurable execution timeouts with context managers
+- **Audit Logging**: Comprehensive audit trail for all actions (create/update/delete/execute)
+
+### 🤖 Agent & Tool Management
+- **Multi-Mode Agents**: Support for RUNNER (executes tools) and CALLER (invokes other agents) modes
+- **Multiple Authentication**: BEARER tokens, mTLS certificates, or no auth (NONE)
+- **Token Management**: Generate, revoke, and expire JWT tokens per agent
+- **MCP Integration**: Native support for Model Context Protocol (stdio & HTTP)
+- **Tool Sync**: Automatic tool discovery and schema sync from MCP servers
+
+### 🌐 MCP Extensions
+- **MCP Hub**: Discover and browse MCP servers from GitHub (1000+ servers)
+- **MCP Server Registry**: Register and manage external MCP servers (stdio/HTTP/WebSocket)
+- **Resources & Prompts**: Store and manage MCP resources and prompt templates
+- **HTTP Bridge**: Bridge between Claude Desktop and AgentxSuite cloud
+
+### 🤖 Claude Integration
+- **Claude Agent SDK**: Native integration for Claude Hosted Agents
+- **OAuth 2.0 Flow**: Secure authorization code flow with PKCE
+- **Agent Manifest**: Auto-generated manifest for Claude discovery
+- **OpenAPI Spec**: Dynamic OpenAPI specification for tool schemas
+
+### 💰 Cost Analytics
+- **Token Usage Tracking**: Track input/output tokens for every LLM call
+- **Cost Calculation**: Automatic cost calculation based on model pricing
+- **Multi-Model Support**: OpenAI, Anthropic, Groq, and custom models
+- **Cost Dashboards**: Cost breakdown by agent, model, environment, and time
+
+### 🎨 Visual Tools
+- **Agent Designer**: Visual canvas for designing agent workflows (React Flow)
+- **Connection Graph**: Visualize relationships between agents, tools, and connections
+- **Run Timeline**: Visual timeline of tool executions with status and errors
+
+### 🏢 Multi-Tenancy
+- **Organization-Scoped**: All resources belong to an organization
+- **Environment Isolation**: Separate dev/staging/prod environments
+- **RBAC**: Role-based access control (owner/admin/member/viewer)
+- **Cross-Org Security**: Strict validation that environment belongs to organization
+
+### 📊 Observability
+- **OpenTelemetry**: Distributed tracing for all requests
+- **Metrics**: Prometheus-compatible metrics for monitoring
+- **Structured Logging**: JSON logs with trace/run IDs
+- **Health Checks**: Health endpoints for all services
+
 ## 📊 Entity-Relationship Diagram (Models)
 
 ```mermaid
@@ -37,6 +90,21 @@ erDiagram
     
     %% Audit
     Organization ||--o{ AuditEvent : "logs"
+    
+    %% Canvas
+    Organization ||--o{ CanvasState : "has"
+    Environment ||--o{ CanvasState : "has"
+    
+    %% MCP Extensions - Advanced
+    Organization ||--o{ MCPServerRegistration : "registers"
+    Environment ||--o{ MCPServerRegistration : "has"
+    Organization ||--o{ Resource : "has"
+    Environment ||--o{ Resource : "has"
+    Organization ||--o{ Prompt : "has"
+    Environment ||--o{ Prompt : "has"
+    
+    %% Cost Analytics
+    Run ||--o| ModelPricing : "uses"
     
     %% Model Definitions
     Organization {
@@ -211,7 +279,128 @@ erDiagram
         json context
         datetime created_at
     }
+    
+    CanvasState {
+        uuid id PK
+        uuid organization_id FK
+        uuid environment_id FK "nullable"
+        string name
+        json state_json
+        datetime created_at
+        datetime updated_at
+    }
+    
+    MCPServerRegistration {
+        uuid id PK
+        uuid organization_id FK
+        uuid environment_id FK
+        string name
+        string slug UK
+        string description
+        string server_type "stdio|http|ws"
+        string endpoint
+        string command
+        json args
+        json env_vars
+        string auth_method
+        string secret_ref
+        boolean enabled
+        datetime last_health_check
+        string health_status
+        string health_message
+        json tags
+        json metadata
+        datetime created_at
+    }
+    
+    MCPHubServer {
+        bigint github_id PK
+        string full_name UK
+        string name
+        string description
+        string html_url
+        integer stargazers_count
+        integer forks_count
+        string language
+        json topics
+        string owner_login
+        string owner_avatar_url
+        datetime updated_at_github
+        datetime last_synced_at
+        boolean is_active
+        datetime created_at
+    }
+    
+    Resource {
+        uuid id PK
+        uuid organization_id FK
+        uuid environment_id FK
+        string name
+        string type "static|http|sql|s3|file"
+        json config_json
+        string mime_type
+        json schema_json
+        string secret_ref
+        boolean enabled
+        datetime created_at
+    }
+    
+    Prompt {
+        uuid id PK
+        uuid organization_id FK
+        uuid environment_id FK
+        string name
+        text description
+        json input_schema
+        text template_system
+        text template_user
+        json uses_resources
+        json output_hints
+        boolean enabled
+        datetime created_at
+    }
+    
+    ModelPricing {
+        uuid id PK
+        string model_name
+        string provider
+        decimal input_cost_per_1k
+        decimal output_cost_per_1k
+        string currency
+        datetime effective_from
+        boolean is_active
+        datetime created_at
+    }
 ```
+
+## 📦 Django Apps Overview
+
+AgentxSuite is organized into the following Django apps:
+
+| App | Purpose | Key Models |
+|-----|---------|------------|
+| **accounts** | User management, authentication, service accounts | `User`, `OrganizationMembership`, `ServiceAccount` |
+| **tenants** | Multi-tenancy (organizations & environments) | `Organization`, `Environment` |
+| **connections** | MCP server connections & tool sync | `Connection` |
+| **tools** | Tool registry & schema management | `Tool` |
+| **agents** | Agent management & token issuance | `Agent`, `IssuedToken` |
+| **runs** | Tool execution & cost tracking | `Run`, `RunStep`, `ModelPricing` |
+| **policies** | Policy engine (Zero-Trust PDP) | `Policy`, `PolicyRule`, `PolicyBinding` |
+| **audit** | Audit logging for all actions | `AuditEvent` |
+| **mcp_ext** | MCP extensions (resources, prompts, hub) | `Resource`, `Prompt`, `MCPServerRegistration`, `MCPHubServer` |
+| **canvas** | Visual canvas state management | `CanvasState` |
+| **claude_agent** | Claude Agent SDK integration (OAuth + execution) | _(no models, uses existing)_ |
+| **system_tools** | Built-in system tools & usage tracking | _(no models, service layer)_ |
+| **secretstore** | Secret encryption & storage | `Secret` |
+| **workflows** | _(Future: Workflow orchestration)_ | _(TBD)_ |
+
+### Libraries (`libs/`)
+
+| Library | Purpose |
+|---------|---------|
+| **libs/common** | Base models (`TimeStamped`, `UUIDModel`), shared utilities |
+| **libs/secretstore** | Secret encryption (Fernet), KMS integration |
+| **libs/security** | Guards, Rate Limiting, Timeout, Audit Hooks |
 
 ## 🔌 API Endpoints Overview
 
@@ -354,9 +543,83 @@ erDiagram
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/resources/` | List MCP resources | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/resources/{uri}/` | MCP resource details | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/mcp/{env_id}/resources/` | Create MCP resource | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/resources/{id}/` | MCP resource details | ✅ |
+| `PUT/PATCH` | `/api/v1/orgs/{org_id}/mcp/{env_id}/resources/{id}/` | Update MCP resource | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/mcp/{env_id}/resources/{id}/` | Delete MCP resource | ✅ |
 | `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/prompts/` | List MCP prompts | ✅ |
-| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/prompts/{name}/` | MCP prompt details | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/mcp/{env_id}/prompts/` | Create MCP prompt | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/mcp/{env_id}/prompts/{id}/` | MCP prompt details | ✅ |
+| `PUT/PATCH` | `/api/v1/orgs/{org_id}/mcp/{env_id}/prompts/{id}/` | Update MCP prompt | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/mcp/{env_id}/prompts/{id}/` | Delete MCP prompt | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/mcp/servers/` | List MCP server registrations | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/mcp/servers/` | Register external MCP server | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/mcp/servers/{id}/` | MCP server details | ✅ |
+| `PUT/PATCH` | `/api/v1/orgs/{org_id}/mcp/servers/{id}/` | Update MCP server | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/mcp/servers/{id}/` | Delete MCP server | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/mcp/servers/{id}/health-check/` | Check MCP server health | ✅ |
+
+### 🌐 MCP Hub (`/api/v1/mcp-hub/`)
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/api/v1/mcp-hub/hub-servers/` | List MCP servers from GitHub (with filters) | ✅ |
+| `GET` | `/api/v1/mcp-hub/hub-servers/{id}/` | MCP Hub server details | ✅ |
+
+**Filter Parameters:**
+- `language` - Filter by programming language
+- `min_stars` / `max_stars` - Filter by star count range
+- `topics` - Filter by GitHub topics (comma-separated)
+- `search` - Full-text search in name/description
+- `ordering` - Sort by: `stargazers_count`, `-stargazers_count`, `updated_at_github`, `-updated_at_github`
+
+**Management Command:**
+```bash
+python manage.py sync_mcp_hub --github-token YOUR_TOKEN
+```
+
+### 🎨 Canvas (`/api/v1/orgs/{org_id}/canvas/`)
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/api/v1/orgs/{org_id}/canvas/` | List canvas states | ✅ |
+| `POST` | `/api/v1/orgs/{org_id}/canvas/` | Create canvas state | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/canvas/{id}/` | Canvas state details | ✅ |
+| `PUT/PATCH` | `/api/v1/orgs/{org_id}/canvas/{id}/` | Update canvas state | ✅ |
+| `DELETE` | `/api/v1/orgs/{org_id}/canvas/{id}/` | Delete canvas state | ✅ |
+
+### 🤖 Claude Agent SDK (`/api/v1/claude-agent/`)
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/api/v1/claude-agent/manifest` | Agent manifest for Claude | ❌ |
+| `GET` | `/api/v1/claude-agent/.well-known/agent-manifest` | Agent discovery endpoint | ❌ |
+| `GET` | `/api/v1/claude-agent/openapi.json` | OpenAPI specification | ❌ |
+| `GET` | `/api/v1/claude-agent/authorize` | OAuth authorization endpoint | ❌ |
+| `POST` | `/api/v1/claude-agent/token` | OAuth token exchange | ❌ |
+| `POST` | `/api/v1/claude-agent/revoke` | OAuth token revocation | ✅ |
+| `GET` | `/api/v1/claude-agent/tools` | List available tools | ✅ |
+| `POST` | `/api/v1/claude-agent/execute` | Execute tool via Claude Agent | ✅ |
+| `GET` | `/api/v1/claude-agent/health` | Health check | ❌ |
+
+### 💰 Cost Analytics & Pricing (`/api/v1/orgs/{org_id}/runs/`)
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| `GET` | `/api/v1/orgs/{org_id}/runs/cost-summary/` | Get cost summary with filters | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/runs/cost-by-agent/` | Cost breakdown by agent | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/runs/cost-by-model/` | Cost breakdown by model | ✅ |
+| `GET` | `/api/v1/orgs/{org_id}/runs/cost-over-time/` | Cost trends over time | ✅ |
+| `GET` | `/api/v1/pricing/models/` | List model pricing | ✅ |
+| `GET` | `/api/v1/pricing/models/{id}/` | Model pricing details | ✅ |
+| `POST` | `/api/v1/pricing/models/` | Create/update model pricing (admin) | ✅ |
+
+**Cost Analytics Filter Parameters:**
+- `start_date` / `end_date` - Date range filter
+- `agent_id` - Filter by specific agent
+- `environment_id` - Filter by environment
+- `model_name` - Filter by LLM model
+- `grouping` - Time grouping: `hour`, `day`, `week`, `month`
 
 ## 🔄 Data Flow Diagram
 
@@ -397,39 +660,51 @@ sequenceDiagram
 ## 🏛️ Architecture Layers
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Client Layer                          │
-│  (Frontend, CLI, MCP Clients, External Services)        │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│                    API Layer (DRF)                       │
-│  - ViewSets (CRUD)                                       │
-│  - Serializers (Validation)                             │
-│  - Authentication (Token/JWT)                           │
-│  - Audit Logging Mixin                                  │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│                  Service Layer                           │
-│  - Business Logic                                        │
-│  - Policy Checks (PDP)                                   │
-│  - Rate Limiting                                         │
-│  - Timeout Management                                    │
-│  - MCP Integration                                       │
-│  - Secret Management                                     │
-└────────────────────┬────────────────────────────────────┘
-                     │
-         ┌───────────┴───────────┐
-         ▼                        ▼
-┌──────────────────┐    ┌──────────────────┐
-│   Model Layer    │    │  External APIs    │
-│  - Django ORM    │    │  - MCP Servers    │
-│  - Validations   │    │  - SecretStore    │
-│  - Relationships │    │  - Redis (Rate)   │
-└──────────────────┘    └──────────────────┘
+┌───────────────────────────────────────────────────────────────────┐
+│                         Client Layer                              │
+│  - Web Frontend (Next.js + React)                                │
+│  - Claude Desktop (via stdio/HTTP Bridge)                        │
+│  - Claude Hosted Agent (via Agent SDK)                           │
+│  - External Services (API Clients)                               │
+│  - CLI Tools                                                      │
+└────────────────────────────┬──────────────────────────────────────┘
+                             │
+                             ▼
+┌───────────────────────────────────────────────────────────────────┐
+│                       API Layer (DRF)                             │
+│  - ViewSets (CRUD Operations)                                     │
+│  - Serializers (Validation & Transformation)                      │
+│  - Authentication (Token/JWT/OAuth2)                              │
+│  - Audit Logging Mixin (Auto-Logging)                            │
+│  - Permission Classes (RBAC)                                      │
+│  - Pagination & Filtering                                         │
+└────────────────────────────┬──────────────────────────────────────┘
+                             │
+                             ▼
+┌───────────────────────────────────────────────────────────────────┐
+│                       Service Layer                               │
+│  - Business Logic (services.py)                                   │
+│  - Policy Engine (PDP) - Zero-Trust Checks                       │
+│  - Rate Limiting (Redis Token Bucket)                            │
+│  - Timeout Management (Context Managers)                         │
+│  - MCP Integration (stdio/HTTP adapters)                         │
+│  - Secret Management (Fernet/KMS)                                │
+│  - Cost Tracking (Token Usage Analytics)                         │
+│  - Tool Execution Pipeline                                        │
+│  - Agent Registry (Claude SDK)                                    │
+└────────────────────────────┬──────────────────────────────────────┘
+                             │
+           ┌─────────────────┴─────────────────┐
+           ▼                                    ▼
+┌────────────────────────┐         ┌───────────────────────────┐
+│     Model Layer        │         │    External Services      │
+│  - Django ORM          │         │  - MCP Servers (stdio)    │
+│  - Model Validations   │         │  - MCP Servers (HTTP)     │
+│  - Constraints         │         │  - SecretStore (Fernet)   │
+│  - Relationships       │         │  - Redis (Cache/Rate)     │
+│  - Soft Delete         │         │  - GitHub API (MCP Hub)   │
+│  - TimeStamped Mixin   │         │  - Claude API (Agent SDK) │
+└────────────────────────┘         └───────────────────────────┘
 ```
 
 ## 🔐 Security Flow
@@ -489,6 +764,28 @@ graph TD
 8. **IssuedToken**
    - `jti` is unique
 
+9. **CanvasState**
+   - `(organization, environment, name)` is unique
+
+10. **MCPServerRegistration**
+    - `(organization, environment, slug)` is unique
+    - `stdio` servers require `command`
+    - `http`/`ws` servers require `endpoint`
+    - Environment must belong to organization
+
+11. **MCPHubServer**
+    - `github_id` is unique
+    - `full_name` is unique
+
+12. **Resource**
+    - `(organization, environment, name)` is unique
+
+13. **Prompt**
+    - `(organization, environment, name)` is unique
+
+14. **ModelPricing**
+    - `(model_name, effective_from)` is unique
+
 ### API Validations
 
 - **Cross-Field Validation**: `environment.organization == organization` (in Serializers)
@@ -504,10 +801,13 @@ All resources are **organization-scoped**:
 - Models: `organization` + `environment` ForeignKeys
 - Filtering: Automatically by `org_id` from URL
 
-**Exceptions:**
-- `/api/v1/auth/` - User-specific
-- `/api/v1/policies/evaluate/` - Can be called without `org_id`
-- `/api/v1/audit/` - Globally available (last 24h)
+**Exceptions (Global Endpoints):**
+- `/api/v1/auth/` - User authentication & registration
+- `/api/v1/policies/evaluate/` - Policy evaluation (can be called without `org_id`)
+- `/api/v1/audit/` - Global audit log (last 24h, no org filter)
+- `/api/v1/mcp-hub/` - MCP Hub (GitHub repository discovery, not org-scoped)
+- `/api/v1/claude-agent/` - Claude Agent SDK endpoints (OAuth + execution)
+- `/api/v1/pricing/` - Model pricing (global reference data)
 
 ---
 
