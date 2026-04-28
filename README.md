@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/alparn-agentxsuite-badge.png)](https://mseep.ai/app/alparn-agentxsuite)
+
 # 🧠 AgentxSuite
 
 AgentxSuite is an open-source platform to connect, manage, and monitor AI Agents and Tools across multiple MCP servers — all in one unified interface.
