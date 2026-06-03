@@ -100,13 +100,25 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
 
-# Cache configuration (for rate limiting)
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "agentxsuite-cache",
+# Cache configuration (rate limiting, token state, gateway session state)
+REDIS_URL = config("REDIS_URL", default=None)
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            },
+        }
     }
-}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "agentxsuite-cache",
+        }
+    }
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -128,6 +140,14 @@ REST_FRAMEWORK = {
 # MCP Fabric: Hard session handling - no sessions as auth replacement
 # FastAPI endpoints only accept Bearer tokens, no session cookies
 MCP_FABRIC_SESSION_AUTH_DISABLED = True
+
+# Tool Curation
+TOOL_CURATION_ENABLED = config("TOOL_CURATION_ENABLED", default=False, cast=bool)
+TOOL_CURATION_AUTO_SYNC = config("TOOL_CURATION_AUTO_SYNC", default=True, cast=bool)
+AGENT_TOOL_MODE = config("AGENT_TOOL_MODE", default="curated_only")
+TOOL_CURATORS = [
+    "apps.tools.curators.passthrough.PassthroughCurator",
+]
 
 # SecretStore Configuration
 SECRETSTORE_BACKEND = config(

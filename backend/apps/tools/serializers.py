@@ -6,7 +6,7 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from apps.connections.serializers import ConnectionSerializer
-from apps.tools.models import Tool
+from apps.tools.models import CuratedTool, Tool
 from apps.tools.validators import validate_schema_json
 from apps.tenants.serializers import EnvironmentSerializer, OrganizationSerializer
 
@@ -34,6 +34,7 @@ class ToolSerializer(serializers.ModelSerializer):
             "version",
             "schema_json",
             "enabled",
+            "is_agent_visible",
             "sync_status",
             "synced_at",
             "created_at",
@@ -102,4 +103,41 @@ class ToolSerializer(serializers.ModelSerializer):
                 )
         
         return attrs
+
+
+class CuratedToolSerializer(serializers.ModelSerializer):
+    """Serializer for agent-facing curated tools."""
+
+    organization = OrganizationSerializer(read_only=True)
+    environment = EnvironmentSerializer(read_only=True)
+    connection = ConnectionSerializer(read_only=True)
+    raw_tool_ids = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CuratedTool
+        fields = [
+            "id",
+            "organization",
+            "environment",
+            "connection",
+            "name",
+            "display_name",
+            "description",
+            "schema_json",
+            "curator_type",
+            "orchestration_config",
+            "enabled",
+            "category",
+            "tags",
+            "usage_count",
+            "avg_execution_time_ms",
+            "raw_tool_ids",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_raw_tool_ids(self, obj: CuratedTool) -> list[str]:
+        """Return mapped raw tool IDs without exposing secret-bearing connection data."""
+        return [str(tool_id) for tool_id in obj.raw_tools.values_list("id", flat=True)]
 

@@ -8,7 +8,7 @@ from rest_framework import serializers
 from apps.agents.serializers import AgentSerializer
 from apps.runs.models import Run, RunStep
 from apps.tenants.serializers import EnvironmentSerializer, OrganizationSerializer
-from apps.tools.serializers import ToolSerializer
+from apps.tools.serializers import CuratedToolSerializer, ToolSerializer
 
 
 class RunListSerializer(serializers.ModelSerializer):
@@ -20,8 +20,9 @@ class RunListSerializer(serializers.ModelSerializer):
     environment_name = serializers.CharField(source="environment.name", read_only=True)
     agent_id = serializers.UUIDField(source="agent.id", read_only=True)
     agent_name = serializers.CharField(source="agent.name", read_only=True)
-    tool_id = serializers.UUIDField(source="tool.id", read_only=True)
-    tool_name = serializers.CharField(source="tool.name", read_only=True)
+    tool_id = serializers.SerializerMethodField()
+    tool_name = serializers.SerializerMethodField()
+    tool_kind = serializers.SerializerMethodField()
 
     class Meta:
         model = Run
@@ -35,6 +36,7 @@ class RunListSerializer(serializers.ModelSerializer):
             "agent_name",
             "tool_id",
             "tool_name",
+            "tool_kind",
             "status",
             "started_at",
             "ended_at",
@@ -57,6 +59,7 @@ class RunListSerializer(serializers.ModelSerializer):
             "agent_name",
             "tool_id",
             "tool_name",
+            "tool_kind",
             "status",
             "started_at",
             "ended_at",
@@ -70,6 +73,24 @@ class RunListSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def get_tool_id(self, obj: Run) -> str | None:
+        """Return the raw or curated tool ID for list responses."""
+        tool = obj.executable_tool
+        return str(tool.id) if tool else None
+
+    def get_tool_name(self, obj: Run) -> str | None:
+        """Return the raw or curated tool name for list responses."""
+        tool = obj.executable_tool
+        return tool.name if tool else None
+
+    def get_tool_kind(self, obj: Run) -> str | None:
+        """Return whether this run used a raw or curated tool."""
+        if obj.curated_tool_id:
+            return "curated"
+        if obj.tool_id:
+            return "raw"
+        return None
+
 
 class RunSerializer(serializers.ModelSerializer):
     """Serializer for Run detail views (full nested objects)."""
@@ -78,6 +99,8 @@ class RunSerializer(serializers.ModelSerializer):
     environment = EnvironmentSerializer(read_only=True)
     agent = AgentSerializer(read_only=True)
     tool = ToolSerializer(read_only=True)
+    curated_tool = CuratedToolSerializer(read_only=True)
+    tool_kind = serializers.SerializerMethodField()
 
     class Meta:
         model = Run
@@ -87,6 +110,8 @@ class RunSerializer(serializers.ModelSerializer):
             "environment",
             "agent",
             "tool",
+            "curated_tool",
+            "tool_kind",
             "status",
             "started_at",
             "ended_at",
@@ -129,6 +154,14 @@ class RunSerializer(serializers.ModelSerializer):
         if value not in valid_statuses:
             raise serializers.ValidationError(f"status must be one of {valid_statuses}")
         return value
+
+    def get_tool_kind(self, obj: Run) -> str | None:
+        """Return whether this run used a raw or curated tool."""
+        if obj.curated_tool_id:
+            return "curated"
+        if obj.tool_id:
+            return "raw"
+        return None
 
 
 class RunStepSerializer(serializers.ModelSerializer):
