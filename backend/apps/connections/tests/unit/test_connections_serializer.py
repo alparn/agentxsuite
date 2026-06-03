@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pytest
 
+from apps.connections.models import Connection
 from apps.connections.serializers import ConnectionSerializer
 
 
@@ -79,10 +80,86 @@ def test_connection_validates_auth_method_choices(org_env):
 
 
 @pytest.mark.django_db
-def test_connection_secret_ref_not_in_response(org_env):
-    """Test that secret_ref is not exposed in serializer output."""
+def test_connection_requires_endpoint_for_http_transport(org_env):
+    """Test that HTTP-based transports require endpoint."""
+    _org, env = org_env
+    serializer = ConnectionSerializer(
+        data={
+            "environment_id": env.id,
+            "name": "mcp",
+            "transport": "streamable_http",
+            "auth_method": "none",
+        },
+    )
+
+    assert not serializer.is_valid()
+    assert "endpoint" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_connection_requires_command_for_stdio_transport(org_env):
+    """Test that stdio transport requires command."""
+    _org, env = org_env
+    serializer = ConnectionSerializer(
+        data={
+            "environment_id": env.id,
+            "name": "mcp",
+            "transport": "stdio",
+            "auth_method": "none",
+        },
+    )
+
+    assert not serializer.is_valid()
+    assert "command" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_connection_allows_stdio_without_endpoint(org_env):
+    """Test that stdio transport can be configured without endpoint."""
     org, env = org_env
-    from apps.connections.models import Connection
+    serializer = ConnectionSerializer(
+        data={
+            "environment_id": env.id,
+            "name": "postgres",
+            "transport": "stdio",
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-postgres"],
+            "auth_method": "none",
+        },
+    )
+
+    serializer.is_valid(raise_exception=True)
+    conn = serializer.save(organization=org)
+
+    assert conn.transport == Connection.Transport.STDIO
+    assert conn.endpoint is None
+    assert conn.command == "npx"
+    assert conn.args == ["-y", "@modelcontextprotocol/server-postgres"]
+
+
+@pytest.mark.django_db
+def test_connection_rejects_non_list_args(org_env):
+    """Test that command args must be a list."""
+    _org, env = org_env
+    serializer = ConnectionSerializer(
+        data={
+            "environment_id": env.id,
+            "name": "postgres",
+            "transport": "stdio",
+            "command": "npx",
+            "args": {"bad": "shape"},
+            "auth_method": "none",
+        },
+    )
+
+    assert not serializer.is_valid()
+    assert "args" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_connection_secret_ref_not_in_response(org_env):
+    """Test that secret refs are not exposed in serializer output."""
+    org, env = org_env
 
     conn = Connection.objects.create(
         organization=org,
@@ -91,8 +168,11 @@ def test_connection_secret_ref_not_in_response(org_env):
         endpoint="https://example.com",
         auth_method="bearer",
         secret_ref="secret-ref-123",
+        env_ref="env-ref-123",
     )
     serializer = ConnectionSerializer(conn)
     data = serializer.data
     assert "secret_ref" not in data
+    assert "env_ref" not in data
+    assert data["transport"] == Connection.Transport.LEGACY_HTTP
 

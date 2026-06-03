@@ -43,6 +43,6 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings.test"
-addopts = "-q --strict-markers --disable-warnings --cov=apps --cov=libs --cov-report=term-missing"
+addopts = "-q --strict-markers --disable-warnings --cov=apps.connections.mcp_client --cov=apps.connections.services --cov=apps.runs.services --cov=apps.tools.curation_service --cov=apps.tools.curators --cov-report=term-missing --cov-fail-under=80"
 testpaths = ["apps", "libs"]
 

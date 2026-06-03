@@ -4,12 +4,12 @@ Connection services for testing and syncing connections.
 from __future__ import annotations
 
 import logging
-from urllib.parse import urljoin
 
-import httpx
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
+from apps.connections import mcp_client
 from apps.connections.models import Connection
 from apps.tools.models import Tool
 
@@ -34,7 +34,7 @@ def _detect_endpoint_type(conn: Connection) -> str:
     Returns:
         EndpointType constant (SYSTEM, OWN_MCP_FABRIC, or EXTERNAL_MCP)
     """
-    endpoint = conn.endpoint.rstrip("/")
+    endpoint = (conn.endpoint or "").rstrip("/")
     
     # Special case: agentxsuite://system
     if endpoint == "agentxsuite://system":
@@ -51,13 +51,7 @@ def _detect_endpoint_type(conn: Connection) -> str:
 
 def test_connection(conn: Connection) -> Connection:
     """
-    Test a connection with comprehensive MCP validation.
-
-    This performs a full MCP server verification including:
-    - Health endpoint check
-    - Tools endpoint validation
-    - MCP format verification
-    - Authentication check (if configured)
+    Test a connection with MCP tools/list validation.
 
     Args:
         conn: Connection instance to test
@@ -87,9 +81,8 @@ def test_connection(conn: Connection) -> Connection:
 
 def sync_connection(conn: Connection) -> tuple[list[Tool], list[Tool]]:
     """
-    Sync tools from a connection with strict MCP validation.
+    Sync tools from a connection using MCP tools/list.
 
-    Performs MCP server verification before syncing tools.
     No fallback tools are created - sync must succeed or fail.
 
     Args:
@@ -99,36 +92,26 @@ def sync_connection(conn: Connection) -> tuple[list[Tool], list[Tool]]:
         Tuple of (created_tools, updated_tools) lists
 
     Raises:
-        ValidationError: If endpoint is not a valid MCP server or sync fails
+        ValidationError: If MCP tools/list fails or returns no usable tools.
     """
-    # 1. Verify MCP server before syncing
-    if not verify_mcp_server(conn):
-        raise ValidationError(
-            f"Endpoint {conn.endpoint} is not a valid MCP server. "
-            "Health check or tools endpoint validation failed."
-        )
-
-    # 2. Fetch tools with strict validation
     tools_data = _fetch_tools_with_validation(conn)
     if not tools_data:
         raise ValidationError(
-            f"Could not fetch tools from {conn.endpoint}. "
-            "No valid tools endpoint found or response format invalid."
+            f"Could not fetch tools from connection {conn.name}. "
+            "MCP tools/list failed or returned an invalid response."
         )
 
-    # 3. Parse and validate tools list
     tools_list = tools_data.get("tools", [])
     if not tools_list or not isinstance(tools_list, list):
         raise ValidationError(
-            f"No valid tools found in response from {conn.endpoint}. "
-            "Response must contain a 'tools' array."
+            f"No valid tools found for connection {conn.name}. "
+            "MCP tools/list must return at least one tool."
         )
 
     created_tools = []
     updated_tools = []
     sync_timestamp = timezone.now()
 
-    # 4. Create or update tools with connection reference
     for tool_def in tools_list:
         if not isinstance(tool_def, dict):
             logger.warning(f"Skipping invalid tool definition: {tool_def}")
@@ -187,126 +170,43 @@ def sync_connection(conn: Connection) -> tuple[list[Tool], list[Tool]]:
             created_tools.append(tool)
             logger.info(f"Created tool: {tool_name}")
 
-    logger.info(
-        f"Sync completed for {conn.name}: "
-        f"{len(created_tools)} created, {len(updated_tools)} updated"
-    )
-
     # Update connection status and last_seen_at after successful sync
     conn.status = "ok"
     conn.last_seen_at = timezone.now()
     conn.save(update_fields=["status", "last_seen_at"])
 
+    curated_count = 0
+    if getattr(settings, "TOOL_CURATION_ENABLED", False) and getattr(
+        settings,
+        "TOOL_CURATION_AUTO_SYNC",
+        False,
+    ):
+        from apps.tools.curation_service import CurationService
+        from apps.tools.curators.registry import CuratorsRegistry
+
+        raw_tools = list(
+            Tool.objects.filter(
+                organization=conn.organization,
+                environment=conn.environment,
+                connection=conn,
+                enabled=True,
+            )
+        )
+        curator = CuratorsRegistry.get_curator(conn, raw_tools)
+        curated_tools = CurationService.generate_curated_tools(
+            connection=conn,
+            raw_tools=raw_tools,
+            curator=curator,
+        )
+        curated_count = len(curated_tools)
+
+    logger.info(
+        f"Sync completed for {conn.name}: "
+        f"{len(created_tools)} created, {len(updated_tools)} updated, "
+        f"{curated_count} curated"
+    )
+
     return (created_tools, updated_tools)
-
-
-def _fetch_mcp_manifest(conn: Connection) -> dict | None:
-    """
-    Fetch MCP manifest from server.
-
-    Tries multiple common manifest endpoint variants:
-    - /.well-known/mcp/manifest.json (RFC 5785 standard)
-    - /manifest.json
-    - /mcp/manifest.json
-    - /mcp.json
-
-    Args:
-        conn: Connection instance
-
-    Returns:
-        Manifest dictionary if found, None otherwise
-    """
-    manifest_urls = [
-        urljoin(conn.endpoint.rstrip("/") + "/", ".well-known/mcp/manifest.json"),
-        urljoin(conn.endpoint.rstrip("/") + "/", "manifest.json"),
-        urljoin(conn.endpoint.rstrip("/") + "/", "mcp/manifest.json"),
-        urljoin(conn.endpoint.rstrip("/") + "/", "mcp.json"),
-    ]
-
-    # Prepare headers from connection auth_method
-    headers = {}
-    if conn.auth_method == "bearer" and conn.secret_ref:
-        try:
-            from libs.secretstore import get_secretstore
-            secret_store = get_secretstore()
-            token = secret_store.get_secret(conn.secret_ref, check_permissions=False)
-            headers["Authorization"] = f"Bearer {token}"
-        except Exception as e:
-            logger.warning(f"Could not retrieve auth token for manifest: {e}")
-    elif conn.auth_method == "basic" and conn.secret_ref:
-        try:
-            import base64
-            from libs.secretstore import get_secretstore
-            secret_store = get_secretstore()
-            # Secret is stored as "username:password" format
-            credentials = secret_store.get_secret(conn.secret_ref, check_permissions=False)
-            # Encode as Base64 for Basic Auth
-            encoded = base64.b64encode(credentials.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded}"
-        except Exception as e:
-            logger.warning(f"Could not retrieve basic auth credentials for manifest: {e}")
-
-    for manifest_url in manifest_urls:
-        try:
-            with httpx.Client(timeout=5.0) as client:
-                response = client.get(manifest_url, headers=headers)
-                if response.status_code == 200:
-                    try:
-                        data = response.json()
-                        # Validate manifest structure
-                        if isinstance(data, dict):
-                            logger.info(f"Found MCP manifest at {manifest_url}")
-                            return data
-                    except ValueError:
-                        logger.debug(f"Invalid JSON from {manifest_url}")
-                        continue
-        except httpx.TimeoutException:
-            logger.debug(f"Timeout checking manifest at {manifest_url}")
-            continue
-        except httpx.RequestError as e:
-            logger.debug(f"Request error checking manifest at {manifest_url}: {e}")
-            continue
-        except Exception as e:
-            logger.debug(f"Unexpected error checking manifest at {manifest_url}: {e}")
-            continue
-
-    return None
-
-
-def _get_endpoints_from_manifest(manifest: dict, base_endpoint: str) -> dict[str, str]:
-    """
-    Extract endpoint URLs from manifest.
-
-    Manifest may contain:
-    - tools_endpoint: URL for tools list
-    - health_endpoint: URL for health check
-    - Other custom endpoints
-
-    Args:
-        manifest: Manifest dictionary
-        base_endpoint: Base endpoint URL
-
-    Returns:
-        Dictionary with endpoint_type -> endpoint_url mappings
-    """
-    endpoints = {}
-
-    # Common manifest field names
-    if "tools_endpoint" in manifest:
-        endpoints["tools"] = manifest["tools_endpoint"]
-    if "health_endpoint" in manifest:
-        endpoints["health"] = manifest["health_endpoint"]
-
-    # Also check for nested endpoints object
-    if "endpoints" in manifest and isinstance(manifest["endpoints"], dict):
-        endpoints.update(manifest["endpoints"])
-
-    # Resolve relative URLs to absolute
-    for key, value in endpoints.items():
-        if isinstance(value, str) and not value.startswith(("http://", "https://")):
-            endpoints[key] = urljoin(base_endpoint.rstrip("/") + "/", value.lstrip("/"))
-
-    return endpoints
 
 
 def _verify_system_connection(conn: Connection) -> bool:
@@ -320,7 +220,7 @@ def _verify_system_connection(conn: Connection) -> bool:
         True if valid, False otherwise
     """
     if not conn.organization or not conn.environment:
-        logger.warning(f"System connection missing organization or environment")
+        logger.warning("System connection missing organization or environment")
         return False
     
     try:
@@ -338,7 +238,7 @@ def _verify_system_connection(conn: Connection) -> bool:
             logger.info(f"System connection verified: found {len(system_tools)} system tools")
             return True
         else:
-            logger.warning(f"System connection has no system tools registered")
+            logger.warning("System connection has no system tools registered")
             return False
     except Exception as e:
         logger.warning(f"Error validating system connection: {e}")
@@ -356,7 +256,7 @@ def _verify_own_mcp_fabric(conn: Connection) -> bool:
         True if valid, False otherwise
     """
     if not conn.organization or not conn.environment:
-        logger.warning(f"MCP Fabric connection missing organization or environment")
+        logger.warning("MCP Fabric connection missing organization or environment")
         return False
     
     try:
@@ -371,172 +271,21 @@ def _verify_own_mcp_fabric(conn: Connection) -> bool:
             logger.info(f"MCP Fabric server verified: found {len(tools_list)} tools in database")
             return True
         else:
-            logger.warning(f"MCP Fabric server has no tools registered")
+            logger.warning("MCP Fabric server has no tools registered")
             return False
     except Exception as e:
         logger.warning(f"Error validating own MCP Fabric service: {e}")
         return False
 
 
-def _verify_external_mcp_server(conn: Connection) -> bool:
-    """
-    Verify external MCP server via HTTP (manifest, health check, tools endpoint).
-    
-    Args:
-        conn: Connection instance
-    
-    Returns:
-        True if valid, False otherwise
-    """
-    # Normalize endpoint: remove trailing /mcp if present
-    base_endpoint = conn.endpoint.rstrip("/")
-    if base_endpoint.endswith("/mcp"):
-        base_endpoint = base_endpoint[:-4]
-        logger.debug(f"Normalized endpoint from {conn.endpoint} to {base_endpoint}")
-    
-    # Extract org_id and env_id for MCP Fabric multi-tenant endpoints
-    org_id = str(conn.organization.id) if conn.organization else None
-    env_id = str(conn.environment.id) if conn.environment else None
-    
-    # 1. Try to fetch manifest (optional)
-    original_endpoint = conn.endpoint
-    conn.endpoint = base_endpoint
-    try:
-        manifest = _fetch_mcp_manifest(conn)
-        endpoints = {}
-        if manifest:
-            endpoints = _get_endpoints_from_manifest(manifest, base_endpoint)
-            logger.info(f"Using endpoints from manifest: {list(endpoints.keys())}")
-    finally:
-        conn.endpoint = original_endpoint
-
-    # 2. Health check
-    health_urls = []
-    if "health" in endpoints:
-        health_urls.append(endpoints["health"])
-    health_urls.append(urljoin(base_endpoint.rstrip("/") + "/", "health"))
-
-    health_ok = False
-    for health_url in health_urls:
-        try:
-            with httpx.Client(timeout=5.0) as client:
-                response = client.get(health_url)
-                if response.status_code == 200:
-                    health_ok = True
-                    logger.debug(f"Health check successful: {health_url}")
-                    break
-        except Exception:
-            continue
-
-    if not health_ok:
-        logger.warning(f"Health check failed for {conn.endpoint}")
-        return False
-
-    # 3. Tools endpoint validation
-    tools_urls = []
-    if "tools" in endpoints:
-        tools_urls.append(endpoints["tools"])
-    
-    # Add MCP Fabric multi-tenant endpoint if org_id and env_id are available
-    if org_id and env_id:
-        tools_urls.append(
-            urljoin(base_endpoint.rstrip("/") + "/", f"mcp/{org_id}/{env_id}/.well-known/mcp/tools")
-        )
-    
-    # Add standard MCP tool endpoint variants
-    tools_urls.extend([
-        urljoin(base_endpoint.rstrip("/") + "/", ".well-known/mcp/tools"),
-        urljoin(base_endpoint.rstrip("/") + "/", "mcp/tools"),
-        urljoin(base_endpoint.rstrip("/") + "/", "tools"),
-    ])
-
-    # Prepare headers from connection auth_method
-    headers = {}
-    if conn.auth_method == "bearer" and conn.secret_ref:
-        try:
-            from libs.secretstore import get_secretstore
-            secret_store = get_secretstore()
-            token = secret_store.get_secret(conn.secret_ref, check_permissions=False)
-            headers["Authorization"] = f"Bearer {token}"
-        except Exception as e:
-            logger.warning(f"Could not retrieve auth token for connection: {e}")
-    elif conn.auth_method == "basic" and conn.secret_ref:
-        try:
-            import base64
-            from libs.secretstore import get_secretstore
-            secret_store = get_secretstore()
-            # Secret is stored as "username:password" format
-            credentials = secret_store.get_secret(conn.secret_ref, check_permissions=False)
-            # Encode as Base64 for Basic Auth
-            encoded = base64.b64encode(credentials.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded}"
-        except Exception as e:
-            logger.warning(f"Could not retrieve basic auth credentials for connection: {e}")
-
-    # Track if we got 401 responses (server exists but needs auth)
-    got_auth_required = False
-
-    for tools_url in tools_urls:
-        try:
-            with httpx.Client(timeout=5.0) as client:
-                response = client.get(tools_url, headers=headers)
-                if response.status_code == 200:
-                    try:
-                        data = response.json()
-                        # MCP Fabric returns a list directly
-                        if isinstance(data, list):
-                            for tool in data:
-                                if not isinstance(tool, dict) or "name" not in tool:
-                                    logger.warning(f"Invalid tool structure in {tools_url}")
-                                    return False
-                            logger.info(f"MCP Fabric server verified: {tools_url}")
-                            return True
-                        # Standard MCP format: dict with "tools" key
-                        if isinstance(data, dict) and "tools" in data:
-                            if isinstance(data["tools"], list):
-                                for tool in data["tools"]:
-                                    if not isinstance(tool, dict) or "name" not in tool:
-                                        logger.warning(f"Invalid tool structure in {tools_url}")
-                                        return False
-                                logger.info(f"MCP server verified: {tools_url}")
-                                return True
-                    except ValueError:
-                        logger.debug(f"Invalid JSON response from {tools_url}")
-                        continue
-                elif response.status_code == 401:
-                    got_auth_required = True
-                    logger.debug(f"Authentication required for {tools_url}")
-                    continue
-                elif response.status_code == 404:
-                    logger.debug(f"Endpoint not found: {tools_url}")
-                    continue
-        except httpx.TimeoutException:
-            logger.debug(f"Timeout checking {tools_url}")
-            continue
-        except httpx.RequestError as e:
-            logger.debug(f"Request error checking {tools_url}: {e}")
-            continue
-        except Exception as e:
-            logger.debug(f"Unexpected error checking {tools_url}: {e}")
-            continue
-
-    # If health passed AND we got 401 responses, server likely exists but needs auth
-    if got_auth_required:
-        logger.info(f"MCP server detected at {conn.endpoint} (authentication required)")
-        return True
-
-    logger.warning(f"No valid tools endpoint found for {conn.endpoint}")
-    return False
-
-
 def verify_mcp_server(conn: Connection) -> bool:
     """
     Verify that endpoint is a valid MCP server.
 
-    Uses strategy pattern based on endpoint type:
+    Uses strategy pattern based on connection type:
     - SYSTEM: Validate via database (system tools)
     - OWN_MCP_FABRIC: Validate via database (all tools)
-    - EXTERNAL_MCP: Validate via HTTP (manifest, health, tools endpoint)
+    - EXTERNAL_MCP: Validate via real MCP tools/list through mcp_client
 
     Args:
         conn: Connection instance to verify
@@ -550,8 +299,19 @@ def verify_mcp_server(conn: Connection) -> bool:
         return _verify_system_connection(conn)
     elif endpoint_type == EndpointType.OWN_MCP_FABRIC:
         return _verify_own_mcp_fabric(conn)
-    else:  # EXTERNAL_MCP
-        return _verify_external_mcp_server(conn)
+
+    try:
+        tools = mcp_client.list_tools(conn)
+    except mcp_client.MCPClientError as exc:
+        logger.warning(f"MCP verification failed for connection {conn.name}: {exc}")
+        return False
+
+    if not tools:
+        logger.warning(f"MCP verification found no tools for connection {conn.name}")
+        return False
+
+    logger.info(f"MCP server verified for connection {conn.name}: found {len(tools)} tools")
+    return True
 
 
 def _get_mcp_fabric_endpoints() -> list[str]:
@@ -588,7 +348,7 @@ def _fetch_tools_from_database(conn: Connection, system_tools_only: bool = False
         Tools data dictionary if valid, None otherwise
     """
     if not conn.organization or not conn.environment:
-        logger.warning(f"Connection missing organization or environment")
+        logger.warning("Connection missing organization or environment")
         return None
     
     try:
@@ -616,10 +376,10 @@ def _fetch_tools_with_validation(conn: Connection) -> dict | None:
     """
     Fetch tools from MCP server with strict validation.
 
-    Uses strategy pattern based on endpoint type:
+    Uses strategy pattern based on connection type:
     - SYSTEM: Fetch system tools from database
     - OWN_MCP_FABRIC: Fetch all tools from database
-    - EXTERNAL_MCP: Fetch via HTTP (manifest endpoints or defaults)
+    - EXTERNAL_MCP: Fetch via real MCP tools/list through mcp_client
 
     Args:
         conn: Connection instance
@@ -634,106 +394,12 @@ def _fetch_tools_with_validation(conn: Connection) -> dict | None:
         return _fetch_tools_from_database(conn, system_tools_only=True)
     elif endpoint_type == EndpointType.OWN_MCP_FABRIC:
         return _fetch_tools_from_database(conn, system_tools_only=False)
-    
-    # External MCP: fetch via HTTP
-    # Normalize endpoint: remove trailing /mcp if present
-    base_endpoint = conn.endpoint.rstrip("/")
-    if base_endpoint.endswith("/mcp"):
-        base_endpoint = base_endpoint[:-4]
-        logger.debug(f"Normalized endpoint from {conn.endpoint} to {base_endpoint}")
-    
-    # Extract org_id and env_id from connection for MCP Fabric multi-tenant endpoints
-    org_id = str(conn.organization.id) if conn.organization else None
-    env_id = str(conn.environment.id) if conn.environment else None
-    
-    # Try to get endpoints from manifest first
-    original_endpoint = conn.endpoint
-    conn.endpoint = base_endpoint
+
     try:
-        manifest = _fetch_mcp_manifest(conn)
-        tools_urls = []
-        
-        if manifest:
-            endpoints = _get_endpoints_from_manifest(manifest, base_endpoint)
-            if "tools" in endpoints:
-                tools_urls.append(endpoints["tools"])
-                logger.info(f"Using tools endpoint from manifest: {endpoints['tools']}")
-    finally:
-        conn.endpoint = original_endpoint  # Restore original
-    
-    # Add MCP Fabric multi-tenant endpoint if org_id and env_id are available (prioritize this)
-    if org_id and env_id:
-        tools_urls.insert(0, urljoin(base_endpoint.rstrip("/") + "/", f"mcp/{org_id}/{env_id}/.well-known/mcp/tools"))
-        logger.info(f"Using MCP Fabric multi-tenant endpoint: mcp/{org_id}/{env_id}/.well-known/mcp/tools")
-    
-    # Add standard MCP tool endpoint variants (use normalized base_endpoint)
-    tools_urls.extend([
-        urljoin(base_endpoint.rstrip("/") + "/", ".well-known/mcp/tools"),
-        urljoin(base_endpoint.rstrip("/") + "/", "mcp/tools"),
-        urljoin(base_endpoint.rstrip("/") + "/", "tools"),
-    ])
+        tools = mcp_client.list_tools(conn)
+    except mcp_client.MCPClientError as exc:
+        logger.warning(f"Could not fetch MCP tools for connection {conn.name}: {exc}")
+        return None
 
-    # Prepare headers from connection auth_method
-    headers = {}
-    if conn.auth_method == "bearer" and conn.secret_ref:
-        try:
-            from libs.secretstore import get_secretstore
-            secret_store = get_secretstore()
-            token = secret_store.get_secret(conn.secret_ref, check_permissions=False)
-            headers["Authorization"] = f"Bearer {token}"
-        except Exception as e:
-            logger.warning(f"Could not retrieve auth token for connection: {e}")
-    elif conn.auth_method == "basic" and conn.secret_ref:
-        try:
-            import base64
-            from libs.secretstore import get_secretstore
-            secret_store = get_secretstore()
-            # Secret is stored as "username:password" format
-            credentials = secret_store.get_secret(conn.secret_ref, check_permissions=False)
-            # Encode as Base64 for Basic Auth
-            encoded = base64.b64encode(credentials.encode()).decode()
-            headers["Authorization"] = f"Basic {encoded}"
-        except Exception as e:
-            logger.warning(f"Could not retrieve basic auth credentials for connection: {e}")
-
-    for tools_url in tools_urls:
-        try:
-            with httpx.Client(timeout=10.0) as client:
-                response = client.get(tools_url, headers=headers)
-                if response.status_code == 200:
-                    try:
-                        data = response.json()
-                        # MCP Fabric returns a list directly, wrap it in dict format
-                        if isinstance(data, list):
-                            logger.info(f"Fetched tools list from {tools_url} (MCP Fabric format)")
-                            return {"tools": data}
-                        # Validate structure for standard MCP format
-                        if (
-                            isinstance(data, dict)
-                            and "tools" in data
-                            and isinstance(data["tools"], list)
-                            and len(data["tools"]) > 0
-                        ):
-                            logger.info(f"Fetched tools from {tools_url}")
-                            return data
-                    except ValueError as e:
-                        logger.debug(f"Invalid JSON from {tools_url}: {e}")
-                        continue
-                elif response.status_code == 401:
-                    logger.warning(f"Authentication required for {tools_url}")
-                    continue
-                elif response.status_code == 404:
-                    logger.debug(f"Endpoint not found: {tools_url}")
-                    continue
-        except httpx.TimeoutException:
-            logger.debug(f"Timeout fetching from {tools_url}")
-            continue
-        except httpx.RequestError as e:
-            logger.debug(f"Request error fetching from {tools_url}: {e}")
-            continue
-        except Exception as e:
-            logger.debug(f"Unexpected error fetching from {tools_url}: {e}")
-            continue
-
-    return None
+    return {"tools": tools}
 

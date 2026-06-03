@@ -8,23 +8,34 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from urllib.parse import urljoin
-
-import httpx
+from django.conf import settings
 from django.utils import timezone
 
 from apps.agents.models import Agent
 from apps.audit.services import log_run_event, log_security_event
+from apps.connections import mcp_client
 from apps.policies.services import is_allowed
 from apps.runs.models import Run, RunStep
 from apps.runs.rate_limit import check_rate_limit
-from apps.runs.timeout import execute_with_timeout, TimeoutError
+from apps.runs.timeout import TimeoutError, execute_with_timeout
 from apps.runs.validators import validate_input_json
 from apps.tenants.models import Environment, Organization
-from apps.tools.models import Tool
+from apps.tools.models import CuratedTool, Tool
 from libs.logging.context import set_context_ids
 
 logger = logging.getLogger(__name__)
+
+ExecutableTool = Tool | CuratedTool
+
+
+def _tool_curation_enabled() -> bool:
+    """Return whether curated tools should be exposed and executable."""
+    return bool(getattr(settings, "TOOL_CURATION_ENABLED", False))
+
+
+def _agent_tool_mode() -> str:
+    """Return the configured agent-facing tool exposure mode."""
+    return getattr(settings, "AGENT_TOOL_MODE", "raw_only")
 
 
 @dataclass
@@ -128,11 +139,11 @@ def resolve_agent(
                 extra={"agent_id": str(agent.id), "source": "token"},
             )
             return agent
-        except Agent.DoesNotExist:
+        except Agent.DoesNotExist as exc:
             raise ValueError(
                 f"Agent {context.token_agent_id} from token not found, "
                 "disabled, or doesn't belong to this org/env"
-            )
+            ) from exc
     
     # Rule 2: Request-Agent (only if no Token-Agent)
     if requested_agent_id:
@@ -148,11 +159,11 @@ def resolve_agent(
                 extra={"agent_id": str(agent.id), "source": "request"},
             )
             return agent
-        except Agent.DoesNotExist:
+        except Agent.DoesNotExist as exc:
             raise ValueError(
                 f"Agent {requested_agent_id} not found, disabled, "
                 "or doesn't belong to this org/env"
-            )
+            ) from exc
     
     # Rule 3: NO FALLBACK - explicitly required
     raise ValueError(
@@ -167,9 +178,9 @@ def resolve_tool(
     organization: Organization,
     environment: Environment,
     tool_identifier: str,
-) -> Tool:
+) -> ExecutableTool:
     """
-    Find tool - supports UUID and Name.
+    Find executable tool - supports UUID and Name.
     
     Args:
         organization: Organization instance
@@ -177,7 +188,7 @@ def resolve_tool(
         tool_identifier: Tool UUID or Name
     
     Returns:
-        Tool instance
+        Tool or CuratedTool instance
     
     Raises:
         ValueError: If tool not found
@@ -189,30 +200,58 @@ def resolve_tool(
     except ValueError:
         is_uuid = False
     
+    if _tool_curation_enabled() and _agent_tool_mode() != "raw_only":
+        try:
+            if is_uuid:
+                curated_tool = CuratedTool.objects.select_related("connection").get(
+                    id=tool_identifier,
+                    organization=organization,
+                    environment=environment,
+                )
+            else:
+                curated_tool = CuratedTool.objects.select_related("connection").get(
+                    name=tool_identifier,
+                    organization=organization,
+                    environment=environment,
+                )
+
+            if not curated_tool.enabled:
+                raise ValueError(f"Tool '{curated_tool.name}' is disabled")
+            return curated_tool
+        except CuratedTool.DoesNotExist as exc:
+            if _agent_tool_mode() == "curated_only":
+                identifier_type = "ID" if is_uuid else "name"
+                raise ValueError(
+                    f"Tool with {identifier_type} '{tool_identifier}' not found in this org/env"
+                ) from exc
+
     try:
         if is_uuid:
-            tool = Tool.objects.get(
+            tool = Tool.objects.select_related("connection").get(
                 id=tool_identifier,
                 organization=organization,
                 environment=environment,
             )
         else:
-            tool = Tool.objects.get(
-                name=tool_identifier,
-                organization=organization,
-                environment=environment,
-            )
-            
+            raw_filter = {
+                "name": tool_identifier,
+                "organization": organization,
+                "environment": environment,
+            }
+            if _tool_curation_enabled() and _agent_tool_mode() == "curated_and_raw":
+                raw_filter["is_agent_visible"] = True
+            tool = Tool.objects.select_related("connection").get(**raw_filter)
+
         if not tool.enabled:
             raise ValueError(f"Tool '{tool.name}' is disabled")
-            
+
         return tool
-            
-    except Tool.DoesNotExist:
+
+    except Tool.DoesNotExist as exc:
         identifier_type = "ID" if is_uuid else "name"
         raise ValueError(
             f"Tool with {identifier_type} '{tool_identifier}' not found in this org/env"
-        )
+        ) from exc
 
 
 def format_run_response(run: Run) -> dict:
@@ -245,6 +284,17 @@ def format_run_response(run: Run) -> dict:
     if run.ended_at and run.started_at:
         duration_ms = int((run.ended_at - run.started_at).total_seconds() * 1000)
     
+    executable_tool = run.executable_tool
+    tool_payload = (
+        {
+            "id": str(executable_tool.id),
+            "name": executable_tool.name,
+            "kind": "curated" if run.curated_tool_id else "raw",
+        }
+        if executable_tool
+        else None
+    )
+
     return {
         "run_id": str(run.id),
         "status": run.status,
@@ -254,10 +304,7 @@ def format_run_response(run: Run) -> dict:
             "id": str(run.agent.id),
             "name": run.agent.name,
         },
-        "tool": {
-            "id": str(run.tool.id),
-            "name": run.tool.name,
-        },
+        "tool": tool_payload,
         "execution": {
             "started_at": run.started_at.isoformat() if run.started_at else None,
             "ended_at": run.ended_at.isoformat() if run.ended_at else None,
@@ -351,32 +398,53 @@ def _add_run_step(
     )
 
 
-def _get_mcp_fabric_endpoints() -> list[str]:
-    """
-    Get list of MCP Fabric endpoints for own service detection.
-    
-    Returns both localhost and 127.0.0.1 variants of the configured MCP Fabric URL.
-    """
+def _execute_raw_tool(
+    *,
+    agent: Agent,
+    tool: Tool,
+    input_json: dict,
+    context_input_json: dict | None = None,
+) -> dict:
+    """Execute a raw or system tool after start_run has completed its gates."""
+    if not tool.connection_id or not tool.connection:
+        raise ValueError("Tool has no connection")
+
+    if tool.is_system_tool:
+        from apps.system_tools.services import TOOL_HANDLERS
+
+        handler = TOOL_HANDLERS.get(tool.name)
+        if not handler:
+            raise ValueError(f"System tool '{tool.name}' has no handler registered")
+
+        logger.info(f"Executing system tool '{tool.name}' via handler")
+
+        from libs.logging.context import get_context_ids
+
+        context_ids = get_context_ids()
+        result = handler(
+            organization_id=str(agent.organization.id),
+            environment_id=str(agent.environment.id),
+            **input_json,
+            _token_agent_id=str(agent.id),
+            _jti=context_ids.get("jti"),
+            _client_ip=context_ids.get("client_ip"),
+            _request_id=context_ids.get("request_id"),
+        )
+
+        if result.get("status") == "success":
+            return result
+        raise ValueError(result.get("error_description", "System tool execution failed"))
+
     try:
-        from mcp_fabric.deps import MCP_FABRIC_BASE_URL
-        
-        endpoints = [MCP_FABRIC_BASE_URL.rstrip("/")]
-        
-        # Also add 127.0.0.1 variant if URL contains localhost
-        if "localhost" in MCP_FABRIC_BASE_URL:
-            endpoints.append(MCP_FABRIC_BASE_URL.replace("localhost", "127.0.0.1").rstrip("/"))
-        
-        return endpoints
-    except ImportError:
-        # Fallback if mcp_fabric is not available
-        logger.warning("Could not import MCP_FABRIC_BASE_URL, using defaults")
-        return ["http://localhost:8090", "http://127.0.0.1:8090"]
+        return mcp_client.call_tool(tool.connection, tool.name, context_input_json or input_json)
+    except mcp_client.MCPClientError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def start_run(
     *,
     agent: Agent,
-    tool: Tool,
+    tool: ExecutableTool,
     input_json: dict,
     timeout_seconds: int = 30,
 ) -> Run:
@@ -393,7 +461,7 @@ def start_run(
 
     Args:
         agent: Agent instance
-        tool: Tool instance
+        tool: Tool or CuratedTool instance
         input_json: Input data as dictionary
         timeout_seconds: Maximum execution time in seconds
 
@@ -405,13 +473,17 @@ def start_run(
         TimeoutError: If execution exceeds timeout
     """
     started = timezone.now()
+    is_curated = isinstance(tool, CuratedTool)
+    if is_curated and not _tool_curation_enabled():
+        raise ValueError("Tool curation is disabled")
 
     # Create run record first (for audit trail)
     run = Run.objects.create(
         organization=agent.organization,
         environment=agent.environment,
         agent=agent,
-        tool=tool,
+        tool=None if is_curated else tool,
+        curated_tool=tool if is_curated else None,
         status="pending",
         started_at=started,
         input_json=input_json or {},
@@ -432,7 +504,7 @@ def start_run(
     try:
         # 1. Tool verification: Check sync status and existence on MCP server
         _add_run_step(run, "check", "Checking tool connection...")
-        if not tool.connection:
+        if not tool.connection_id or not tool.connection:
             _add_run_step(run, "error", f"Tool '{tool.name}' has no connection. Please sync tools first.")
             run.status = "failed"
             run.error_text = f"Tool '{tool.name}' has no connection. Please sync tools first."
@@ -444,65 +516,39 @@ def start_run(
                 {
                     "agent_id": str(agent.id),
                     "tool_id": str(tool.id),
+                    "tool_kind": "curated" if is_curated else "raw",
                     "reason": "Tool has no connection",
                 },
             )
             raise ValueError(f"Tool '{tool.name}' has no connection. Please sync tools first.")
         _add_run_step(run, "success", f"Connection found: {tool.connection.name}")
 
-        _add_run_step(run, "check", f"Checking sync status... (current: {tool.sync_status})")
-        if tool.sync_status != "synced":
-            _add_run_step(run, "error", f"Tool '{tool.name}' is not synced (status: {tool.sync_status}). Please sync tools first.")
-            run.status = "failed"
-            run.error_text = (
-                f"Tool '{tool.name}' sync status is '{tool.sync_status}'. "
-                "Please sync tools first."
-            )
-            run.ended_at = timezone.now()
-            run.save(update_fields=["status", "error_text", "ended_at"])
-            log_security_event(
-                str(agent.organization.id),
-                "run_denied_sync_status",
-                {
-                    "agent_id": str(agent.id),
-                    "tool_id": str(tool.id),
-                    "sync_status": tool.sync_status,
-                },
-            )
-            raise ValueError(
-                f"Tool '{tool.name}' sync status is '{tool.sync_status}'. "
-                "Please sync tools first."
-            )
-        _add_run_step(run, "success", "Tool is synced")
-
-        # Verify tool exists on MCP server
-        # Skip verification if tool is already synced (trust the sync status)
-        # This is especially important for MCP Fabric where tools are already validated during sync
-        if tool.sync_status == "synced":
-            # Tool is synced, trust the sync status and skip verification
-            pass
-        elif not _verify_tool_exists(tool):
-            run.status = "failed"
-            run.error_text = (
-                f"Tool '{tool.name}' does not exist on connection '{tool.connection.name}'. "
-                "Please sync tools first."
-            )
-            run.ended_at = timezone.now()
-            run.save(update_fields=["status", "error_text", "ended_at"])
-            log_security_event(
-                str(agent.organization.id),
-                "run_denied_tool_not_found",
-                {
-                    "agent_id": str(agent.id),
-                    "tool_id": str(tool.id),
-                    "connection_id": str(tool.connection.id),
-                    "reason": "Tool not found on MCP server",
-                },
-            )
-            raise ValueError(
-                f"Tool '{tool.name}' does not exist on connection '{tool.connection.name}'. "
-                "Please sync tools first."
-            )
+        if not is_curated:
+            _add_run_step(run, "check", f"Checking sync status... (current: {tool.sync_status})")
+            if tool.sync_status != "synced":
+                _add_run_step(run, "error", f"Tool '{tool.name}' is not synced (status: {tool.sync_status}). Please sync tools first.")
+                run.status = "failed"
+                run.error_text = (
+                    f"Tool '{tool.name}' sync status is '{tool.sync_status}'. "
+                    "Please sync tools first."
+                )
+                run.ended_at = timezone.now()
+                run.save(update_fields=["status", "error_text", "ended_at"])
+                log_security_event(
+                    str(agent.organization.id),
+                    "run_denied_sync_status",
+                    {
+                        "agent_id": str(agent.id),
+                        "tool_id": str(tool.id),
+                        "tool_kind": "raw",
+                        "sync_status": tool.sync_status,
+                    },
+                )
+                raise ValueError(
+                    f"Tool '{tool.name}' sync status is '{tool.sync_status}'. "
+                    "Please sync tools first."
+                )
+            _add_run_step(run, "success", "Tool is synced")
 
         # 2. Policy check
         _add_run_step(run, "check", "Checking policy permissions...")
@@ -519,6 +565,7 @@ def start_run(
                 {
                     "agent_id": str(agent.id),
                     "tool_id": str(tool.id),
+                    "tool_kind": "curated" if is_curated else "raw",
                     "reason": deny_reason,
                 },
             )
@@ -545,6 +592,7 @@ def start_run(
                 {
                     "agent_id": str(agent.id),
                     "tool_id": str(tool.id),
+                    "tool_kind": "curated" if is_curated else "raw",
                     "error": str(e),
                 },
             )
@@ -565,6 +613,7 @@ def start_run(
                 {
                     "agent_id": str(agent.id),
                     "tool_id": str(tool.id),
+                    "tool_kind": "curated" if is_curated else "raw",
                     "reason": rate_reason,
                 },
             )
@@ -581,165 +630,24 @@ def start_run(
 
         # 6. Execute with timeout protection
         def execute_tool() -> dict:
-            """Execute tool via MCP server HTTP call or system tool handler."""
-            if not tool.connection:
-                raise ValueError("Tool has no connection")
+            """Execute tool via the configured MCP client or system tool handler."""
+            if is_curated:
+                from apps.tools.curation_service import CurationService
 
-            # Check if this is a system tool (agentxsuite://system)
-            # System tools are executed directly via handler functions, not HTTP
-            if tool.is_system_tool:
-                from apps.system_tools.services import TOOL_HANDLERS
-                
-                handler = TOOL_HANDLERS.get(tool.name)
-                if not handler:
-                    raise ValueError(f"System tool '{tool.name}' has no handler registered")
-                
-                logger.info(f"Executing system tool '{tool.name}' via handler")
-                
-                # Execute handler with token context
-                from libs.logging.context import get_context_ids
-                context_ids = get_context_ids()
-                
-                result = handler(
-                    organization_id=str(agent.organization.id),
-                    environment_id=str(agent.environment.id),
-                    **input_json,
-                    _token_agent_id=str(agent.id),
-                    _jti=context_ids.get("jti"),
-                    _client_ip=context_ids.get("client_ip"),
-                    _request_id=context_ids.get("request_id"),
-                )
-                
-                # Convert system tool result to MCP-compatible format
-                if result.get("status") == "success":
-                    return result
-                else:
-                    raise ValueError(result.get("error_description", "System tool execution failed"))
-
-            # Check if connection points to our own MCP Fabric service
-            # If so, execute tool directly without HTTP call (avoid recursion)
-            connection_endpoint = tool.connection.endpoint.rstrip("/")
-            mcp_fabric_endpoints = _get_mcp_fabric_endpoints()
-            
-            # Check if this is our own MCP Fabric service
-            is_own_service = any(
-                connection_endpoint.startswith(endpoint) 
-                for endpoint in mcp_fabric_endpoints
-            )
-            
-            if is_own_service:
-                # Tool is already being executed via our MCP Fabric service
-                # Return a success response (the actual execution happens in mcp_fabric/routers/mcp.py)
-                # This avoids recursion and HTTP 405 errors
-                logger.info(
-                    f"Tool '{tool.name}' executed via MCP Fabric service - "
-                    "execution handled by mcp_fabric adapter"
-                )
-                return {
-                    "status": "success",
-                    "message": "Tool executed via MCP Fabric service",
-                }
-
-            # Get run endpoint from manifest or use default
-            from apps.connections.services import (
-                _fetch_mcp_manifest,
-                _get_endpoints_from_manifest,
-            )
-
-            manifest = _fetch_mcp_manifest(tool.connection)
-            run_urls = []
-
-            if manifest:
-                endpoints = _get_endpoints_from_manifest(
-                    manifest, tool.connection.endpoint
-                )
-                if "run" in endpoints:
-                    run_urls.append(endpoints["run"])
-
-            # Add default run endpoint variants
-            base = tool.connection.endpoint.rstrip("/")
-            run_urls.extend([
-                urljoin(base + "/", ".well-known/mcp/run"),  # Standard MCP endpoint
-                urljoin(base + "/", "run"),
-                urljoin(base + "/", "mcp/run"),
-            ])
-
-            # Prepare auth headers
-            headers = {"Content-Type": "application/json"}
-            if tool.connection.auth_method == "bearer" and tool.connection.secret_ref:
-                from libs.secretstore import get_secretstore
-
-                try:
-                    secret_store = get_secretstore()
-                    # Agent-Service is authorized to retrieve secrets (check_permissions=False)
-                    token = secret_store.get_secret(tool.connection.secret_ref, check_permissions=False)
-                    headers["Authorization"] = f"Bearer {token}"
-                except Exception as e:
-                    logger.warning(
-                        f"Could not retrieve auth token for connection {tool.connection.name}: {e}"
-                    )
-                    # Don't add Authorization header - connection will fail with 401
-                    # This is expected behavior: secrets must be properly configured
-            elif tool.connection.auth_method == "basic" and tool.connection.secret_ref:
-                from libs.secretstore import get_secretstore
-                import base64
-
-                try:
-                    secret_store = get_secretstore()
-                    # Agent-Service is authorized to retrieve secrets (check_permissions=False)
-                    credentials = secret_store.get_secret(tool.connection.secret_ref, check_permissions=False)
-                    # Assume format "username:password"
-                    encoded = base64.b64encode(credentials.encode()).decode()
-                    headers["Authorization"] = f"Basic {encoded}"
-                except Exception as e:
-                    logger.warning(
-                        f"Could not retrieve auth credentials for connection {tool.connection.name}: {e}"
+                def raw_executor(raw_tool: Tool, raw_input: dict) -> dict:
+                    return _execute_raw_tool(
+                        agent=agent,
+                        tool=raw_tool,
+                        input_json=raw_input,
                     )
 
-            # Try each run URL
-            last_error = None
-            for run_url in run_urls:
-                try:
-                    with httpx.Client(timeout=timeout_seconds) as client:
-                        response = client.post(
-                            run_url,
-                            json={"tool": tool.name, "input": input_json},
-                            headers=headers,
-                        )
-                        if response.status_code == 200:
-                            result = response.json()
-                            logger.info(
-                                f"Tool '{tool.name}' executed successfully via {run_url}"
-                            )
-                            return result
-                        elif response.status_code == 404:
-                            # Tool not found - try next URL
-                            continue
-                        else:
-                            # Other error - try next URL but log it
-                            last_error = f"HTTP {response.status_code}: {response.text}"
-                            logger.debug(
-                                f"Error executing tool via {run_url}: {last_error}"
-                            )
-                            continue
-                except httpx.TimeoutException:
-                    last_error = f"Timeout calling {run_url}"
-                    logger.debug(last_error)
-                    continue
-                except httpx.RequestError as e:
-                    last_error = f"Request error: {e}"
-                    logger.debug(f"Error calling {run_url}: {last_error}")
-                    continue
-                except Exception as e:
-                    last_error = f"Unexpected error: {e}"
-                    logger.debug(f"Unexpected error calling {run_url}: {last_error}")
-                    continue
+                return CurationService.execute_curated_tool(
+                    curated_tool=tool,
+                    input_data=input_json,
+                    executor_func=raw_executor,
+                )
 
-            # If we get here, all URLs failed
-            raise ValueError(
-                f"Could not execute tool '{tool.name}' on connection '{tool.connection.name}'. "
-                f"Last error: {last_error or 'Unknown error'}"
-            )
+            return _execute_raw_tool(agent=agent, tool=tool, input_json=input_json)
 
         try:
             output = execute_with_timeout(execute_tool, timeout_seconds=timeout_seconds)
@@ -794,7 +702,7 @@ def start_run(
             log_run_event(run, "run_failed_error")
             raise
 
-    except (ValueError, TimeoutError) as e:
+    except (ValueError, TimeoutError):
         # Re-raise security/validation errors
         raise
     except Exception as e:
@@ -807,77 +715,3 @@ def start_run(
         raise
 
     return run
-
-
-def _verify_tool_exists(tool: Tool) -> bool:
-    """
-    Verify that tool exists on MCP server.
-
-    Checks if the tool name is present in the tools list from the connection's endpoint.
-
-    Args:
-        tool: Tool instance to verify
-
-    Returns:
-        True if tool exists on MCP server, False otherwise
-    """
-    if not tool.connection:
-        return False
-
-    try:
-        # Try to get endpoints from manifest first
-        from apps.connections.services import _fetch_mcp_manifest, _get_endpoints_from_manifest
-        
-        manifest = _fetch_mcp_manifest(tool.connection)
-        tools_urls = []
-        
-        if manifest:
-            endpoints = _get_endpoints_from_manifest(manifest, tool.connection.endpoint)
-            if "tools" in endpoints:
-                tools_urls.append(endpoints["tools"])
-        
-        # Add default tool endpoint variants
-        tools_urls.extend([
-            urljoin(tool.connection.endpoint.rstrip("/") + "/", "tools"),
-            urljoin(tool.connection.endpoint.rstrip("/") + "/", "mcp/tools"),
-        ])
-
-        for tools_url in tools_urls:
-            try:
-                with httpx.Client(timeout=5.0) as client:
-                    response = client.get(tools_url)
-                    if response.status_code == 200:
-                        try:
-                            data = response.json()
-                            tools_list = data.get("tools", [])
-                            if isinstance(tools_list, list):
-                                tool_names = [
-                                    t.get("name")
-                                    for t in tools_list
-                                    if isinstance(t, dict) and "name" in t
-                                ]
-                                if tool.name in tool_names:
-                                    logger.debug(
-                                        f"Tool '{tool.name}' verified on {tools_url}"
-                                    )
-                                    return True
-                        except ValueError:
-                            logger.debug(f"Invalid JSON response from {tools_url}")
-                            continue
-            except httpx.TimeoutException:
-                logger.debug(f"Timeout verifying tool on {tools_url}")
-                continue
-            except httpx.RequestError as e:
-                logger.debug(f"Request error verifying tool on {tools_url}: {e}")
-                continue
-            except Exception as e:
-                logger.debug(f"Unexpected error verifying tool on {tools_url}: {e}")
-                continue
-
-        logger.warning(
-            f"Tool '{tool.name}' not found on connection '{tool.connection.name}'"
-        )
-        return False
-    except Exception as e:
-        logger.error(f"Error verifying tool existence: {e}")
-        return False

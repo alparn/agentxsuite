@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from libs.common.models import TimeStamped
@@ -95,6 +96,16 @@ class Run(TimeStamped):
         on_delete=models.CASCADE,
         related_name="runs",
         help_text="Tool instance",
+        null=True,
+        blank=True,
+    )
+    curated_tool = models.ForeignKey(
+        "tools.CuratedTool",
+        on_delete=models.PROTECT,
+        related_name="runs",
+        help_text="Curated tool instance, when this run was agent-facing curation.",
+        null=True,
+        blank=True,
     )
     status = models.CharField(
         max_length=10,
@@ -158,12 +169,26 @@ class Run(TimeStamped):
             models.Index(fields=["organization", "created_at"]),
             models.Index(fields=["environment", "created_at"]),
             models.Index(fields=["agent", "created_at"]),
+            models.Index(fields=["curated_tool", "created_at"]),
             models.Index(fields=["model_name", "created_at"]),
             models.Index(fields=["cost_total"]),
         ]
 
+    @property
+    def executable_tool(self):
+        """Return the raw or curated tool associated with this run."""
+        return self.curated_tool or self.tool
+
+    def clean(self) -> None:
+        """Ensure each run references exactly one executable tool."""
+        super().clean()
+        if bool(self.tool_id) == bool(self.curated_tool_id):
+            raise ValidationError("Run must reference exactly one of tool or curated_tool.")
+
     def __str__(self) -> str:
-        return f"Run {self.id} - {self.tool.name} ({self.status})"
+        tool = self.executable_tool
+        tool_name = tool.name if tool else "unknown-tool"
+        return f"Run {self.id} - {tool_name} ({self.status})"
 
 
 class RunStep(TimeStamped):

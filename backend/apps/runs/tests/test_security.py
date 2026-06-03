@@ -14,6 +14,7 @@ from apps.policies.models import Policy
 from apps.runs.models import Run
 from apps.runs.rate_limit import RateLimiter
 from apps.runs.services import start_run
+from apps.runs.tests.conftest import create_policy_with_rules
 from apps.runs.timeout import TimeoutError
 from apps.tenants.models import Environment, Organization
 
@@ -30,9 +31,9 @@ def test_policy_deny_blocks_run(agent_tool):
     agent, tool = agent_tool
 
     # Create deny policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="deny-policy",
         rules_json={"deny": [tool.name]},
         enabled=True,
@@ -59,9 +60,9 @@ def test_policy_allow_permits_run(agent_tool):
     agent, tool = agent_tool
 
     # Create allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -97,9 +98,9 @@ def test_jsonschema_invalid_input_raises(agent_tool):
     )
 
     # Create allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -125,9 +126,9 @@ def test_jsonschema_valid_input_passes(agent_tool):
     agent, tool = agent_tool
 
     # Create allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -144,9 +145,9 @@ def test_rate_limit_blocks_after_threshold(agent_tool):
     agent, tool = agent_tool
 
     # Create allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -184,9 +185,9 @@ def test_timeout_stops_long_run_in_start_run(agent_tool):
     agent, tool = agent_tool
 
     # Create allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -217,9 +218,9 @@ def test_audit_log_created_on_run(agent_tool):
     agent, tool = agent_tool
 
     # Create allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -260,18 +261,18 @@ def test_disabled_policy_not_applied(agent_tool):
     agent, tool = agent_tool
 
     # Create disabled deny policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="disabled-deny-policy",
         rules_json={"deny": [tool.name]},
         enabled=False,  # Disabled
     )
 
     # Create allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -291,18 +292,18 @@ def test_cross_policy_deny_beats_allow(agent_tool):
     agent, tool = agent_tool
 
     # Policy A allows
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
     )
 
     # Policy B denies
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="deny-policy",
         rules_json={"deny": [tool.name]},
         enabled=True,
@@ -324,9 +325,9 @@ def test_policy_from_different_org_not_applied(agent_tool):
 
     # Create policy in different organization
     other_org = Organization.objects.create(name="OtherOrg")
-    Policy.objects.create(
-        organization=other_org,
-        environment=None,
+    create_policy_with_rules(
+        org=other_org,
+        env=None,
         name="other-org-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -351,9 +352,9 @@ def test_policy_from_different_env_not_applied(agent_tool):
     other_env = Environment.objects.create(organization=org, name="prod", type="prod")
 
     # Create policy in different environment
-    Policy.objects.create(
-        organization=org,
-        environment=other_env,
+    create_policy_with_rules(
+        org=org,
+        env=other_env,
         name="other-env-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -375,18 +376,18 @@ def test_org_wide_allow_env_specific_deny_denies(agent_tool):
     org, env = agent.organization, agent.environment
 
     # Org-wide allow policy
-    Policy.objects.create(
-        organization=org,
-        environment=None,
+    create_policy_with_rules(
+        org=org,
+        env=None,
         name="org-wide-allow",
         rules_json={"allow": [tool.name]},
         enabled=True,
     )
 
     # Env-specific deny policy
-    Policy.objects.create(
-        organization=org,
-        environment=env,
+    create_policy_with_rules(
+        org=org,
+        env=env,
         name="env-specific-deny",
         rules_json={"deny": [tool.name]},
         enabled=True,
@@ -407,9 +408,9 @@ def test_org_wide_policy_applies_to_all_envs(agent_tool):
     agent, tool = agent_tool
 
     # Create org-wide allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=None,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=None,
         name="org-wide-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -429,9 +430,9 @@ def test_rate_limit_unblocks_after_run_completes(agent_tool):
     agent, tool = agent_tool
 
     # Create allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -480,9 +481,9 @@ def test_rate_limit_blocks_in_start_run(agent_tool):
     agent, tool = agent_tool
 
     # Create allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -536,9 +537,9 @@ def test_tool_not_synced_blocks_run(agent_tool):
     tool.save()
 
     # Create allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -570,9 +571,9 @@ def test_tool_stale_status_blocks_run(agent_tool):
     tool.save()
 
     # Create allow policy
-    Policy.objects.create(
-        organization=agent.organization,
-        environment=agent.environment,
+    create_policy_with_rules(
+        org=agent.organization,
+        env=agent.environment,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -594,9 +595,9 @@ def test_tool_no_connection_blocks_run(agent_tool):
     org, env = agent.organization, agent.environment
 
     # Create allow policy
-    Policy.objects.create(
-        organization=org,
-        environment=env,
+    create_policy_with_rules(
+        org=org,
+        env=env,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,

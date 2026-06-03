@@ -3,20 +3,28 @@ Unit tests for unified execution service functions.
 """
 from __future__ import annotations
 
-import pytest
 from uuid import uuid4
 
+import pytest
+from django.test import override_settings
+from django.utils import timezone
+
 from apps.agents.models import Agent
-from apps.policies.models import Policy
+from apps.connections import mcp_client
+from apps.runs import services
+from apps.runs.models import Run
 from apps.runs.services import (
     ExecutionContext,
     execute_tool_run,
     format_run_response,
     resolve_agent,
     resolve_tool,
+    start_run,
 )
+from apps.runs.tests.conftest import create_policy_with_rules
 from apps.tenants.models import Environment, Organization
-
+from apps.tools.curation_service import CurationService
+from apps.tools.curators.passthrough import PassthroughCurator
 
 # ========== resolve_agent Tests ==========
 
@@ -218,7 +226,7 @@ def test_resolve_tool_disabled_raises(org_env, agent_tool):
     tool.enabled = False
     tool.save()
     
-    with pytest.raises(ValueError, match="not found.*enabled"):
+    with pytest.raises(ValueError, match="disabled"):
         resolve_tool(
             organization=org,
             environment=env,
@@ -244,6 +252,27 @@ def test_resolve_tool_wrong_org_raises(org_env, agent_tool):
         )
 
 
+@pytest.mark.django_db
+@override_settings(TOOL_CURATION_ENABLED=True, AGENT_TOOL_MODE="curated_only")
+def test_resolve_tool_prefers_curated_tool_when_curation_enabled(org_env, agent_tool):
+    """Agent-facing resolution returns CuratedTool behind the curation flag."""
+    org, env = org_env
+    _, raw_tool = agent_tool
+    curated_tool = CurationService.generate_curated_tools(
+        connection=raw_tool.connection,
+        raw_tools=[raw_tool],
+        curator=PassthroughCurator(),
+    )[0]
+
+    resolved = resolve_tool(
+        organization=org,
+        environment=env,
+        tool_identifier=curated_tool.name,
+    )
+
+    assert resolved == curated_tool
+
+
 # ========== format_run_response Tests ==========
 
 
@@ -251,8 +280,6 @@ def test_resolve_tool_wrong_org_raises(org_env, agent_tool):
 def test_format_run_response_success(agent_tool):
     """Test formatting successful run response."""
     agent, tool = agent_tool
-    from apps.runs.models import Run
-    from django.utils import timezone
     
     run = Run.objects.create(
         organization=agent.organization,
@@ -281,8 +308,6 @@ def test_format_run_response_success(agent_tool):
 def test_format_run_response_failed(agent_tool):
     """Test formatting failed run response."""
     agent, tool = agent_tool
-    from apps.runs.models import Run
-    from django.utils import timezone
     
     run = Run.objects.create(
         organization=agent.organization,
@@ -307,8 +332,6 @@ def test_format_run_response_failed(agent_tool):
 def test_format_run_response_string_output(agent_tool):
     """Test formatting run with string output."""
     agent, tool = agent_tool
-    from apps.runs.models import Run
-    from django.utils import timezone
     
     run = Run.objects.create(
         organization=agent.organization,
@@ -336,9 +359,9 @@ def test_execute_tool_run_success(org_env, agent_tool):
     agent, tool = agent_tool
     
     # Create allow policy
-    Policy.objects.create(
-        organization=org,
-        environment=env,
+    create_policy_with_rules(
+        org=org,
+        env=env,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -369,9 +392,9 @@ def test_execute_tool_run_by_name(org_env, agent_tool):
     agent, tool = agent_tool
     
     # Create allow policy
-    Policy.objects.create(
-        organization=org,
-        environment=env,
+    create_policy_with_rules(
+        org=org,
+        env=env,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -399,9 +422,9 @@ def test_execute_tool_run_with_request_agent(org_env, agent_tool):
     agent, tool = agent_tool
     
     # Create allow policy
-    Policy.objects.create(
-        organization=org,
-        environment=env,
+    create_policy_with_rules(
+        org=org,
+        env=env,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -448,9 +471,9 @@ def test_execute_tool_run_policy_denied(org_env, agent_tool):
     agent, tool = agent_tool
     
     # Create deny policy
-    Policy.objects.create(
-        organization=org,
-        environment=env,
+    create_policy_with_rules(
+        org=org,
+        env=env,
         name="deny-policy",
         rules_json={"deny": [tool.name]},
         enabled=True,
@@ -486,9 +509,9 @@ def test_execute_tool_run_invalid_input(org_env, agent_tool):
     tool.save()
     
     # Create allow policy
-    Policy.objects.create(
-        organization=org,
-        environment=env,
+    create_policy_with_rules(
+        org=org,
+        env=env,
         name="allow-policy",
         rules_json={"allow": [tool.name]},
         enabled=True,
@@ -505,4 +528,123 @@ def test_execute_tool_run_invalid_input(org_env, agent_tool):
             input_data={},  # Missing required field "x"
             context=context,
         )
+
+
+@pytest.mark.django_db
+def test_start_run_rejects_tool_without_connection(agent_tool):
+    """Runs fail before policy evaluation when a tool has no connection."""
+    agent, tool = agent_tool
+    tool.connection = None
+
+    with pytest.raises(ValueError, match="has no connection"):
+        start_run(agent=agent, tool=tool, input_json={})
+
+    run = Run.objects.get(tool=tool)
+    assert run.status == "failed"
+    assert "has no connection" in run.error_text
+
+
+@pytest.mark.django_db
+def test_start_run_rejects_unsynced_raw_tool(org_env, agent_tool):
+    """Raw tools must be successfully synced before execution."""
+    org, env = org_env
+    agent, tool = agent_tool
+    tool.sync_status = "stale"
+    tool.save(update_fields=["sync_status"])
+    create_policy_with_rules(
+        org=org,
+        env=env,
+        name="allow-policy",
+        rules_json={"allow": [tool.name]},
+        enabled=True,
+    )
+
+    with pytest.raises(ValueError, match="sync status"):
+        start_run(agent=agent, tool=tool, input_json={})
+
+    run = Run.objects.get(tool=tool)
+    assert run.status == "failed"
+    assert "sync status" in run.error_text
+
+
+@pytest.mark.django_db
+def test_start_run_rejects_rate_limited_agent(
+    org_env,
+    agent_tool,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Rate-limit denial is persisted and surfaced as a validation error."""
+    org, env = org_env
+    agent, tool = agent_tool
+    create_policy_with_rules(
+        org=org,
+        env=env,
+        name="allow-policy",
+        rules_json={"allow": [tool.name]},
+        enabled=True,
+    )
+    monkeypatch.setattr(services, "check_rate_limit", lambda _agent: (False, "too many runs"))
+
+    with pytest.raises(ValueError, match="Rate limit"):
+        start_run(agent=agent, tool=tool, input_json={})
+
+    run = Run.objects.get(tool=tool)
+    assert run.status == "failed"
+    assert run.error_text == "Rate limit: too many runs"
+
+
+@pytest.mark.django_db
+def test_start_run_converts_none_timeout_result_to_timeout_error(
+    org_env,
+    agent_tool,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Timeout wrappers returning None are treated as execution timeouts."""
+    org, env = org_env
+    agent, tool = agent_tool
+    create_policy_with_rules(
+        org=org,
+        env=env,
+        name="allow-policy",
+        rules_json={"allow": [tool.name]},
+        enabled=True,
+    )
+    monkeypatch.setattr(services, "execute_with_timeout", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(services.TimeoutError, match="exceeded timeout"):
+        start_run(agent=agent, tool=tool, input_json={}, timeout_seconds=3)
+
+    run = Run.objects.get(tool=tool)
+    assert run.status == "failed"
+    assert "exceeded timeout" in run.error_text
+
+
+@pytest.mark.django_db
+def test_start_run_maps_mcp_client_errors_to_failed_run(
+    org_env,
+    agent_tool,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Outbound MCP client failures are stored on the run as execution errors."""
+    org, env = org_env
+    agent, tool = agent_tool
+    create_policy_with_rules(
+        org=org,
+        env=env,
+        name="allow-policy",
+        rules_json={"allow": [tool.name]},
+        enabled=True,
+    )
+
+    def fail_call_tool(*_args, **_kwargs):
+        raise mcp_client.MCPToolError("remote boom")
+
+    monkeypatch.setattr(services.mcp_client, "call_tool", fail_call_tool)
+
+    with pytest.raises(ValueError, match="remote boom"):
+        start_run(agent=agent, tool=tool, input_json={})
+
+    run = Run.objects.get(tool=tool)
+    assert run.status == "failed"
+    assert run.error_text == "remote boom"
 

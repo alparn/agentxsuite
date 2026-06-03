@@ -124,17 +124,27 @@ class RunViewSet(ReadOnlyModelViewSet):
             # Try to get from tool
             try:
                 from uuid import UUID
-                from apps.tools.models import Tool
+
+                from apps.tools.models import CuratedTool, Tool
                 
                 try:
                     UUID(tool_identifier)
-                    tool_temp = Tool.objects.get(id=tool_identifier, organization=organization)
+                    tool_temp = (
+                        CuratedTool.objects.filter(id=tool_identifier, organization=organization).first()
+                        or Tool.objects.get(id=tool_identifier, organization=organization)
+                    )
                     env_id = tool_temp.environment_id
                 except (ValueError, Tool.DoesNotExist):
-                    tool_temp = Tool.objects.filter(
-                        name=tool_identifier,
-                        organization=organization
-                    ).first()
+                    tool_temp = (
+                        CuratedTool.objects.filter(
+                            name=tool_identifier,
+                            organization=organization,
+                        ).first()
+                        or Tool.objects.filter(
+                            name=tool_identifier,
+                            organization=organization,
+                        ).first()
+                    )
                     if tool_temp:
                         env_id = tool_temp.environment_id
             except Exception as e:

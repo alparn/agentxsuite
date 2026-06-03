@@ -431,7 +431,7 @@ def list_runs_handler(
     if agent_id:
         queryset = queryset.filter(agent_id=agent_id)
     
-    runs = queryset.select_related("agent", "tool").order_by("-started_at")[:limit]
+    runs = queryset.select_related("agent", "tool", "curated_tool").order_by("-started_at")[:limit]
     
     return {
         "status": "success",
@@ -440,7 +440,7 @@ def list_runs_handler(
                 "id": str(r.id),
                 "status": r.status,
                 "agent_name": r.agent.name,
-                "tool_name": r.tool.name,
+                "tool_name": r.executable_tool.name if r.executable_tool else None,
             }
             for r in runs
         ],
