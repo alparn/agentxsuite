@@ -7,13 +7,18 @@ with AgentxSuite's API.
 
 import logging
 import secrets
-from datetime import datetime, timedelta
+import uuid
+from datetime import datetime, timedelta, timezone as datetime_timezone
 from typing import Any
 
+import jwt
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from rest_framework.authtoken.models import Token
+from django.utils import timezone
+
+from apps.agents.services import generate_mcp_token
+from mcp_fabric.settings import MCP_TOKEN_MAX_TTL_MINUTES
 
 User = get_user_model()
 
@@ -26,6 +31,7 @@ class OAuthManager:
     # Cache timeouts
     AUTH_CODE_TIMEOUT = 600  # 10 minutes
     STATE_TOKEN_TIMEOUT = 600  # 10 minutes
+    ACCESS_TOKEN_META_PREFIX = "oauth_token_meta:"
     
     # Valid OAuth scopes
     VALID_SCOPES = {
@@ -43,6 +49,12 @@ class OAuthManager:
         self.client_id = getattr(settings, "CLAUDE_AGENT_CLIENT_ID", "agentxsuite-claude-agent")
         self.client_secret = getattr(settings, "CLAUDE_AGENT_CLIENT_SECRET", None)
         self.redirect_uri = getattr(settings, "CLAUDE_AGENT_REDIRECT_URI", "http://localhost:3000/auth/callback")
+        configured_ttl = getattr(
+            settings,
+            "CLAUDE_AGENT_OAUTH_TOKEN_TTL_MINUTES",
+            MCP_TOKEN_MAX_TTL_MINUTES,
+        )
+        self.access_token_ttl_seconds = max(60, min(int(configured_ttl), MCP_TOKEN_MAX_TTL_MINUTES) * 60)
 
     def generate_authorization_url(
         self, organization_id: str, environment_id: str
@@ -168,34 +180,49 @@ class OAuthManager:
         # Delete code after use (one-time use)
         cache.delete(code_key)
 
-        # Get user and create/retrieve token
+        # Get user and create a short-lived scoped JWT.
         try:
             user = User.objects.get(id=code_data["user_id"])
-            token, created = Token.objects.get_or_create(user=user)
+            jti = str(uuid.uuid4())
+            scope = code_data.get("scope", "agent:execute tools:read")
+            token_string = generate_mcp_token(
+                {
+                    "sub": f"user:{user.id}",
+                    "jti": jti,
+                    "org_id": str(code_data["organization_id"]),
+                    "env_id": str(code_data["environment_id"]),
+                    "scope": scope,
+                    "purpose": "claude_agent_oauth",
+                    "user_id": str(user.id),
+                },
+                expires_in=timedelta(seconds=self.access_token_ttl_seconds),
+            )
 
-            # Store token metadata in cache for later retrieval
-            token_key = f"oauth_token_meta:{token.key}"
+            # Store token metadata by jti only; never persist the bearer token itself.
+            token_key = f"{self.ACCESS_TOKEN_META_PREFIX}{jti}"
             cache.set(
                 token_key,
                 {
                     "organization_id": code_data["organization_id"],
                     "environment_id": code_data["environment_id"],
-                    "scope": code_data.get("scope", "agent:execute tools:read"),
-                    "issued_at": datetime.utcnow().isoformat(),
-                    "user_id": user.id
+                    "scope": scope,
+                    "issued_at": timezone.now().isoformat(),
+                    "user_id": str(user.id),
+                    "jti": jti,
                 },
-                31536000  # 1 year (same as token expiry)
+                self.access_token_ttl_seconds,
             )
 
-            logger.info(f"Exchanged code for token (user={user.id}, token_created={created})")
+            logger.info(f"Exchanged code for short-lived JWT (user={user.id}, jti={jti})")
 
             return {
-                "access_token": token.key,
+                "access_token": token_string,
                 "token_type": "Bearer",
-                "expires_in": 31536000,  # 1 year (tokens don't expire in DRF by default)
+                "expires_in": self.access_token_ttl_seconds,
                 "organization_id": code_data["organization_id"],
                 "environment_id": code_data["environment_id"],
-                "scope": code_data.get("scope", "agent:execute tools:read")
+                "scope": scope,
+                "jti": jti,
             }
 
         except User.DoesNotExist:
@@ -213,19 +240,26 @@ class OAuthManager:
             True if revoked successfully, False otherwise
         """
         try:
-            token = Token.objects.get(key=access_token)
-            user_id = token.user_id
-            token.delete()
-            
-            # Also remove token metadata from cache
-            token_key = f"oauth_token_meta:{access_token}"
+            claims = self._decode_unverified_jwt(access_token)
+            jti = claims.get("jti")
+            if not jti:
+                return False
+
+            metadata = cache.get(f"{self.ACCESS_TOKEN_META_PREFIX}{jti}")
+            if not metadata:
+                return False
+
+            from mcp_fabric.jti_store import revoke_jti
+
+            revoke_jti(jti)
+            token_key = f"{self.ACCESS_TOKEN_META_PREFIX}{jti}"
             cache.delete(token_key)
             
-            logger.info(f"Revoked token for user={user_id}")
+            logger.info(f"Revoked OAuth JWT jti={jti}")
             return True
 
-        except Token.DoesNotExist:
-            logger.warning(f"Attempted to revoke non-existent token")
+        except jwt.PyJWTError:
+            logger.warning("Attempted to revoke invalid OAuth JWT")
             return False
 
     # Request Handler Methods (called by views.py)
@@ -469,26 +503,48 @@ class OAuthManager:
             Token information if valid, None otherwise
         """
         try:
-            token = Token.objects.select_related("user").get(key=access_token)
-            
-            # Get organization and environment from token metadata
-            # (stored when token was issued)
-            token_key = f"oauth_token_meta:{access_token}"
+            claims = self._decode_unverified_jwt(access_token)
+            jti = claims.get("jti")
+            exp = claims.get("exp")
+            if exp is not None and datetime.fromtimestamp(exp, tz=datetime_timezone.utc) <= timezone.now():
+                return None
+
+            if not jti:
+                return None
+
+            token_key = f"{self.ACCESS_TOKEN_META_PREFIX}{jti}"
             metadata = cache.get(token_key)
+            if not metadata:
+                return None
+
+            user = User.objects.get(id=metadata["user_id"])
 
             return {
                 "active": True,
-                "user_id": token.user.id,
-                "username": token.user.username,
-                "email": token.user.email,
-                "organization_id": metadata.get("organization_id") if metadata else None,
-                "environment_id": metadata.get("environment_id") if metadata else None,
-                "scope": metadata.get("scope", "agent:execute tools:read") if metadata else "agent:execute tools:read",
-                "issued_at": token.created.isoformat() if hasattr(token, "created") else None
+                "user_id": str(user.id),
+                "username": user.username,
+                "email": user.email,
+                "organization_id": metadata.get("organization_id"),
+                "environment_id": metadata.get("environment_id"),
+                "scope": metadata.get("scope", "agent:execute tools:read"),
+                "issued_at": metadata.get("issued_at"),
+                "expires_at": datetime.fromtimestamp(exp, tz=datetime_timezone.utc).isoformat()
+                if exp else None,
             }
 
-        except Token.DoesNotExist:
+        except (jwt.PyJWTError, User.DoesNotExist, ValueError, TypeError, OSError):
             return None
+
+    def _decode_unverified_jwt(self, token: str) -> dict[str, Any]:
+        """Decode OAuth JWT claims without verifying signature for cache metadata lookups."""
+        return jwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_exp": False,
+            },
+        )
 
     def validate_scopes(self, requested_scopes: list[str]) -> tuple[list[str], list[str]]:
         """
@@ -554,16 +610,19 @@ class OAuthManager:
         if base_url is None:
             base_url = getattr(settings, "OAUTH_AUTHORIZE_URL", "http://localhost:8000")
         
-        auth_url = (
-            f"{base_url}/api/v1/claude-agent/authorize?"
-            f"client_id={self.client_id}&"
-            f"redirect_uri={self.redirect_uri}&"
-            f"response_type=code&"
-            f"state={state}&"
-            f"organization_id={organization_id}&"
-            f"environment_id={environment_id}&"
-            f"scope={'+'.join(self.DEFAULT_SCOPES)}"
-        )
+        # Use proper URL encoding
+        from urllib.parse import urlencode
+        
+        params = {
+            "client_id": self.client_id,
+            "response_type": "code",
+            "state": state,
+            "organization_id": organization_id,
+            "environment_id": environment_id,
+            "scope": " ".join(self.DEFAULT_SCOPES),
+        }
+        
+        auth_url = f"{base_url}/api/v1/claude-agent/authorize?{urlencode(params)}"
         
         return {
             "authorization_url": auth_url,

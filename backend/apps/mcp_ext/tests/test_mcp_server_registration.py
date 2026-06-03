@@ -7,6 +7,7 @@ import pytest
 from django.core.exceptions import ValidationError
 from rest_framework.test import APIClient
 
+from apps.connections.models import Connection
 from apps.mcp_ext.models import MCPServerRegistration
 from apps.tenants.models import Environment, Organization
 
@@ -89,6 +90,9 @@ class TestMCPServerRegistrationModel:
         assert server.server_type == MCPServerRegistration.ServerType.HTTP
         assert server.endpoint == "https://example.com/.well-known/mcp"
         assert server.enabled is True
+        assert server.connection is not None
+        assert server.connection.transport == Connection.Transport.STREAMABLE_HTTP
+        assert server.connection.endpoint == "https://example.com/.well-known/mcp"
         assert str(server) == f"{org.name}/{environment.name}/test-http"
 
     @pytest.mark.django_db
@@ -110,6 +114,28 @@ class TestMCPServerRegistrationModel:
         assert server.command == "python"
         assert server.args == ["-m", "my_mcp_server"]
         assert server.env_vars == {"API_KEY": "secret://my-api-key"}
+        assert server.connection is not None
+        assert server.connection.transport == Connection.Transport.STDIO
+        assert server.connection.command == "python"
+        assert server.connection.args == ["-m", "my_mcp_server"]
+
+    @pytest.mark.django_db
+    def test_registration_syncs_egress_allowlist_to_connection(self, org, environment):
+        """Legacy MCP registrations keep Connection as the canonical outbound config."""
+        server = MCPServerRegistration.objects.create(
+            organization=org,
+            environment=environment,
+            name="Allowed HTTP Server",
+            slug="allowed-http",
+            server_type=MCPServerRegistration.ServerType.HTTP,
+            endpoint="https://api.example.com/mcp",
+            metadata={"egress_allowlist": ["api.example.com"]},
+            enabled=True,
+        )
+
+        assert server.connection is not None
+        assert server.connection.name == "allowed-http"
+        assert server.connection.egress_allowlist == ["api.example.com"]
 
     @pytest.mark.django_db
     def test_unique_slug_per_org_env(self, org, environment):

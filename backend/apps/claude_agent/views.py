@@ -1,6 +1,7 @@
 """API views for Claude Agent SDK integration."""
 
 import logging
+from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.utils import timezone
@@ -448,6 +449,57 @@ def execute_agent(request: Request) -> Response:
         )
 
 
+@api_view(["GET", "POST"])
+@permission_classes([AllowAny])
+def oauth_login(request: Request):
+    """
+    Custom login page for OAuth flow.
+    
+    GET: Displays login form
+    POST: Processes login and redirects to authorization page
+    """
+    from django.shortcuts import render, redirect
+    from django.contrib.auth import authenticate, login
+    from urllib.parse import unquote
+    
+    next_url = request.GET.get("next", "/api/v1/claude-agent/authorize")
+    
+    if request.method == "GET":
+        # User is already authenticated
+        if request.user.is_authenticated:
+            return redirect(next_url)
+        
+        # Display login form
+        return render(request, "oauth_login.html", {
+            "next_url": next_url,
+            "login_url": request.path,
+        })
+    
+    else:  # POST - Process login
+        username = request.POST.get("username")
+        password = request.POST.get("password")
+        next_url = request.POST.get("next", "/api/v1/claude-agent/authorize")
+        
+        # Authenticate user
+        user = authenticate(request, username=username, password=password)
+        
+        if user is not None:
+            # Login successful
+            login(request, user)
+            logger.info(f"OAuth login successful for user: {username}")
+            
+            # Redirect to the authorization page
+            return redirect(next_url)
+        else:
+            # Login failed
+            logger.warning(f"OAuth login failed for user: {username}")
+            return render(request, "oauth_login.html", {
+                "error": "Invalid username or password",
+                "next_url": next_url,
+                "login_url": request.path,
+            })
+
+
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health_check(request: Request) -> Response:
@@ -493,23 +545,228 @@ def health_check(request: Request) -> Response:
 
 # OAuth Endpoints
 
-@api_view(["GET"])
+@api_view(["POST"])
 @permission_classes([AllowAny])
-def oauth_authorize(request: Request) -> Response:
+def oauth_initiate(request: Request) -> Response:
     """
-    OAuth 2.0 authorization endpoint.
+    Initiate OAuth flow by generating state and authorization URL.
     
-    Initiates the OAuth flow for Claude hosted agents.
+    This endpoint should be called before redirecting to the authorization page.
+    It generates a secure state token and stores it in the cache.
     """
     try:
-        result = oauth_manager.authorize(request)
-        return Response(result)
+        organization_id = request.data.get("organization_id")
+        environment_id = request.data.get("environment_id")
+        scopes = request.data.get("scopes", oauth_manager.DEFAULT_SCOPES)
+        redirect_uri = request.data.get("redirect_uri")
+        
+        if not organization_id or not environment_id:
+            return Response(
+                {"error": "organization_id and environment_id are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Generate state and authorization URL
+        base_url = request.build_absolute_uri('/')[:-1]
+        result = oauth_manager.initiate_flow(
+            organization_id=organization_id,
+            environment_id=environment_id,
+            base_url=base_url
+        )
+        
+        # Add redirect_uri and scopes to the URL if provided
+        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        
+        parsed_url = urlparse(result["authorization_url"])
+        params = parse_qs(parsed_url.query)
+        
+        # Add/override redirect_uri if provided
+        if redirect_uri:
+            params["redirect_uri"] = [redirect_uri]
+        
+        # Add scopes if provided
+        if scopes:
+            scope_str = " ".join(scopes) if isinstance(scopes, list) else scopes
+            params["scope"] = [scope_str]
+        
+        # Rebuild URL with updated params (no duplicates)
+        new_query = urlencode(params, doseq=True)
+        auth_url = urlunparse((
+            parsed_url.scheme,
+            parsed_url.netloc,
+            parsed_url.path,
+            parsed_url.params,
+            new_query,
+            parsed_url.fragment
+        ))
+        
+        return Response({
+            "authorization_url": auth_url,
+            "state": result["state"],
+            "expires_at": (datetime.now() + timedelta(seconds=oauth_manager.STATE_TOKEN_TIMEOUT)).isoformat()
+        })
     except Exception as e:
-        logger.error(f"OAuth authorization failed: {e}", exc_info=True)
+        logger.error(f"OAuth initiation failed: {e}", exc_info=True)
         return Response(
             {"error": str(e)},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([AllowAny])
+def oauth_authorize(request: Request):
+    """
+    OAuth 2.0 authorization endpoint.
+    
+    GET: Displays authorization page where users approve access.
+    POST: Processes the authorization and redirects with code.
+    """
+    from django.shortcuts import render, redirect
+    from django.urls import reverse
+    from urllib.parse import urlencode, quote
+    
+    try:
+        if request.method == "GET":
+            # Extract parameters
+            client_id = request.GET.get("client_id")
+            redirect_uri = request.GET.get("redirect_uri")
+            response_type = request.GET.get("response_type", "code")
+            state = request.GET.get("state")
+            scope = request.GET.get("scope", "")
+            organization_id = request.GET.get("organization_id")
+            environment_id = request.GET.get("environment_id")
+            
+            # Check if user is authenticated FIRST
+            if not request.user.is_authenticated:
+                # Store OAuth parameters in session before redirecting to login
+                if all([client_id, state, organization_id, environment_id]):
+                    request.session["oauth_params"] = {
+                        "client_id": client_id,
+                        "redirect_uri": redirect_uri,
+                        "response_type": response_type,
+                        "state": state,
+                        "scope": scope,
+                        "organization_id": organization_id,
+                        "environment_id": environment_id,
+                    }
+                    request.session.modified = True  # Force session save
+                
+                # Check if request has valid token in Authorization header or cookies
+                # This allows users who are already logged in via frontend to proceed
+                auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+                if auth_header.startswith('Token '):
+                    # User has token from frontend - try to authenticate
+                    from rest_framework.authtoken.models import Token
+                    token_key = auth_header.split(' ')[1]
+                    try:
+                        token = Token.objects.get(key=token_key)
+                        # Manually set the user (DRF authentication)
+                        request.user = token.user
+                        # Continue with authorization (don't redirect to login)
+                    except Token.DoesNotExist:
+                        pass
+                
+                # Still not authenticated - redirect to login
+                if not request.user.is_authenticated:
+                    login_url = f"/api/v1/claude-agent/login?next={quote(request.get_full_path())}"
+                    return redirect(login_url)
+            
+            # User is authenticated - check if parameters are missing (after login redirect)
+            if not all([client_id, redirect_uri, state, organization_id, environment_id]):
+                # Try to restore from session
+                if "oauth_params" in request.session:
+                    oauth_params = request.session.pop("oauth_params", {})
+                    client_id = oauth_params.get("client_id")
+                    redirect_uri = oauth_params.get("redirect_uri")
+                    response_type = oauth_params.get("response_type", "code")
+                    state = oauth_params.get("state")
+                    scope = oauth_params.get("scope", "")
+                    organization_id = oauth_params.get("organization_id")
+                    environment_id = oauth_params.get("environment_id")
+                    
+                    # Verify we got all required params from session
+                    if not all([client_id, redirect_uri, state, organization_id, environment_id]):
+                        return render(request, "oauth_authorize.html", {
+                            "error": "Session expired. Please start the authorization flow again from the frontend."
+                        })
+                else:
+                    return render(request, "oauth_authorize.html", {
+                        "error": "Missing required parameters. Please start the authorization flow again from the frontend."
+                    })
+            
+            # Get organization and environment info
+            from apps.tenants.models import Organization, Environment
+            try:
+                org = Organization.objects.get(id=organization_id)
+                env = Environment.objects.get(id=environment_id, organization=org)
+                
+                # Check if user has access
+                if not org.members.filter(id=request.user.id).exists():
+                    return render(request, "oauth_authorize.html", {
+                        "error": "You do not have access to this organization"
+                    })
+            except (Organization.DoesNotExist, Environment.DoesNotExist):
+                return render(request, "oauth_authorize.html", {
+                    "error": "Organization or Environment not found"
+                })
+            
+            # Parse scopes
+            scopes = scope.split() if scope else oauth_manager.DEFAULT_SCOPES
+            scope_descriptions = [oauth_manager.VALID_SCOPES.get(s, s) for s in scopes]
+            
+            # Render authorization page
+            return render(request, "oauth_authorize.html", {
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "response_type": response_type,
+                "state": state,
+                "scope": scope,
+                "organization_id": organization_id,
+                "environment_id": environment_id,
+                "organization_name": org.name,
+                "environment_name": env.name,
+                "scopes": scope_descriptions,
+                "authorize_url": request.get_full_path(),
+            })
+        
+        else:  # POST - User approved
+            # Extract parameters from form
+            client_id = request.POST.get("client_id")
+            redirect_uri = request.POST.get("redirect_uri")
+            state = request.POST.get("state")
+            organization_id = request.POST.get("organization_id")
+            environment_id = request.POST.get("environment_id")
+            approve = request.POST.get("approve")
+            
+            if not approve:
+                # User denied authorization
+                error_params = urlencode({
+                    "error": "access_denied",
+                    "error_description": "User denied authorization",
+                    "state": state
+                })
+                return redirect(f"{redirect_uri}?{error_params}")
+            
+            # Generate authorization code
+            auth_code = oauth_manager.generate_authorization_code(
+                user=request.user,
+                organization_id=organization_id,
+                environment_id=environment_id
+            )
+            
+            # Redirect to callback with code
+            callback_params = urlencode({
+                "code": auth_code,
+                "state": state
+            })
+            return redirect(f"{redirect_uri}?{callback_params}")
+            
+    except Exception as e:
+        logger.error(f"OAuth authorization failed: {e}", exc_info=True)
+        return render(request, "oauth_authorize.html", {
+            "error": str(e)
+        })
 
 
 @api_view(["POST"])

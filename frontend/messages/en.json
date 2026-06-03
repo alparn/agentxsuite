@@ -47,6 +47,7 @@
     "environments": "Environments",
     "mcpConnect": "MCP Connect",
     "mcpHub": "MCP Hub",
+    "claudeAgent": "Claude Agent",
     "audit": "Audit & Logs",
     "settings": "Settings",
     "resources": "Resources",
@@ -264,6 +265,33 @@
       "button": "Add to Cursor",
       "hint": "Opens Cursor with connection prompt."
     }
+  },
+  "oauth": {
+    "title": "Authorize Claude Agent",
+    "selectOrg": "Organization",
+    "selectEnv": "Environment",
+    "selectScopes": "Select Scopes",
+    "authorize": "Generate Authorization URL",
+    "success": "Authorization Successful",
+    "copyToken": "Copy Token",
+    "tokenCopied": "Token copied to clipboard"
+  },
+  "claudeAgent": {
+    "title": "Claude Agent",
+    "auth": "Authorize Agent",
+    "execute": "Execute Agent",
+    "chat": "Chat with Claude",
+    "selectModel": "Select Model",
+    "systemPrompt": "System Prompt",
+    "mcpServers": "External MCP Servers",
+    "send": "Send",
+    "toolCalls": "Tool Calls",
+    "cost": "Cost",
+    "tokens": "Tokens",
+    "model": "Model",
+    "inputTokens": "Input Tokens",
+    "outputTokens": "Output Tokens",
+    "totalCost": "Total Cost"
   }
 }
 

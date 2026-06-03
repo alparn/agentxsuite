@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authorize Claude Agent - AgentxSuite</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .logo-icon {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+            font-weight: bold;
+        }
+        h1 {
+            color: #1a202c;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .subtitle {
+            color: #718096;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .info-box {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+        .info-label {
+            color: #718096;
+            font-size: 14px;
+        }
+        .info-value {
+            color: #2d3748;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .scopes-box {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+        .scopes-title {
+            color: #2d3748;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+        .scope-item {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+        .scope-item:last-child {
+            margin-bottom: 0;
+        }
+        .scope-icon {
+            color: #48bb78;
+            margin-right: 8px;
+            font-size: 18px;
+        }
+        .scope-text {
+            color: #4a5568;
+            font-size: 14px;
+        }
+        .warning-box {
+            background: #fffaf0;
+            border: 1px solid #fbd38d;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+        .warning-text {
+            color: #744210;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .buttons {
+            display: flex;
+            gap: 12px;
+        }
+        .button {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .button-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .button-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        .button-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+        .button-secondary:hover {
+            background: #cbd5e0;
+        }
+        .error-box {
+            background: #fff5f5;
+            border: 1px solid #fc8181;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+        .error-text {
+            color: #c53030;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <div class="logo-icon">Ax</div>
+        </div>
+        
+        <h1>Authorize Claude Agent</h1>
+        <p class="subtitle">Grant access to your AgentxSuite tools and capabilities</p>
+        
+        {% if error %}
+        <div class="error-box">
+            <p class="error-text">{{ error }}</p>
+        </div>
+        {% else %}
+        
+        <div class="info-box">
+            <div class="info-row">
+                <span class="info-label">Application</span>
+                <span class="info-value">Claude Hosted Agent</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Organization</span>
+                <span class="info-value">{{ organization_name }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Environment</span>
+                <span class="info-value">{{ environment_name }}</span>
+            </div>
+        </div>
+        
+        <div class="scopes-box">
+            <div class="scopes-title">This application will be able to:</div>
+            {% for scope in scopes %}
+            <div class="scope-item">
+                <span class="scope-icon">✓</span>
+                <span class="scope-text">{{ scope }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="warning-box">
+            <p class="warning-text">
+                ⚠️ Only authorize applications you trust. This will grant Claude agents 
+                access to execute tools and read data in your organization.
+            </p>
+        </div>
+        
+        <form method="post" action="{{ authorize_url }}">
+            {% csrf_token %}
+            <input type="hidden" name="client_id" value="{{ client_id }}">
+            <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
+            <input type="hidden" name="response_type" value="{{ response_type }}">
+            <input type="hidden" name="state" value="{{ state }}">
+            <input type="hidden" name="scope" value="{{ scope }}">
+            <input type="hidden" name="organization_id" value="{{ organization_id }}">
+            <input type="hidden" name="environment_id" value="{{ environment_id }}">
+            <input type="hidden" name="approve" value="true">
+            
+            <div class="buttons">
+                <button type="button" class="button button-secondary" onclick="window.close()">
+                    Cancel
+                </button>
+                <button type="submit" class="button button-primary">
+                    Authorize
+                </button>
+            </div>
+        </form>
+        {% endif %}
+    </div>
+</body>
+</html>
+

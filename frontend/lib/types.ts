@@ -434,12 +434,117 @@ export interface Connection {
   organization: Organization;
   environment: Environment;
   name: string;
-  endpoint: string;
+  transport: "stdio" | "streamable_http" | "sse" | "legacy_http";
+  endpoint: string | null;
+  command: string;
+  args: string[];
   auth_method: "none" | "bearer" | "basic";
   secret_ref?: string | null;
+  env_ref?: string | null;
   status: "unknown" | "ok" | "fail";
   last_seen_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Claude Agent OAuth Types
+export interface OAuthAuthorizationRequest {
+  organization_id: string;
+  environment_id: string;
+  scopes: string[];
+  state?: string;
+  redirect_uri?: string;
+}
+
+export interface OAuthAuthorizationResponse {
+  authorization_url: string;
+  state: string;
+  expires_at: string;
+}
+
+export interface OAuthTokenRequest {
+  code: string;
+  state?: string;
+  redirect_uri?: string;
+}
+
+export interface OAuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  scope: string;
+  organization_id: string;
+  environment_id: string;
+  created_at: string;
+}
+
+export interface OAuthRevokeRequest {
+  token: string;
+}
+
+// Claude Agent Execution Types
+export interface MCPServerConfig {
+  type: "url" | "stdio";
+  url?: string;
+  name: string;
+  authorization_token?: string;
+}
+
+export interface ClaudeAgentExecutionRequest {
+  message: string;
+  organization_id: string;
+  environment_id: string;
+  model?: string;
+  system_prompt?: string;
+  mcp_servers?: MCPServerConfig[];
+  max_tokens?: number;
+}
+
+export interface ClaudeToolCall {
+  tool_name: string;
+  tool_input: Record<string, any>;
+  tool_output: Record<string, any>;
+  status: "success" | "error";
+  execution_time_ms?: number;
+}
+
+export interface ClaudeAgentCost {
+  total_cost: number;
+  input_tokens: number;
+  output_tokens: number;
+  model: string;
+}
+
+export interface ClaudeAgentExecutionResponse {
+  response: string;
+  tool_calls: ClaudeToolCall[];
+  cost: ClaudeAgentCost;
+  conversation_id?: string;
+  model: string;
+}
+
+export interface ClaudeAgentTool {
+  name: string;
+  description: string;
+  input_schema: Record<string, any>;
+}
+
+export interface ClaudeAgentManifest {
+  schema_version: string;
+  name: string;
+  display_name: string;
+  description: string;
+  version: string;
+  authentication: {
+    type: string;
+    oauth2?: {
+      authorization_url: string;
+      token_url: string;
+      scopes: Record<string, string>;
+      default_scopes: string[];
+    };
+  };
+  tools: ClaudeAgentTool[];
+  capabilities: Record<string, boolean>;
 }
 
