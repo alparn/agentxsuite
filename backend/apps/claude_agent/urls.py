@@ -12,6 +12,8 @@ urlpatterns = [
     path("openapi.json", views.openapi_spec, name="openapi"),
     
     # OAuth flow
+    path("oauth/initiate", views.oauth_initiate, name="oauth_initiate"),
+    path("login", views.oauth_login, name="oauth_login"),
     path("authorize", views.oauth_authorize, name="authorize"),
     path("token", views.oauth_token, name="token"),
     path("revoke", views.oauth_revoke, name="revoke"),

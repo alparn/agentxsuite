@@ -145,6 +145,14 @@ class MCPServerRegistration(TimeStamped):
         related_name="mcp_servers",
         help_text="Environment this server is available in",
     )
+    connection = models.OneToOneField(
+        "connections.Connection",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="mcp_server_registration",
+        help_text="Canonical AgentxSuite connection backing this legacy registration.",
+    )
 
     # Server metadata
     name = models.CharField(
@@ -246,20 +254,100 @@ class MCPServerRegistration(TimeStamped):
         """Validate model constraints."""
         from django.core.exceptions import ValidationError
 
+        errors = {}
+
         # Validate server type specific fields
         if self.server_type == self.ServerType.STDIO:
             if not self.command:
-                raise ValidationError({"command": "Command is required for stdio servers"})
+                errors["command"] = "Command is required for stdio servers"
         elif self.server_type in [self.ServerType.HTTP, self.ServerType.WEBSOCKET]:
             if not self.endpoint:
-                raise ValidationError({"endpoint": "Endpoint is required for HTTP/WebSocket servers"})
+                errors["endpoint"] = "Endpoint is required for HTTP/WebSocket servers"
 
         # Validate environment belongs to organization
         if self.environment and self.organization:
             if self.environment.organization_id != self.organization_id:
-                raise ValidationError(
-                    {"environment": "Environment must belong to the selected organization"}
-                )
+                errors["environment"] = "Environment must belong to the selected organization"
+
+        egress_allowlist = self.metadata.get("egress_allowlist") if isinstance(self.metadata, dict) else None
+        if egress_allowlist is not None and (
+            not isinstance(egress_allowlist, list)
+            or not all(isinstance(entry, str) for entry in egress_allowlist)
+        ):
+            errors["metadata"] = "metadata.egress_allowlist must be a list of strings"
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, sync_connection: bool = True, **kwargs):
+        """Persist the legacy registration and keep its canonical Connection in sync."""
+        super().save(*args, **kwargs)
+        if not sync_connection:
+            return
+
+        connection = self.sync_to_connection()
+        if self.connection_id != connection.id:
+            type(self).objects.filter(pk=self.pk).update(connection=connection)
+            self.connection = connection
+
+    def sync_to_connection(self):
+        """Create or update the canonical Connection backing this registration."""
+        from apps.connections.models import Connection
+
+        defaults = {
+            "transport": self._connection_transport(),
+            "endpoint": self.endpoint or None,
+            "command": self.command,
+            "args": self.args or [],
+            "env_ref": self.metadata.get("env_ref") if isinstance(self.metadata, dict) else None,
+            "auth_method": self._connection_auth_method(),
+            "secret_ref": self.secret_ref or None,
+            "egress_allowlist": self._connection_egress_allowlist(),
+            "status": self._connection_status(),
+        }
+
+        if self.connection_id:
+            Connection.objects.filter(pk=self.connection_id).update(**defaults)
+            return Connection.objects.get(pk=self.connection_id)
+
+        connection, _created = Connection.objects.update_or_create(
+            organization=self.organization,
+            environment=self.environment,
+            name=self.slug,
+            defaults=defaults,
+        )
+        return connection
+
+    def _connection_transport(self):
+        """Map legacy registration server types to Connection transports."""
+        from apps.connections.models import Connection
+
+        if self.server_type == self.ServerType.STDIO:
+            return Connection.Transport.STDIO
+        if self.server_type == self.ServerType.WEBSOCKET:
+            return Connection.Transport.SSE
+        return Connection.Transport.STREAMABLE_HTTP
+
+    def _connection_auth_method(self) -> str:
+        """Map registration auth methods to Connection auth methods."""
+        if self.auth_method in {"none", "bearer", "basic"}:
+            return self.auth_method
+        return "bearer" if self.secret_ref else "none"
+
+    def _connection_egress_allowlist(self) -> list[str]:
+        """Read HTTP egress allowlist from metadata for the canonical Connection."""
+        if not isinstance(self.metadata, dict):
+            return []
+        allowlist = self.metadata.get("egress_allowlist") or []
+        return [str(entry) for entry in allowlist]
+
+    def _connection_status(self) -> str:
+        """Translate registration health status to Connection status."""
+        if self.health_status == "healthy":
+            return "ok"
+        if self.health_status == "unhealthy":
+            return "fail"
+        return "unknown"
 
 
 class MCPHubServer(TimeStamped):

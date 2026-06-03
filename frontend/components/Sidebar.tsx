@@ -22,6 +22,7 @@ import {
   Network,
   DollarSign,
   Package,
+  // Sparkles, // Nicht mehr benötigt, Claude Agent ausgeblendet
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ const navItems = [
   { href: "/environments", icon: Globe, key: "environments" },
   { href: "/mcp-connect", icon: Wifi, key: "mcpConnect" },
   { href: "/mcp-hub", icon: Package, key: "mcpHub" },
+  // { href: "/claude-agent/authorize", icon: Sparkles, key: "claudeAgent" }, // Ausgeblendet - OAuth für Hosted Agents noch nicht verfügbar
   { href: "/audit", icon: FileText, key: "audit" },
   { href: "/settings", icon: Settings, key: "settings" },
 ];

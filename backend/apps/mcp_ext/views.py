@@ -173,17 +173,33 @@ class MCPServerRegistrationViewSet(AuditLoggingMixin, ModelViewSet):
         
         This will update the health_status, health_message, and last_health_check fields.
         """
+        from apps.connections.services import test_connection
+        from django.utils import timezone
+
         server = self.get_object()
-        
-        # TODO: Implement actual health check logic based on server_type
-        # For now, just mark as pending implementation
+        connection = server.sync_to_connection()
+        test_connection(connection)
+
+        server.health_status = "healthy" if connection.status == "ok" else "unhealthy"
+        server.health_message = (
+            "Canonical connection health check succeeded"
+            if connection.status == "ok"
+            else "Canonical connection health check failed"
+        )
+        server.last_health_check = timezone.now()
+        server.save(
+            update_fields=["health_status", "health_message", "last_health_check"],
+            sync_connection=False,
+        )
+
         return Response(
             {
                 "id": str(server.id),
                 "slug": server.slug,
                 "health_status": server.health_status,
-                "health_message": "Health check not yet implemented",
+                "health_message": server.health_message,
                 "last_health_check": server.last_health_check,
+                "connection_id": str(connection.id),
             }
         )
 
@@ -221,15 +237,17 @@ class MCPServerRegistrationViewSet(AuditLoggingMixin, ModelViewSet):
         
         config = {"mcpServers": {}}
         
-        # 1. Add AgentxSuite as primary MCP server (with HTTP bridge)
-        # Using HTTP bridge instead of stdio adapter to avoid database/path issues
+        # 1. Add AgentxSuite as primary MCP server (via HTTP Bridge)
+        # Claude Desktop requires a local process (stdio) even for HTTP/SSE connections.
+        # It spawns a client process that translates stdio to HTTP.
+        
         token_string = self._get_token_from_request(request)
-        
-        # Get MCP Fabric Base URL
         from mcp_fabric.deps import MCP_FABRIC_BASE_URL
-        mcp_fabric_url = f"{MCP_FABRIC_BASE_URL.rstrip('/')}/.well-known/mcp"
         
-        # Get path to mcp-http-bridge.js (relative to project root)
+        # Use the base MCP endpoint (not /sse, the bridge handles that)
+        mcp_base_url = f"{MCP_FABRIC_BASE_URL.rstrip('/')}/.well-known/mcp"
+        
+        # Get absolute path to mcp-http-bridge.js
         from pathlib import Path
         project_root = Path(__file__).resolve().parent.parent.parent.parent
         bridge_path = project_root / "docs" / "mcp-http-bridge.js"
@@ -237,16 +255,14 @@ class MCPServerRegistrationViewSet(AuditLoggingMixin, ModelViewSet):
         config["mcpServers"]["agentxsuite"] = {
             "command": "node",
             "args": [
-                str(bridge_path),
-                mcp_fabric_url,
+                str(bridge_path.resolve()),  # Ensure absolute path
+                mcp_base_url,
                 "--header",
                 f"Authorization: Bearer {token_string}",
             ],
             "env": {
                 "DEBUG": "1",
             },
-            # Optional: Add comment for user
-            "_comment": "AgentxSuite MCP Server (HTTP bridge)",
         }
         
         # 2. Add registered external MCP servers

@@ -89,6 +89,7 @@ class MCPServerRegistrationSerializer(serializers.ModelSerializer):
     organization = OrganizationSerializer(read_only=True)
     environment = EnvironmentSerializer(read_only=True)
     environment_id = serializers.UUIDField(write_only=True, required=False)
+    connection_id = serializers.UUIDField(source="connection.id", read_only=True)
     args = serializers.JSONField(required=False, allow_null=False)
     env_vars = serializers.JSONField(required=False, allow_null=False)
     tags = serializers.JSONField(required=False, allow_null=False)
@@ -101,6 +102,7 @@ class MCPServerRegistrationSerializer(serializers.ModelSerializer):
             "organization",
             "environment",
             "environment_id",
+            "connection_id",
             "name",
             "slug",
             "description",

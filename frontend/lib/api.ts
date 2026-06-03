@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { Resource, Prompt, Policy, PolicyRule, PolicyBinding, PolicyEvaluateRequest, Agent, IssuedToken, TokenGenerateRequest, TokenGenerateResponse, ServiceAccount, RunList, RunDetail, MCPServerRegistration, ClaudeDesktopConfig, CostSummary, AgentCostSummary, EnvironmentCostSummary, ModelCostSummary, ToolCostSummary } from "./types";
+import type { Resource, Prompt, Policy, PolicyRule, PolicyBinding, PolicyEvaluateRequest, Agent, IssuedToken, TokenGenerateRequest, TokenGenerateResponse, ServiceAccount, RunList, RunDetail, MCPServerRegistration, ClaudeDesktopConfig, CostSummary, AgentCostSummary, EnvironmentCostSummary, ModelCostSummary, ToolCostSummary, OAuthAuthorizationRequest, OAuthAuthorizationResponse, OAuthTokenRequest, OAuthTokenResponse, OAuthRevokeRequest, ClaudeAgentExecutionRequest, ClaudeAgentExecutionResponse, ClaudeAgentManifest, ClaudeAgentTool } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -324,6 +324,67 @@ export const costsApi = {
   // Get cost breakdown by tool
   byTool: (orgId: string, params?: { environment?: string; days?: number }) =>
     api.get<ToolCostSummary[]>(`/orgs/${orgId}/costs/by_tool/`, { params }),
+};
+
+// Claude Agent SDK API
+export const claudeAgentApi = {
+  // Get agent manifest
+  getManifest: () => 
+    api.get<ClaudeAgentManifest>("/claude-agent/manifest"),
+  
+  // Get OpenAPI specification
+  getOpenAPI: () => 
+    api.get("/claude-agent/openapi.json"),
+  
+  // Initiate OAuth authorization flow
+  initiateAuth: (data: OAuthAuthorizationRequest) =>
+    api.post<OAuthAuthorizationResponse>("/claude-agent/oauth/initiate", data),
+  
+  // Get authorization URL (for redirecting user)
+  getAuthUrl: (params: {
+    organization_id: string;
+    environment_id: string;
+    scopes?: string[];
+    state?: string;
+    redirect_uri?: string;
+  }) => {
+    const searchParams = new URLSearchParams();
+    searchParams.append("organization_id", params.organization_id);
+    searchParams.append("environment_id", params.environment_id);
+    if (params.scopes && params.scopes.length > 0) {
+      searchParams.append("scope", params.scopes.join(" "));
+    }
+    if (params.state) {
+      searchParams.append("state", params.state);
+    }
+    if (params.redirect_uri) {
+      searchParams.append("redirect_uri", params.redirect_uri);
+    }
+    return `${API_BASE_URL}/claude-agent/authorize?${searchParams.toString()}`;
+  },
+  
+  // Exchange authorization code for access token
+  exchangeToken: (data: OAuthTokenRequest) =>
+    api.post<OAuthTokenResponse>("/claude-agent/token", {
+      grant_type: "authorization_code",
+      ...data,
+    }),
+  
+  // Revoke access token
+  revokeToken: (data: OAuthRevokeRequest) =>
+    api.post("/claude-agent/revoke", data),
+  
+  // List available tools
+  listTools: () =>
+    api.get<ClaudeAgentTool[]>("/claude-agent/tools"),
+  
+  // Execute agent with message
+  execute: (data: ClaudeAgentExecutionRequest) =>
+    api.post<ClaudeAgentExecutionResponse>("/claude-agent/execute", data),
+  
+  // Health check
+  health: () =>
+    api.get("/claude-agent/health"),
 };
 
 export default api;

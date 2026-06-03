@@ -1,6 +1,8 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+import jwt
+
 from apps.claude_agent.oauth import OAuthManager
 
 User = get_user_model()
@@ -60,8 +62,19 @@ class OAuthManagerTests(TestCase):
         
         self.assertIsNotNone(token_data)
         self.assertIn("access_token", token_data)
+        self.assertLessEqual(token_data["expires_in"], 1800)
         self.assertEqual(token_data["organization_id"], self.org_id)
         self.assertEqual(token_data["environment_id"], self.env_id)
+
+        claims = jwt.decode(
+            token_data["access_token"],
+            options={"verify_signature": False, "verify_exp": False},
+        )
+        self.assertEqual(claims["org_id"], self.org_id)
+        self.assertEqual(claims["env_id"], self.env_id)
+        self.assertEqual(claims["scope"], "agent:execute tools:read")
+        self.assertEqual(claims["purpose"], "claude_agent_oauth")
+        self.assertIn("jti", claims)
         
         # 3. Verify code is consumed (cannot be used twice)
         second_attempt = self.manager.exchange_code_for_token(code)
@@ -73,10 +86,12 @@ class OAuthManagerTests(TestCase):
         code = self.manager.generate_authorization_code(self.user, self.org_id, self.env_id)
         token_data = self.manager.exchange_code_for_token(code)
         access_token = token_data["access_token"]
+        self.assertIsNotNone(self.manager.get_access_info(access_token))
         
         # 2. Revoke it
         success = self.manager.revoke_token(access_token)
         self.assertTrue(success)
+        self.assertIsNone(self.manager.get_access_info(access_token))
         
         # 3. Try to revoke again (should fail or return False depending on impl, here False)
         success_again = self.manager.revoke_token(access_token)

@@ -11,9 +11,13 @@ MCP-specific event types:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
 
 from libs.logging.context import get_context_ids
+
+if TYPE_CHECKING:
+    from apps.accounts.models import User
+    from apps.tenants.models import Organization
 
 try:
     from opentelemetry import trace
@@ -59,17 +63,23 @@ def log_run_event(
         Created AuditEvent instance
     """
     span = None
+    executable_tool = run.executable_tool
+    tool_id = str(executable_tool.id) if executable_tool else None
+    tool_name = executable_tool.name if executable_tool else "unknown-tool"
+    tool_kind = "curated" if run.curated_tool_id else "raw"
     if OTELEMETRY_AVAILABLE and tracer:
         # Get current span context if available (to link audit events to parent traces)
         current_span = trace.get_current_span()
         span = tracer.start_span(
             f"audit.run.{event_type}",
-            context=current_span.get_span_context() if current_span else None,
+            context=trace.set_span_in_context(current_span) if current_span else None,
         )
         span.set_attribute("audit.event_type", event_type)
         span.set_attribute("run.id", str(run.id))
         span.set_attribute("agent.id", str(run.agent.id))
-        span.set_attribute("tool.id", str(run.tool.id))
+        if tool_id:
+            span.set_attribute("tool.id", tool_id)
+            span.set_attribute("tool.kind", tool_kind)
         span.set_attribute("organization.id", str(run.organization.id))
         span.set_attribute("environment.id", str(run.environment.id))
 
@@ -84,7 +94,9 @@ def log_run_event(
             {
                 "run_id": str(run.id),
                 "agent_id": str(run.agent.id),
-                "tool_id": str(run.tool.id),
+                "tool_id": tool_id,
+                "tool_name": tool_name,
+                "tool_kind": tool_kind,
                 "organization_id": str(run.organization.id),
                 "environment_id": str(run.environment.id),
             }
@@ -126,7 +138,7 @@ def log_run_event(
         # Target: tool identity
         target = data.get("target")
         if not target:
-            target = f"tool:{run.tool.name}"
+            target = f"tool:{tool_name}"
             data["target"] = target
 
         # Decision: infer from event_type
@@ -222,7 +234,7 @@ def log_api_event(
         current_span = trace.get_current_span()
         span = tracer.start_span(
             f"audit.api.{event_type}",
-            context=current_span.get_span_context() if current_span else None,
+            context=trace.set_span_in_context(current_span) if current_span else None,
         )
         span.set_attribute("audit.event_type", event_type)
         if organization:
@@ -364,7 +376,7 @@ def log_security_event(
         current_span = trace.get_current_span()
         span = tracer.start_span(
             f"audit.security.{event_type}",
-            context=current_span.get_span_context() if current_span else None,
+            context=trace.set_span_in_context(current_span) if current_span else None,
         )
         span.set_attribute("audit.event_type", event_type)
         span.set_attribute("organization.id", organization_id)
@@ -477,7 +489,7 @@ def log_api_event(
         current_span = trace.get_current_span()
         span = tracer.start_span(
             f"audit.api.{event_type}",
-            context=current_span.get_span_context() if current_span else None,
+            context=trace.set_span_in_context(current_span) if current_span else None,
         )
         span.set_attribute("audit.event_type", event_type)
         if organization:
