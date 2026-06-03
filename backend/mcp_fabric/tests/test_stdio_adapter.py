@@ -3,12 +3,11 @@ Tests for stdio MCP Adapter.
 """
 from __future__ import annotations
 
-import asyncio
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
+import mcp_fabric.jsonrpc as jsonrpc_module
 from apps.agents.models import Agent
 from apps.tenants.models import Environment, Organization
 from apps.tools.models import Tool
@@ -175,7 +174,7 @@ class TestStdioMCPAdapter:
             }
         ]
         
-        with patch("mcp_fabric.stdio_adapter.get_tools_list_for_org_env", return_value=mock_tools):
+        with patch("mcp_fabric.jsonrpc.get_tools_list_for_org_env", return_value=mock_tools):
             response = await adapter.handle_tools_list(message)
         
         assert response["jsonrpc"] == "2.0"
@@ -209,17 +208,11 @@ class TestStdioMCPAdapter:
         
         # Mock tool lookup and execution to avoid DB locks
         mock_result = {
-            "status": "success",
             "output": {"result": "test output"},
             "run_id": "test-run-id",
         }
-        
-        # Mock Tool.objects.filter().first() chain
-        mock_queryset = MagicMock()
-        mock_queryset.first = MagicMock(return_value=tool)
-        
-        with patch("apps.tools.models.Tool.objects.filter", return_value=mock_queryset), \
-             patch("mcp_fabric.stdio_adapter.run_tool_via_agentxsuite", return_value=mock_result):
+
+        with patch.object(jsonrpc_module, "execute_tool_run", return_value=mock_result):
             response = await adapter.handle_tool_call(message)
         
         assert response["jsonrpc"] == "2.0"
@@ -277,17 +270,11 @@ class TestStdioMCPAdapter:
         
         # Mock tool lookup and execution failure to avoid DB locks
         mock_result = {
-            "status": "error",
-            "error": "tool_execution_failed",
-            "error_description": "Tool execution failed for some reason",
+            "content": [{"type": "text", "text": "Tool execution failed for some reason"}],
+            "isError": True,
         }
-        
-        # Mock Tool.objects.filter().first() chain
-        mock_queryset = MagicMock()
-        mock_queryset.first = MagicMock(return_value=tool)
-        
-        with patch("apps.tools.models.Tool.objects.filter", return_value=mock_queryset), \
-             patch("mcp_fabric.stdio_adapter.run_tool_via_agentxsuite", return_value=mock_result):
+
+        with patch.object(jsonrpc_module, "execute_tool_run", return_value=mock_result):
             response = await adapter.handle_tool_call(message)
         
         assert response["jsonrpc"] == "2.0"

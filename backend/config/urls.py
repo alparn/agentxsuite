@@ -7,9 +7,11 @@ from django.contrib import admin
 from django.urls import include, path
 
 from apps.claude_agent import views as claude_views
+from config.openapi import openapi_schema
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/schema/", openapi_schema, name="api_schema"),
     
     # Well-known endpoints for service discovery
     path(".well-known/agent-manifest", claude_views.wellknown_agent_manifest, name="wellknown_agent_manifest"),
