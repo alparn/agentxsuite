@@ -31,10 +31,8 @@ from asgiref.sync import sync_to_async
 
 from apps.agents.models import Agent
 from apps.tenants.models import Environment, Organization
-from mcp_fabric.adapters import run_tool_via_agentxsuite
 from mcp_fabric.deps import get_validated_token
-from mcp_fabric.errors import ErrorCodes
-from mcp_fabric.registry import get_tools_list_for_org_env
+from mcp_fabric.jsonrpc import MCPJsonRpcContext, MCPJsonRpcHandler, normalize_mcp_tool_name
 
 # Configure logging to stderr only
 logging.basicConfig(
@@ -65,6 +63,7 @@ class StdioMCPAdapter:
         self.env: Environment | None = None
         self.agent: Agent | None = None
         self.token_claims: dict[str, Any] | None = None
+        self.handler: MCPJsonRpcHandler | None = None
         self.initialized = False
 
     async def start(self):
@@ -165,14 +164,41 @@ class StdioMCPAdapter:
                     logger.warning(f"Agent {agent_id} not found, will auto-select")
             
             logger.info(f"Validated token for org={self.org.name}, env={self.env.name}")
+            self.handler = self._build_handler()
             
         except Exception as e:
             logger.error(f"Token validation failed: {e}")
             raise
 
+    def _build_handler(self) -> MCPJsonRpcHandler:
+        """Build the shared JSON-RPC handler for this stdio session."""
+        if not self.org or not self.env or self.token_claims is None:
+            raise ValueError("Organization/Environment not set")
+
+        resolved_agent_id = str(self.agent.id) if self.agent else self.token_claims.get("agent_id")
+        self.token_claims["_resolved_agent_id"] = resolved_agent_id
+        self.token_claims["_client_ip"] = None
+        self.token_claims["_jti"] = self.token_claims.get("_jti") or self.token_claims.get("jti")
+
+        return MCPJsonRpcHandler(
+            MCPJsonRpcContext(
+                organization=self.org,
+                environment=self.env,
+                agent=self.agent,
+                token_claims=self.token_claims,
+                server_name="agentxsuite",
+            )
+        )
+
+    def _get_handler(self) -> MCPJsonRpcHandler:
+        """Return the shared JSON-RPC handler, creating it for test-initialized adapters."""
+        if self.handler is None:
+            self.handler = self._build_handler()
+        return self.handler
+
     async def handle_message(self, message: dict) -> dict | None:
         """
-        Route JSON-RPC message to appropriate handler.
+        Route JSON-RPC message to the shared transport-independent handler.
         
         Args:
             message: JSON-RPC message
@@ -180,214 +206,35 @@ class StdioMCPAdapter:
         Returns:
             JSON-RPC response or None (for notifications)
         """
-        # Check if this is a notification (no id field)
-        is_notification = message.get("id") is None
-        
-        if is_notification:
-            logger.debug(f"Received notification: {message.get('method')}")
-            # Notifications don't require responses
-            return None
-        
-        method = message.get("method")
-        msg_id = message.get("id")
-        
-        try:
-            if method == "initialize":
-                return await self.handle_initialize(message)
-            elif method == "tools/list":
-                return await self.handle_tools_list(message)
-            elif method == "tools/call":
-                return await self.handle_tool_call(message)
-            elif method == "resources/list":
-                return await self.handle_resources_list(message)
-            elif method == "prompts/list":
-                return await self.handle_prompts_list(message)
-            else:
-                return self._error_response(
-                    msg_id,
-                    -32601,
-                    "Method not found",
-                    f"Unknown method: {method}",
-                )
-        except Exception as e:
-            logger.error(f"Error handling {method}: {e}", exc_info=True)
-            return self._error_response(
-                msg_id,
-                -32603,
-                "Internal error",
-                str(e),
-            )
+        response = await self._get_handler().handle_message(message)
+        self.initialized = self._get_handler().initialized
+        return response
 
     async def handle_initialize(self, message: dict) -> dict:
         """
-        Handle MCP initialize request.
+        Handle MCP initialize request via the shared JSON-RPC handler.
         
         Returns server capabilities and protocol version.
         """
-        msg_id = message.get("id")
-        params = message.get("params", {})
-        client_protocol_version = params.get("protocolVersion", "2024-11-05")
-        
-        self.initialized = True
-        
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "result": {
-                "protocolVersion": client_protocol_version,
-                "capabilities": {
-                    "tools": {},  # We support tools
-                    "resources": {},  # We support resources
-                    "prompts": {},  # We support prompts
-                },
-                "serverInfo": {
-                    "name": "agentxsuite",
-                    "version": "1.0.0",
-                },
-            },
-        }
+        response = await self._get_handler().handle_initialize(message)
+        self.initialized = self._get_handler().initialized
+        return response
 
     async def handle_tools_list(self, message: dict) -> dict:
         """
-        Handle tools/list request.
+        Handle tools/list request via the shared JSON-RPC handler.
         
         Returns all enabled tools for the org/env.
         """
-        msg_id = message.get("id")
-        
-        if not self.org or not self.env:
-            return self._error_response(
-                msg_id,
-                -32603,
-                "Not initialized",
-                "Organization/Environment not set",
-            )
-        
-        try:
-            # Get tools from registry
-            tools = await sync_to_async(get_tools_list_for_org_env)(
-                org=self.org,
-                env=self.env,
-            )
-            
-            # Normalize tool names for MCP spec (^[a-zA-Z0-9_-]{1,64}$)
-            normalized_tools = []
-            for tool in tools:
-                original_name = tool.get("name", "")
-                normalized_name = self._normalize_tool_name(original_name)
-                
-                normalized_tool = {**tool, "name": normalized_name}
-                
-                # Ensure description exists
-                if "description" not in normalized_tool or not normalized_tool["description"]:
-                    normalized_tool["description"] = f"Tool: {original_name}"
-                
-                normalized_tools.append(normalized_tool)
-            
-            return {
-                "jsonrpc": "2.0",
-                "id": msg_id,
-                "result": {
-                    "tools": normalized_tools,
-                },
-            }
-            
-        except Exception as e:
-            logger.error(f"Error listing tools: {e}", exc_info=True)
-            return self._error_response(
-                msg_id,
-                -32603,
-                "Internal error",
-                str(e),
-            )
+        return await self._get_handler().handle_tools_list(message)
 
     async def handle_tool_call(self, message: dict) -> dict:
         """
-        Handle tools/call request.
+        Handle tools/call request via the shared JSON-RPC handler.
         
         Executes a tool via AgentxSuite's run service with full security pipeline.
         """
-        msg_id = message.get("id")
-        params = message.get("params", {})
-        tool_name = params.get("name")
-        arguments = params.get("arguments", {})
-        
-        if not tool_name:
-            return self._error_response(
-                msg_id,
-                -32602,
-                "Invalid params",
-                "Missing 'name' parameter",
-            )
-        
-        try:
-            # Find tool by name
-            from apps.tools.models import Tool
-            
-            tool = await sync_to_async(
-                Tool.objects.filter(
-                    organization=self.org,
-                    environment=self.env,
-                    name=tool_name,
-                    enabled=True,
-                ).first
-            )()
-            
-            if not tool:
-                return self._error_response(
-                    msg_id,
-                    -32602,
-                    "Tool not found",
-                    f"Tool '{tool_name}' not found or not enabled",
-                )
-            
-            # Execute tool via AgentxSuite adapter
-            result = await sync_to_async(run_tool_via_agentxsuite)(
-                tool=tool,
-                payload=arguments,
-                agent_id=self.agent.id if self.agent else None,
-                token_agent_id=self.agent.id if self.agent else None,
-                jti=self.token_claims.get("jti"),
-                client_ip=None,  # Not available in stdio context
-                request_id=str(msg_id),
-            )
-            
-            # Convert result to MCP format
-            if result.get("status") == "success":
-                output = result.get("output", {})
-                # MCP expects content array
-                content = [{"type": "text", "text": json.dumps(output, indent=2)}]
-                
-                return {
-                    "jsonrpc": "2.0",
-                    "id": msg_id,
-                    "result": {
-                        "content": content,
-                        "isError": False,
-                    },
-                }
-            else:
-                error_msg = result.get("error", "Unknown error")
-                error_desc = result.get("error_description", error_msg)
-                content = [{"type": "text", "text": error_desc}]
-                
-                return {
-                    "jsonrpc": "2.0",
-                    "id": msg_id,
-                    "result": {
-                        "content": content,
-                        "isError": True,
-                    },
-                }
-                
-        except Exception as e:
-            logger.error(f"Error executing tool {tool_name}: {e}", exc_info=True)
-            return self._error_response(
-                msg_id,
-                -32603,
-                "Tool execution error",
-                str(e),
-            )
+        return await self._get_handler().handle_tool_call(message)
 
     async def handle_resources_list(self, message: dict) -> dict:
         """
@@ -395,15 +242,7 @@ class StdioMCPAdapter:
         
         Returns empty list for now (Phase 3).
         """
-        msg_id = message.get("id")
-        
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "result": {
-                "resources": [],
-            },
-        }
+        return self._get_handler()._success_response(message.get("id"), {"resources": []})
 
     async def handle_prompts_list(self, message: dict) -> dict:
         """
@@ -411,15 +250,7 @@ class StdioMCPAdapter:
         
         Returns empty list for now (Phase 3).
         """
-        msg_id = message.get("id")
-        
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "result": {
-                "prompts": [],
-            },
-        }
+        return self._get_handler()._success_response(message.get("id"), {"prompts": []})
 
     def _normalize_tool_name(self, name: str) -> str:
         """
@@ -431,18 +262,7 @@ class StdioMCPAdapter:
         Returns:
             Normalized tool name
         """
-        import re
-        
-        # Replace invalid characters with underscore
-        normalized = re.sub(r"[^a-zA-Z0-9_-]", "_", name)
-        # Collapse multiple underscores
-        normalized = re.sub(r"_+", "_", normalized)
-        # Remove leading/trailing underscores
-        normalized = normalized.strip("_")
-        # Limit to 64 characters
-        normalized = normalized[:64]
-        
-        return normalized or "unnamed_tool"
+        return normalize_mcp_tool_name(name)
 
     def _write_response(self, response: dict):
         """
@@ -478,18 +298,7 @@ class StdioMCPAdapter:
         Returns:
             JSON-RPC error response
         """
-        error = {
-            "code": code,
-            "message": message,
-        }
-        if data is not None:
-            error["data"] = data
-        
-        return {
-            "jsonrpc": "2.0",
-            "id": msg_id,
-            "error": error,
-        }
+        return self._get_handler()._error_response(msg_id, code, message, data)
 
 
 async def main():

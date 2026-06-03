@@ -40,6 +40,7 @@ AUTHORIZATION_SERVERS = config(
 
 # Supported scopes for MCP Fabric
 SCOPES_SUPPORTED = [
+    "mcp:connect",  # Establish Streamable HTTP/SSE sessions
     "mcp:manifest",  # Access to manifest endpoint
     "mcp:tools",  # Access to tools listing
     "mcp:run",  # Access to tool execution

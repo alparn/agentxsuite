@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  mcp-gateway:
+    build: .
+    ports:
+      - "8091:8091"
+    environment:
+      - FASTMCP_BACKEND_URL=http://mcp-fabric:8090
+      - LOG_LEVEL=info
+    depends_on:
+      - mcp-fabric
+    networks:
+      - agentxsuite
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8091/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mcp-fabric:
+    image: agentxsuite-mcp-fabric:latest
+    ports:
+      - "8090:8090"
+    networks:
+      - agentxsuite
+
+networks:
+  agentxsuite:
+    driver: bridge
+
